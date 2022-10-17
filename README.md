@@ -1,5 +1,7 @@
 # JoinBoost: In-Database Tree-Models In Action
 
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
 JoinBoost the first In-DB factorized learning system for tree-based models. 
 
 The technical report is in the /technical.
