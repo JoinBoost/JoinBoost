@@ -1,0 +1,55 @@
+store_nbr,city,state,stype,cluster
+1,Quito,Pichincha,D,13.0
+2,Quito,Pichincha,D,13.0
+3,Quito,Pichincha,D,8.0
+4,Quito,Pichincha,D,9.0
+5,Santo Domingo,Santo Domingo de los Tsachilas,D,4.0
+6,Quito,Pichincha,D,13.0
+7,Quito,Pichincha,D,8.0
+8,Quito,Pichincha,D,8.0
+9,Quito,Pichincha,B,6.0
+10,Quito,Pichincha,C,15.0
+11,Cayambe,Pichincha,B,6.0
+12,Latacunga,Cotopaxi,C,15.0
+13,Latacunga,Cotopaxi,C,15.0
+14,Riobamba,Chimborazo,C,7.0
+15,Ibarra,Imbabura,C,15.0
+16,Santo Domingo,Santo Domingo de los Tsachilas,C,3.0
+17,Quito,Pichincha,C,12.0
+18,Quito,Pichincha,B,16.0
+19,Guaranda,Bolivar,C,15.0
+20,Quito,Pichincha,B,6.0
+21,Santo Domingo,Santo Domingo de los Tsachilas,B,6.0
+22,Puyo,Pastaza,C,7.0
+23,Ambato,Tungurahua,D,9.0
+24,Guayaquil,Guayas,D,1.0
+25,Salinas,Santa Elena,D,1.0
+26,Guayaquil,Guayas,D,10.0
+27,Daule,Guayas,D,1.0
+28,Guayaquil,Guayas,E,10.0
+29,Guayaquil,Guayas,E,10.0
+30,Guayaquil,Guayas,C,3.0
+31,Babahoyo,Los Rios,B,10.0
+32,Guayaquil,Guayas,C,3.0
+33,Quevedo,Los Rios,C,3.0
+34,Guayaquil,Guayas,B,6.0
+35,Playas,Guayas,C,3.0
+36,Libertad,Guayas,E,10.0
+37,Cuenca,Azuay,D,2.0
+38,Loja,Loja,D,4.0
+39,Cuenca,Azuay,B,6.0
+40,Machala,El Oro,C,3.0
+41,Machala,El Oro,D,4.0
+42,Cuenca,Azuay,D,2.0
+43,Esmeraldas,Esmeraldas,E,10.0
+44,Quito,Pichincha,A,5.0
+45,Quito,Pichincha,A,11.0
+46,Quito,Pichincha,A,14.0
+47,Quito,Pichincha,A,14.0
+48,Quito,Pichincha,A,14.0
+49,Quito,Pichincha,A,11.0
+50,Ambato,Tungurahua,A,14.0
+51,Guayaquil,Guayas,A,17.0
+52,Manta,Manabi,A,11.0
+53,Manta,Manabi,D,13.0
+54,El Carmen,Manabi,C,3.0
