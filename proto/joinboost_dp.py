@@ -77,7 +77,7 @@ class cjt:
         
         
 class joinGraph:
-    def __init__(self, name, con, max_leaves = 8, min_samples_split=2, 
+    def __init__(self, name, cons,  max_leaves = 8, min_samples_split=2, 
                  learning_rate=0.1, target_variable = "Y", log = False, 
                  max_depth=100, fact_pandas=False, fact_pandas_join=False, feature_parallel=False):
         # store the table name -> features 
@@ -109,7 +109,8 @@ class joinGraph:
         self.fact_pandas = fact_pandas
         # the fact table is the full join result
         self.fact_pandas_join = fact_pandas_join
-        self.con = con
+        self.con = cons[0]
+        self.cons = cons
         self.feature_parallel = feature_parallel
         
     # execute it after "initialize_model_table"
@@ -521,7 +522,7 @@ ADD %(column)s BIGINT NOT NULL CONSTRAINT %(constraint_name)s  DEFAULT 1;'''% { 
                 
         def compute_message(worker_id):
             try:
-                con = cons[worker_id]
+                con = self.cons[worker_id]
                 con.execute("PRAGMA threads=8;")
                 pairs = view_sql_pairs[worker_id]
                 for pair in pairs:
@@ -568,7 +569,7 @@ ADD %(column)s BIGINT NOT NULL CONSTRAINT %(constraint_name)s  DEFAULT 1;'''% { 
 
             def compute_split(worker_id):
                 try:
-                    con = cons[worker_id]
+                    con = self.cons[worker_id]
                     con.execute("PRAGMA threads=4;")
                     table, feature, feature_type, query = queries[worker_id]
                     con.execute(query)
@@ -804,7 +805,7 @@ ADD %(column)s BIGINT NOT NULL CONSTRAINT %(constraint_name)s  DEFAULT 1;'''% { 
             series = []
             def compute_update_series(worker_id):
                 try:
-                    con = cons[worker_id]
+                    con = self.cons[worker_id]
                     con.execute("PRAGMA threads=4;")
                     np_s = con.execute(sqls[worker_id]).fetchnumpy()['s']
                     series.append(np_s)
