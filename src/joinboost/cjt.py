@@ -1,9 +1,8 @@
 import copy
-from aggregator import Message, Annotation
-from semi_ring import SemiRing
-from join_graph import JoinGraph
-from executor import Executor
-from aggregator import *
+from .semiring import SemiRing
+from .joingraph import JoinGraph
+from .executor import Executor
+from .aggregator import *
 
 
 class CJT(JoinGraph):
@@ -108,12 +107,12 @@ class CJT(JoinGraph):
             m_type = Message.FULL
         for c_neighbor in joins[currento_table]:
             if c_neighbor != parent_table:
-                self._send_message(from_table=currento_table, to_table=c_neighbor, m_type=m_type)
+                self._send_message(currento_table, c_neighbor, m_type=m_type)
                 self._pre_dfs(c_neighbor, currento_table, m_type=m_type)
 
     def absorption(self, table: str, group_by: list, mode=4):
         from_table_attrs = self.get_relation_features(table)
-        incoming_messages, join_conds = self._get_income_messages(from_table=table, to_table='')
+        incoming_messages, join_conds = self._get_income_messages(table)
         
         aggregate_expressions = self.semi_ring.col_sum()
         for attr in group_by:
@@ -128,20 +127,29 @@ class CJT(JoinGraph):
     
     # get the incoming message from one table to another
     # key function for message passing, Sec 3.3 of CJT paper
-    def _get_income_messages(self, from_table: str, to_table: str):
+    # allow two types of join condition: 1 is for selection, 2 is for semi-join
+    def _get_income_messages(self, 
+                             table: str, 
+                             excluded_table: str = '', 
+                             condition=1):
         incoming_messages, join_conds = [], []
-        for table in self.joins[from_table]:
+        for neighbour_table in self.joins[table]:
             # to_table could be removed for semi-join
-            if table != to_table:
-                incoming_message = self.joins[table][from_table]
+            if neighbour_table != excluded_table:
+                incoming_message = self.joins[neighbour_table][table]
                 if incoming_message['message_type'] == Message.IDENTITY:
                     continue
                     
                 # get the join conditions between from_table and incoming_message
-                l_join_keys, r_join_keys = self.get_join_keys(table, from_table)
+                l_join_keys, r_join_keys = self.get_join_keys(neighbour_table, table)
                 incoming_messages.append(incoming_message)
-                join_conds += [incoming_message["message"] + "." + l_join_keys[i] + " IS NOT DISTINCT FROM " +
-                               from_table + "." + r_join_keys[i] for i in range(len(l_join_keys))]
+                if condition == 1:
+                    join_conds += [incoming_message["message"] + "." + l_join_keys[i] + " IS NOT DISTINCT FROM " +
+                                   table + "." + r_join_keys[i] for i in range(len(l_join_keys))]
+                if condition == 2:
+                    join_conds += ['(' + ','.join([table + '.' + key for key in r_join_keys]) + ') in (SELECT (' 
+                                   + ','.join([incoming_message["message"] + '.' + key for key in l_join_keys]) 
+                                   + ') FROM ' + incoming_message["message"] + ')']
         return incoming_messages, join_conds
 
 

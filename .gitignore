@@ -130,3 +130,6 @@ dmypy.json
 
 # experiment codes
 /src/*.ipynb
+/tests/*.ipynb
+/note
+

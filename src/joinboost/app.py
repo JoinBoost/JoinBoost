@@ -1,9 +1,9 @@
 import math
 from abc import ABC
-from join_graph import JoinGraph
-from semi_ring import *
-from aggregator import Aggregator, Annotation, Message
-from cjt import CJT
+from .joingraph import JoinGraph
+from .semiring import *
+from .aggregator import Aggregator, Annotation, Message
+from .cjt import CJT
 from queue import PriorityQueue
 
 
@@ -21,14 +21,11 @@ class DummyModel(App):
            jg: JoinGraph):
         jg._preprocess()
         self.jg = jg
-        self.target_var = jg.get_target_var()
-        self.target_relation = jg.get_target_relation()
-        
 
         # compute the total average
-        agg_exp = self.semi_ring.col_sum(s=self.target_var, c = '1')
+        agg_exp = self.semi_ring.col_sum(s=self.jg.get_target_var(), c = '1')
         TS, TC = self.jg.exe.execute_spja_query(agg_exp,
-                                              [self.target_relation],
+                                              [self.jg.get_target_relation()],
                                               mode = 3)[0]
         mean = TS / TC
         self.semi_ring.set_semi_ring(TS, TC)
@@ -89,9 +86,10 @@ class DecisionTree(DummyModel):
         if cur_model_def:
             self.model_def.append(cur_model_def)
         
-    def compute_predict_se(self, test_table: str):
+    def compute_rmse(self, test_table: str):
+        # TODO: refactor
         view = self.cjt.exe.case_query(test_table, '+', 'prediction', str(self.constant_),
-                                       self.model_def, [self.target_var])
+                                       self.model_def, [self.cjt.get_target_var()])
         predict_agg = {'RMSE': ('SQRT(AVG(POW(' + self.cjt.get_target_var() + ' - prediction,2)))',
                                 Aggregator.IDENTITY)}
         predict = self.cjt.exe.execute_spja_query(predict_agg, [view])
@@ -279,13 +277,7 @@ class GradientBoosting(DecisionTree):
             cur_cond = []
             TS, TC = cur_cjt.get_semi_ring().get_value()
             pred = TS / TC * self.learning_rate
-            t_var_neighbors = cur_cjt.get_root_neighbors()
-            for r_name in t_var_neighbors:
-                (l_keys, r_keys), table = t_var_neighbors[r_name]
-                cur_cond.append(
-                    '(' + ','.join([self.target_relation + '.' + key for key in l_keys]) +
-                    ') in (SELECT (' + ','.join([table + '.' + key for key in r_keys]) + ') FROM ' + table + ')'
-                )
-            cur_cond += cur_cjt.get_parsed_annotations(self.target_relation)
-            self.cjt.exe.case_query(self.target_relation, '-', 's', 's', [[(pred, cur_cond)]],
-                                    table_name=self.target_relation)
+            _, join_conds = cur_cjt._get_income_messages(cur_cjt.get_target_relation(), condition=2)
+            self.cjt.exe.update_query("s=s-(" + str(pred) + ")",
+                                     cur_cjt.get_target_relation(),
+                                     join_conds)

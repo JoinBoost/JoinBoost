@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from aggregator import *
+from .aggregator import *
 import time
 
 class Executor(ABC):
@@ -112,6 +112,15 @@ class DuckdbExecutor(Executor):
         sql += 'AS ' + cond_attr + ' FROM ' + from_table
         self._execute_query(sql)
         return view
+    
+    def update_query(self,
+                     update_expression,
+                     table,
+                     select_conds: list = []):
+        sql = "UPDATE " + table + " SET " + update_expression + " \n"
+        if len(select_conds) > 0:
+            sql += "WHERE " + " AND ".join(select_conds) + "\n"
+        self._execute_query(sql)
     
     # mode = 1 will create the query result as table and return table name
     # mode = 2 will create the query result as table and return view name

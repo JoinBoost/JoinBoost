@@ -1,6 +1,6 @@
-from aggregator import Aggregator
+from .aggregator import Aggregator
 import copy
-from executor import Executor
+from .executor import Executor
 
 class JoinGraph:
     def __init__(self, 
@@ -150,3 +150,5 @@ class JoinGraph:
 # for prediction, what if two attributes have the same name?
 # semi-join reduction for message to pass to
 # todo: remove s,c logic from app
+# infer executor from class
+# app -> models

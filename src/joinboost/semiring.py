@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from copy import deepcopy
-from aggregator import Aggregator, Message
-from join_graph import JoinGraph
+from .aggregator import Aggregator, Message
+from .joingraph import JoinGraph
 
 '''Handle semi ring in DBMS'''
 class SemiRing(ABC):
