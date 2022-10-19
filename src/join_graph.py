@@ -1,117 +1,152 @@
-from conn.conn import Conn
 from aggregator import Aggregator
-
+import copy
+from executor import Executor
 
 class JoinGraph:
-    relations: list = []
-    target_var: str = ''
-    target_var_relation: str = ''
-    d_types: dict = {}
-    r_attrs: dict = {}
-    r_attrs_full: dict = {}
-    joins: dict = {}
-    threshold: int = 0
-    test_attr_mapping: dict = {}
+    def __init__(self, 
+                exe, 
+                joins = {}, 
+                relation_schema = {},
+                target_var = None,
+                target_relation = None):
+        
+        self.exe = exe
+        # maps each from_relation => to_relation => {keys: (from_keys, to_keys)}
+        self.joins = copy.deepcopy(joins)
+        # maps each relation => feature => feature_type
+        self.relation_schema = copy.deepcopy(relation_schema)
+        self.target_var = target_var
+        self.target_relation = target_relation
+    
+    def get_relations(self): 
+        return list(self.relation_schema.keys())
+    
+    def get_relation_schema(self): 
+        return self.relation_schema
+    
+    def get_type(self, relation, feature): 
+        return self.relation_schema[relation][feature]
 
-    def __init__(self, target_var: str, target_var_relation: str, conn: Conn, threshold: int = 0):
-        # reference to conn.relation_attrs
-        self.r_attrs_full = conn.relation_attrs
-        self.threshold = threshold
-        self.relations = conn.relations
-        self.target_var_relation = self._target_var_check(target_var_relation, target_var)
-        self.target_var = self.target_var_relation + '_' + target_var
-        self.test_attr_mapping[target_var] = self.target_var
+    def get_target_var(self): 
+        return self.target_var
 
-    def _target_var_check(self, target_var_relation: str, target_var: str):
-        if target_var_relation + '_' + target_var in self.r_attrs_full[target_var_relation]:
-            return target_var_relation
-        raise Exception('Target variable not in schema!')
-
-    def get_dtypes(self): return self.d_types
-
-    def get_target_var(self): return self.target_var
-
-    def get_target_var_relation(self): return self.target_var_relation
-
-    def add_relation_attrs(self, r_name: str, attrs: list, attr_meta: list, conn: Conn):
-        for i, attr in enumerate(attrs):
-            if attr_meta[i] == 2:
-                self.d_types[r_name + '_' + attr] = 'NUM'
-            else:
-                self.d_types[r_name + '_' + attr] = 'CAT'
-                # view = conn.aggregation(semi_ring_selects={r_name + '_' + attr: (r_name + '_' + attr,
-                #                                                                  Aggregator.DISTINCT_COUNT)},
-                #                         in_msgs=[], f_table=r_name, groupby=[], where_conds={},
-                #                         annotations=[], left_join={})
-                # res = conn.fetch_agg(view)
-                # if res[0][0] <= self.threshold:
-                #     self.d_types[r_name + '_' + attr] = 'LCAT'
-            self.test_attr_mapping[attr] = r_name + '_' + attr
-        attrs = [r_name + '_' + attr for attr in attrs]
-        if not set(attrs).issubset(set(self.r_attrs_full[r_name])):
-            Exception('Key error in ', attrs + '. Attribute does not exist in table', r_name)
-        self.r_attrs[r_name] = attrs
-
-    def get_relations(self):
-        return self.relations
-
-    def get_relation_attrs_full(self):
-        return self.r_attrs_full
-
-    def print_join_tables(self):
-        print(self.joins)
-
-    # get features for each table
-    def get_relation_attrs(self, r_name):
-        if r_name not in self.r_attrs:
-            Exception('Attribute not in ', r_name)
-        return self.r_attrs[r_name]
-
-    def get_join_keys(self, l_table: str, r_table: str):
-        if l_table not in self.joins:
-            Exception(l_table, 'not in join graph')
-        if r_table:
-            if r_table not in self.joins[l_table]:
-                Exception(r_table, 'not connected to', l_table)
-            return self.joins[l_table][r_table]
-        else:
-            keys = []
-            for table in self.joins[l_table]:
-                keys += self.joins[l_table][table]
-            return keys
-
+    def get_target_relation(self): 
+        return self.target_relation
+    
     def get_joins(self):
         return self.joins
-
-    def data_aug(self, data_dir: str, conn: Conn, r_name: str, features: list, attr_meta: list,
-                 f_table: str, l_join_keys: list, r_join_keys: list):
-        conn.load_table(r_name, data_dir)
-        self.add_relation_attrs(r_name=r_name, attrs=features, attr_meta=attr_meta, conn=conn)
-        self.add_join(table_name_left=r_name, table_name_right=f_table, left_keys=l_join_keys, right_keys=r_join_keys)
+    
+    # add relation, features and target variable to join graph
+    # current assumption: Y is in the fact table
+    def add_relation_attrs(self, relation: str, X: list, y: str = None):
+        self.joins[relation] = dict()
+        
+        for x in X:
+            if relation not in self.relation_schema:
+                self.relation_schema[relation] = {}
+            # by default, assume all features to be numerical
+            self.relation_schema[relation][x] = 'NUM'
+            
+        if y is not None:
+            if self.target_var is not None:
+                print("Warning: Y already exists and has been replaced")
+            self.target_var = y
+            self.target_relation = relation
+            
+    # get features for each table
+    def get_relation_features(self, r_name):
+        if r_name not in self.relation_schema:
+            raise Exception('Attribute not in ' + r_name)
+        return list(self.relation_schema[r_name].keys())
+    
+    # get the join keys between two tables
+    # all get all the join keys of one table
+    def get_join_keys(self, f_table: str, t_table: str = None):
+        if f_table not in self.joins:
+            return []
+        if t_table:
+            if t_table not in self.joins[f_table]:
+                raise Exception(t_table, 'not connected to', f_table)
+            return self.joins[f_table][t_table]["keys"]
+        else:
+            keys = set()
+            for table in self.joins[f_table]:
+                l_keys, _ = self.joins[f_table][table]["keys"]
+                keys = keys.union(set(l_keys))
+            return list(keys)
+    
+    # useful attributes are features + join keys
+    def get_useful_attributes(self, table):
+        useful_attributes = self.get_relation_features(table) + \
+                            self.get_join_keys(table)
+        return list(set(useful_attributes))
+    
 
     def add_join(self, table_name_left: str, table_name_right: str, left_keys: list, right_keys: list):
         if len(left_keys) != len(right_keys):
             raise Exception('Join keys have different lengths!')
-        if table_name_left not in self.relations:
-            raise Exception(table_name_left + 'table doesn\'t exit!')
-        if table_name_right not in self.relations:
-            raise Exception(table_name_right + 'table doesn\'t exit!')
+        if table_name_left not in self.relation_schema:
+            raise Exception(table_name_left + ' doesn\'t exit!')
+        if table_name_right not in self.relation_schema:
+            raise Exception(table_name_right + ' doesn\'t exit!')
 
-        for l_key in left_keys:
-            if table_name_left + '_' + l_key not in self.r_attrs_full[table_name_left]:
-                raise Exception(l_key + ' doesn\'t exit in table ' + table_name_left)
+        left_keys = [attr for attr in left_keys]
+        right_keys = [attr for attr in right_keys]
 
-        for r_key in right_keys:
-            if table_name_right + '_' + r_key not in self.r_attrs_full[table_name_right]:
-                raise Exception(r_key + 'doesn\'t exit in table ' + table_name_right)
+        self.joins[table_name_left][table_name_right] = {"keys": (left_keys, right_keys)}
+        self.joins[table_name_right][table_name_left] = {"keys": (right_keys, left_keys)}
+        
+    def rename(self, table_prev, table_after):
+        if table_prev not in self.relation_schema: 
+            raise Exception(table_prev + ' doesn\'t exit!')
+        if table_after in self.relation_schema: 
+            raise Exception(table_after + ' already exits!')
+        self.relation_schema[table_after] = self.relation_schema[table_prev]
+        del self.relation_schema[table_prev]
+        if self.target_relation == table_prev:
+            self.target_relation = table_after
+            
+        for relation in self.joins:
+            if table_prev in self.joins[relation]:
+                self.joins[relation][table_after] = self.joins[relation][table_prev]
+                del self.joins[relation][table_prev]
+        
+        if table_prev in self.joins:
+            self.joins[table_after] = self.joins[table_prev]
+            del self.joins[table_prev]
+        
+    def _preprocess(self):
+        self.check_all_features_exist()
+    
+    def check_all_features_exist(self):
+        for table in self.relation_schema:
+            for features in self.relation_schema[table]:
+                self.check_features_exist(table, features)
+        
+    def check_features_exist(self, table, features):
+        attributes = self.exe.get_schema(table)
+        if not set(features).issubset(set(attributes)):
+            Exception('Key error in ' + str(features) + '. Attribute does not exist in table' + table)
 
-        if table_name_left not in self.joins:
-            self.joins[table_name_left] = dict()
-        if table_name_right not in self.joins:
-            self.joins[table_name_right] = dict()
+#     def decide_feature_type(self, table, attrs, attr_types, threshold, exe: Executor):
+#         self.relations.append(table)
+#         r_meta = {}
+#         for i, attr in enumerate(attrs):
+#             if attr_types[i] == 2:
+#                 r_meta[attr] = 'NUM'
+#             else:
+#                 r_meta[attr] = 'CAT'
+#                 view = exe.execute_spja_query(aggregate_expressions={attr: (attr, Aggregator.DISTINCT_COUNT)},
+#                                               f_table=table)
+#                 res = exe.select_all(view)
+#                 if res[0][0] <= threshold:
+#                     r_meta[attr] = 'LCAT'
+#         self.meta_data[table] = r_meta
+#         self.r_attrs[table] = list(r_meta.keys())
 
-        left_keys = [table_name_left + '_' + attr for attr in left_keys]
-        right_keys = [table_name_right + '_' + attr for attr in right_keys]
-
-        self.joins[table_name_left][table_name_right] = (left_keys, right_keys)
-        self.joins[table_name_right][table_name_left] = (right_keys, left_keys)
+# TODO: Check fact table and missing join keys
+# auto dictionary encoding
+# naming could conflict with semi-ring
+# for prediction, what if two attributes have the same name?
+# semi-join reduction for message to pass to
+# todo: remove s,c logic from app
