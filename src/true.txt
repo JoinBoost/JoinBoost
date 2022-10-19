@@ -1,0 +1,901 @@
+PRAGMA table_info(R)
+0.00012636184692382812
+PRAGMA table_info(S)
+7.867813110351562e-05
+PRAGMA table_info(T)
+6.604194641113281e-05
+SELECT SUM(C) AS s, SUM(1) AS c
+FROM R
+
+0.00013947486877441406
+CREATE OR REPLACE TABLE joinboost_tmp_0 AS SELECT C- (5825150.9697) AS s, 1 AS c, A AS A, B AS B, D AS D
+FROM R
+
+0.00115966796875
+--Sending Message from S to joinboost_tmp_0 m_type is Message.IDENTITY
+--Sending Message from T to joinboost_tmp_0 m_type is Message.IDENTITY
+--Sending Message from joinboost_tmp_0 to S m_type is Message.FULL
+CREATE OR REPLACE TABLE joinboost_tmp_1 AS SELECT SUM(s) AS s, SUM(c) AS c, joinboost_tmp_0.A AS A
+FROM joinboost_tmp_0
+GROUP BY joinboost_tmp_0.A
+
+0.00125885009765625
+--Sending Message from joinboost_tmp_0 to T m_type is Message.FULL
+CREATE OR REPLACE TABLE joinboost_tmp_2 AS SELECT SUM(s) AS s, SUM(c) AS c, joinboost_tmp_0.B AS B
+FROM joinboost_tmp_0
+GROUP BY joinboost_tmp_0.B
+
+0.0011756420135498047
+SELECT *
+FROM (SELECT A AS A, CASE WHEN 10000 > c THEN (-(CAST(0 AS DOUBLE)/10000)* 0 + (s/c)*s + (0-s)/(10000-c)*(0-s)) ELSE 0 END AS criteria, c AS c, s AS s
+FROM (SELECT SUM(s) OVER joinboost_window  AS s, SUM(c) OVER joinboost_window  AS c, A AS A
+FROM (SELECT SUM(s) AS s, SUM(c) AS c, S.A AS A
+FROM joinboost_tmp_1,S
+WHERE joinboost_tmp_1.A IS NOT DISTINCT FROM S.A
+GROUP BY S.A
+)
+WINDOW joinboost_window AS (ORDER BY A)
+)
+ORDER BY criteria DESC
+LIMIT 1
+)
+
+0.0070552825927734375
+SELECT *
+FROM (SELECT E AS E, CASE WHEN 10000 > c THEN (-(CAST(0 AS DOUBLE)/10000)* 0 + (s/c)*s + (0-s)/(10000-c)*(0-s)) ELSE 0 END AS criteria, c AS c, s AS s
+FROM (SELECT SUM(s) OVER joinboost_window  AS s, SUM(c) OVER joinboost_window  AS c, E AS E
+FROM (SELECT SUM(s) AS s, SUM(c) AS c, S.E AS E
+FROM joinboost_tmp_1,S
+WHERE joinboost_tmp_1.A IS NOT DISTINCT FROM S.A
+GROUP BY S.E
+)
+WINDOW joinboost_window AS (ORDER BY E)
+)
+ORDER BY criteria DESC
+LIMIT 1
+)
+
+0.003559589385986328
+SELECT *
+FROM (SELECT F AS F, CASE WHEN 10000 > c THEN (-(CAST(0 AS DOUBLE)/10000)* 0 + (s/c)*s + (0-s)/(10000-c)*(0-s)) ELSE 0 END AS criteria, c AS c, s AS s
+FROM (SELECT SUM(s) OVER joinboost_window  AS s, SUM(c) OVER joinboost_window  AS c, F AS F
+FROM (SELECT SUM(s) AS s, SUM(c) AS c, T.F AS F
+FROM joinboost_tmp_2,T
+WHERE joinboost_tmp_2.B IS NOT DISTINCT FROM T.B
+GROUP BY T.F
+)
+WINDOW joinboost_window AS (ORDER BY F)
+)
+ORDER BY criteria DESC
+LIMIT 1
+)
+
+0.005434989929199219
+SELECT *
+FROM (SELECT B AS B, CASE WHEN 10000 > c THEN (-(CAST(0 AS DOUBLE)/10000)* 0 + (s/c)*s + (0-s)/(10000-c)*(0-s)) ELSE 0 END AS criteria, c AS c, s AS s
+FROM (SELECT SUM(s) OVER joinboost_window  AS s, SUM(c) OVER joinboost_window  AS c, B AS B
+FROM (SELECT SUM(s) AS s, SUM(c) AS c, joinboost_tmp_0.B AS B
+FROM joinboost_tmp_0
+GROUP BY joinboost_tmp_0.B
+)
+WINDOW joinboost_window AS (ORDER BY B)
+)
+ORDER BY criteria DESC
+LIMIT 1
+)
+
+0.00615382194519043
+SELECT *
+FROM (SELECT D AS D, CASE WHEN 10000 > c THEN (-(CAST(0 AS DOUBLE)/10000)* 0 + (s/c)*s + (0-s)/(10000-c)*(0-s)) ELSE 0 END AS criteria, c AS c, s AS s
+FROM (SELECT SUM(s) OVER joinboost_window  AS s, SUM(c) OVER joinboost_window  AS c, D AS D
+FROM (SELECT SUM(s) AS s, SUM(c) AS c, joinboost_tmp_0.D AS D
+FROM joinboost_tmp_0
+GROUP BY joinboost_tmp_0.D
+)
+WINDOW joinboost_window AS (ORDER BY D)
+)
+ORDER BY criteria DESC
+LIMIT 1
+)
+
+0.002764463424682617
+--Sending Message from S to joinboost_tmp_0 m_type is Message.UNDECIDED
+CREATE OR REPLACE TABLE joinboost_tmp_3 AS SELECT S.A AS A
+FROM S
+WHERE S.A <= 3197
+GROUP BY S.A
+
+0.00026798248291015625
+--Sending Message from joinboost_tmp_0 to T m_type is Message.FULL
+CREATE OR REPLACE TABLE joinboost_tmp_4 AS SELECT SUM(s) AS s, SUM(c) AS c, joinboost_tmp_0.B AS B
+FROM joinboost_tmp_3,joinboost_tmp_0
+WHERE joinboost_tmp_3.A IS NOT DISTINCT FROM joinboost_tmp_0.A
+GROUP BY joinboost_tmp_0.B
+
+0.0011875629425048828
+--Sending Message from S to joinboost_tmp_0 m_type is Message.UNDECIDED
+CREATE OR REPLACE TABLE joinboost_tmp_5 AS SELECT S.A AS A
+FROM S
+WHERE S.A > 3197
+GROUP BY S.A
+
+0.00025010108947753906
+--Sending Message from joinboost_tmp_0 to T m_type is Message.FULL
+CREATE OR REPLACE TABLE joinboost_tmp_6 AS SELECT SUM(s) AS s, SUM(c) AS c, joinboost_tmp_0.B AS B
+FROM joinboost_tmp_5,joinboost_tmp_0
+WHERE joinboost_tmp_5.A IS NOT DISTINCT FROM joinboost_tmp_0.A
+GROUP BY joinboost_tmp_0.B
+
+0.0012636184692382812
+SELECT *
+FROM (SELECT A AS A, CASE WHEN 6426 > c THEN (-(CAST(-31575989115.2922 AS DOUBLE)/6426)* -31575989115.2922 + (s/c)*s + (-31575989115.2922-s)/(6426-c)*(-31575989115.2922-s)) ELSE 0 END AS criteria, c AS c, s AS s
+FROM (SELECT SUM(s) OVER joinboost_window  AS s, SUM(c) OVER joinboost_window  AS c, A AS A
+FROM (SELECT SUM(s) AS s, SUM(c) AS c, S.A AS A
+FROM joinboost_tmp_1,S
+WHERE joinboost_tmp_1.A IS NOT DISTINCT FROM S.A AND S.A <= 3197
+GROUP BY S.A
+)
+WINDOW joinboost_window AS (ORDER BY A)
+)
+ORDER BY criteria DESC
+LIMIT 1
+)
+
+0.004227161407470703
+SELECT *
+FROM (SELECT E AS E, CASE WHEN 6426 > c THEN (-(CAST(-31575989115.2922 AS DOUBLE)/6426)* -31575989115.2922 + (s/c)*s + (-31575989115.2922-s)/(6426-c)*(-31575989115.2922-s)) ELSE 0 END AS criteria, c AS c, s AS s
+FROM (SELECT SUM(s) OVER joinboost_window  AS s, SUM(c) OVER joinboost_window  AS c, E AS E
+FROM (SELECT SUM(s) AS s, SUM(c) AS c, S.E AS E
+FROM joinboost_tmp_1,S
+WHERE joinboost_tmp_1.A IS NOT DISTINCT FROM S.A AND S.A <= 3197
+GROUP BY S.E
+)
+WINDOW joinboost_window AS (ORDER BY E)
+)
+ORDER BY criteria DESC
+LIMIT 1
+)
+
+0.0028197765350341797
+SELECT *
+FROM (SELECT F AS F, CASE WHEN 6426 > c THEN (-(CAST(-31575989115.2922 AS DOUBLE)/6426)* -31575989115.2922 + (s/c)*s + (-31575989115.2922-s)/(6426-c)*(-31575989115.2922-s)) ELSE 0 END AS criteria, c AS c, s AS s
+FROM (SELECT SUM(s) OVER joinboost_window  AS s, SUM(c) OVER joinboost_window  AS c, F AS F
+FROM (SELECT SUM(s) AS s, SUM(c) AS c, T.F AS F
+FROM joinboost_tmp_4,T
+WHERE joinboost_tmp_4.B IS NOT DISTINCT FROM T.B
+GROUP BY T.F
+)
+WINDOW joinboost_window AS (ORDER BY F)
+)
+ORDER BY criteria DESC
+LIMIT 1
+)
+
+0.0047986507415771484
+SELECT *
+FROM (SELECT B AS B, CASE WHEN 6426 > c THEN (-(CAST(-31575989115.2922 AS DOUBLE)/6426)* -31575989115.2922 + (s/c)*s + (-31575989115.2922-s)/(6426-c)*(-31575989115.2922-s)) ELSE 0 END AS criteria, c AS c, s AS s
+FROM (SELECT SUM(s) OVER joinboost_window  AS s, SUM(c) OVER joinboost_window  AS c, B AS B
+FROM (SELECT SUM(s) AS s, SUM(c) AS c, joinboost_tmp_0.B AS B
+FROM joinboost_tmp_3,joinboost_tmp_0
+WHERE joinboost_tmp_3.A IS NOT DISTINCT FROM joinboost_tmp_0.A
+GROUP BY joinboost_tmp_0.B
+)
+WINDOW joinboost_window AS (ORDER BY B)
+)
+ORDER BY criteria DESC
+LIMIT 1
+)
+
+0.0063936710357666016
+SELECT *
+FROM (SELECT D AS D, CASE WHEN 6426 > c THEN (-(CAST(-31575989115.2922 AS DOUBLE)/6426)* -31575989115.2922 + (s/c)*s + (-31575989115.2922-s)/(6426-c)*(-31575989115.2922-s)) ELSE 0 END AS criteria, c AS c, s AS s
+FROM (SELECT SUM(s) OVER joinboost_window  AS s, SUM(c) OVER joinboost_window  AS c, D AS D
+FROM (SELECT SUM(s) AS s, SUM(c) AS c, joinboost_tmp_0.D AS D
+FROM joinboost_tmp_3,joinboost_tmp_0
+WHERE joinboost_tmp_3.A IS NOT DISTINCT FROM joinboost_tmp_0.A
+GROUP BY joinboost_tmp_0.D
+)
+WINDOW joinboost_window AS (ORDER BY D)
+)
+ORDER BY criteria DESC
+LIMIT 1
+)
+
+0.002989530563354492
+SELECT *
+FROM (SELECT A AS A, CASE WHEN 3574 > c THEN (-(CAST(31575989115.2922 AS DOUBLE)/3574)* 31575989115.2922 + (s/c)*s + (31575989115.2922-s)/(3574-c)*(31575989115.2922-s)) ELSE 0 END AS criteria, c AS c, s AS s
+FROM (SELECT SUM(s) OVER joinboost_window  AS s, SUM(c) OVER joinboost_window  AS c, A AS A
+FROM (SELECT SUM(s) AS s, SUM(c) AS c, S.A AS A
+FROM joinboost_tmp_1,S
+WHERE joinboost_tmp_1.A IS NOT DISTINCT FROM S.A AND S.A > 3197
+GROUP BY S.A
+)
+WINDOW joinboost_window AS (ORDER BY A)
+)
+ORDER BY criteria DESC
+LIMIT 1
+)
+
+0.002448558807373047
+SELECT *
+FROM (SELECT E AS E, CASE WHEN 3574 > c THEN (-(CAST(31575989115.2922 AS DOUBLE)/3574)* 31575989115.2922 + (s/c)*s + (31575989115.2922-s)/(3574-c)*(31575989115.2922-s)) ELSE 0 END AS criteria, c AS c, s AS s
+FROM (SELECT SUM(s) OVER joinboost_window  AS s, SUM(c) OVER joinboost_window  AS c, E AS E
+FROM (SELECT SUM(s) AS s, SUM(c) AS c, S.E AS E
+FROM joinboost_tmp_1,S
+WHERE joinboost_tmp_1.A IS NOT DISTINCT FROM S.A AND S.A > 3197
+GROUP BY S.E
+)
+WINDOW joinboost_window AS (ORDER BY E)
+)
+ORDER BY criteria DESC
+LIMIT 1
+)
+
+0.002101898193359375
+SELECT *
+FROM (SELECT F AS F, CASE WHEN 3574 > c THEN (-(CAST(31575989115.2922 AS DOUBLE)/3574)* 31575989115.2922 + (s/c)*s + (31575989115.2922-s)/(3574-c)*(31575989115.2922-s)) ELSE 0 END AS criteria, c AS c, s AS s
+FROM (SELECT SUM(s) OVER joinboost_window  AS s, SUM(c) OVER joinboost_window  AS c, F AS F
+FROM (SELECT SUM(s) AS s, SUM(c) AS c, T.F AS F
+FROM joinboost_tmp_6,T
+WHERE joinboost_tmp_6.B IS NOT DISTINCT FROM T.B
+GROUP BY T.F
+)
+WINDOW joinboost_window AS (ORDER BY F)
+)
+ORDER BY criteria DESC
+LIMIT 1
+)
+
+0.0034728050231933594
+SELECT *
+FROM (SELECT B AS B, CASE WHEN 3574 > c THEN (-(CAST(31575989115.2922 AS DOUBLE)/3574)* 31575989115.2922 + (s/c)*s + (31575989115.2922-s)/(3574-c)*(31575989115.2922-s)) ELSE 0 END AS criteria, c AS c, s AS s
+FROM (SELECT SUM(s) OVER joinboost_window  AS s, SUM(c) OVER joinboost_window  AS c, B AS B
+FROM (SELECT SUM(s) AS s, SUM(c) AS c, joinboost_tmp_0.B AS B
+FROM joinboost_tmp_5,joinboost_tmp_0
+WHERE joinboost_tmp_5.A IS NOT DISTINCT FROM joinboost_tmp_0.A
+GROUP BY joinboost_tmp_0.B
+)
+WINDOW joinboost_window AS (ORDER BY B)
+)
+ORDER BY criteria DESC
+LIMIT 1
+)
+
+0.003832101821899414
+SELECT *
+FROM (SELECT D AS D, CASE WHEN 3574 > c THEN (-(CAST(31575989115.2922 AS DOUBLE)/3574)* 31575989115.2922 + (s/c)*s + (31575989115.2922-s)/(3574-c)*(31575989115.2922-s)) ELSE 0 END AS criteria, c AS c, s AS s
+FROM (SELECT SUM(s) OVER joinboost_window  AS s, SUM(c) OVER joinboost_window  AS c, D AS D
+FROM (SELECT SUM(s) AS s, SUM(c) AS c, joinboost_tmp_0.D AS D
+FROM joinboost_tmp_5,joinboost_tmp_0
+WHERE joinboost_tmp_5.A IS NOT DISTINCT FROM joinboost_tmp_0.A
+GROUP BY joinboost_tmp_0.D
+)
+WINDOW joinboost_window AS (ORDER BY D)
+)
+ORDER BY criteria DESC
+LIMIT 1
+)
+
+0.002566099166870117
+--Sending Message from S to joinboost_tmp_0 m_type is Message.UNDECIDED
+CREATE OR REPLACE TABLE joinboost_tmp_7 AS SELECT S.A AS A
+FROM S
+WHERE S.A > 3197 AND S.A <= 4134
+GROUP BY S.A
+
+0.0002644062042236328
+--Sending Message from joinboost_tmp_0 to T m_type is Message.FULL
+CREATE OR REPLACE TABLE joinboost_tmp_8 AS SELECT SUM(s) AS s, SUM(c) AS c, joinboost_tmp_0.B AS B
+FROM joinboost_tmp_7,joinboost_tmp_0
+WHERE joinboost_tmp_7.A IS NOT DISTINCT FROM joinboost_tmp_0.A
+GROUP BY joinboost_tmp_0.B
+
+0.0008914470672607422
+--Sending Message from S to joinboost_tmp_0 m_type is Message.UNDECIDED
+CREATE OR REPLACE TABLE joinboost_tmp_9 AS SELECT S.A AS A
+FROM S
+WHERE S.A > 3197 AND S.A > 4134
+GROUP BY S.A
+
+0.00027298927307128906
+--Sending Message from joinboost_tmp_0 to T m_type is Message.FULL
+CREATE OR REPLACE TABLE joinboost_tmp_10 AS SELECT SUM(s) AS s, SUM(c) AS c, joinboost_tmp_0.B AS B
+FROM joinboost_tmp_9,joinboost_tmp_0
+WHERE joinboost_tmp_9.A IS NOT DISTINCT FROM joinboost_tmp_0.A
+GROUP BY joinboost_tmp_0.B
+
+0.0010542869567871094
+SELECT *
+FROM (SELECT A AS A, CASE WHEN 1851 > c THEN (-(CAST(9699761314.0853 AS DOUBLE)/1851)* 9699761314.0853 + (s/c)*s + (9699761314.0853-s)/(1851-c)*(9699761314.0853-s)) ELSE 0 END AS criteria, c AS c, s AS s
+FROM (SELECT SUM(s) OVER joinboost_window  AS s, SUM(c) OVER joinboost_window  AS c, A AS A
+FROM (SELECT SUM(s) AS s, SUM(c) AS c, S.A AS A
+FROM joinboost_tmp_1,S
+WHERE joinboost_tmp_1.A IS NOT DISTINCT FROM S.A AND S.A > 3197 AND S.A <= 4134
+GROUP BY S.A
+)
+WINDOW joinboost_window AS (ORDER BY A)
+)
+ORDER BY criteria DESC
+LIMIT 1
+)
+
+0.0016527175903320312
+SELECT *
+FROM (SELECT E AS E, CASE WHEN 1851 > c THEN (-(CAST(9699761314.0853 AS DOUBLE)/1851)* 9699761314.0853 + (s/c)*s + (9699761314.0853-s)/(1851-c)*(9699761314.0853-s)) ELSE 0 END AS criteria, c AS c, s AS s
+FROM (SELECT SUM(s) OVER joinboost_window  AS s, SUM(c) OVER joinboost_window  AS c, E AS E
+FROM (SELECT SUM(s) AS s, SUM(c) AS c, S.E AS E
+FROM joinboost_tmp_1,S
+WHERE joinboost_tmp_1.A IS NOT DISTINCT FROM S.A AND S.A > 3197 AND S.A <= 4134
+GROUP BY S.E
+)
+WINDOW joinboost_window AS (ORDER BY E)
+)
+ORDER BY criteria DESC
+LIMIT 1
+)
+
+0.001567840576171875
+SELECT *
+FROM (SELECT F AS F, CASE WHEN 1851 > c THEN (-(CAST(9699761314.0853 AS DOUBLE)/1851)* 9699761314.0853 + (s/c)*s + (9699761314.0853-s)/(1851-c)*(9699761314.0853-s)) ELSE 0 END AS criteria, c AS c, s AS s
+FROM (SELECT SUM(s) OVER joinboost_window  AS s, SUM(c) OVER joinboost_window  AS c, F AS F
+FROM (SELECT SUM(s) AS s, SUM(c) AS c, T.F AS F
+FROM joinboost_tmp_8,T
+WHERE joinboost_tmp_8.B IS NOT DISTINCT FROM T.B
+GROUP BY T.F
+)
+WINDOW joinboost_window AS (ORDER BY F)
+)
+ORDER BY criteria DESC
+LIMIT 1
+)
+
+0.0024216175079345703
+SELECT *
+FROM (SELECT B AS B, CASE WHEN 1851 > c THEN (-(CAST(9699761314.0853 AS DOUBLE)/1851)* 9699761314.0853 + (s/c)*s + (9699761314.0853-s)/(1851-c)*(9699761314.0853-s)) ELSE 0 END AS criteria, c AS c, s AS s
+FROM (SELECT SUM(s) OVER joinboost_window  AS s, SUM(c) OVER joinboost_window  AS c, B AS B
+FROM (SELECT SUM(s) AS s, SUM(c) AS c, joinboost_tmp_0.B AS B
+FROM joinboost_tmp_7,joinboost_tmp_0
+WHERE joinboost_tmp_7.A IS NOT DISTINCT FROM joinboost_tmp_0.A
+GROUP BY joinboost_tmp_0.B
+)
+WINDOW joinboost_window AS (ORDER BY B)
+)
+ORDER BY criteria DESC
+LIMIT 1
+)
+
+0.002586841583251953
+SELECT *
+FROM (SELECT D AS D, CASE WHEN 1851 > c THEN (-(CAST(9699761314.0853 AS DOUBLE)/1851)* 9699761314.0853 + (s/c)*s + (9699761314.0853-s)/(1851-c)*(9699761314.0853-s)) ELSE 0 END AS criteria, c AS c, s AS s
+FROM (SELECT SUM(s) OVER joinboost_window  AS s, SUM(c) OVER joinboost_window  AS c, D AS D
+FROM (SELECT SUM(s) AS s, SUM(c) AS c, joinboost_tmp_0.D AS D
+FROM joinboost_tmp_7,joinboost_tmp_0
+WHERE joinboost_tmp_7.A IS NOT DISTINCT FROM joinboost_tmp_0.A
+GROUP BY joinboost_tmp_0.D
+)
+WINDOW joinboost_window AS (ORDER BY D)
+)
+ORDER BY criteria DESC
+LIMIT 1
+)
+
+0.0020074844360351562
+SELECT *
+FROM (SELECT A AS A, CASE WHEN 1723 > c THEN (-(CAST(21876227801.2069 AS DOUBLE)/1723)* 21876227801.2069 + (s/c)*s + (21876227801.2069-s)/(1723-c)*(21876227801.2069-s)) ELSE 0 END AS criteria, c AS c, s AS s
+FROM (SELECT SUM(s) OVER joinboost_window  AS s, SUM(c) OVER joinboost_window  AS c, A AS A
+FROM (SELECT SUM(s) AS s, SUM(c) AS c, S.A AS A
+FROM joinboost_tmp_1,S
+WHERE joinboost_tmp_1.A IS NOT DISTINCT FROM S.A AND S.A > 3197 AND S.A > 4134
+GROUP BY S.A
+)
+WINDOW joinboost_window AS (ORDER BY A)
+)
+ORDER BY criteria DESC
+LIMIT 1
+)
+
+0.0015070438385009766
+SELECT *
+FROM (SELECT E AS E, CASE WHEN 1723 > c THEN (-(CAST(21876227801.2069 AS DOUBLE)/1723)* 21876227801.2069 + (s/c)*s + (21876227801.2069-s)/(1723-c)*(21876227801.2069-s)) ELSE 0 END AS criteria, c AS c, s AS s
+FROM (SELECT SUM(s) OVER joinboost_window  AS s, SUM(c) OVER joinboost_window  AS c, E AS E
+FROM (SELECT SUM(s) AS s, SUM(c) AS c, S.E AS E
+FROM joinboost_tmp_1,S
+WHERE joinboost_tmp_1.A IS NOT DISTINCT FROM S.A AND S.A > 3197 AND S.A > 4134
+GROUP BY S.E
+)
+WINDOW joinboost_window AS (ORDER BY E)
+)
+ORDER BY criteria DESC
+LIMIT 1
+)
+
+0.0014121532440185547
+SELECT *
+FROM (SELECT F AS F, CASE WHEN 1723 > c THEN (-(CAST(21876227801.2069 AS DOUBLE)/1723)* 21876227801.2069 + (s/c)*s + (21876227801.2069-s)/(1723-c)*(21876227801.2069-s)) ELSE 0 END AS criteria, c AS c, s AS s
+FROM (SELECT SUM(s) OVER joinboost_window  AS s, SUM(c) OVER joinboost_window  AS c, F AS F
+FROM (SELECT SUM(s) AS s, SUM(c) AS c, T.F AS F
+FROM joinboost_tmp_10,T
+WHERE joinboost_tmp_10.B IS NOT DISTINCT FROM T.B
+GROUP BY T.F
+)
+WINDOW joinboost_window AS (ORDER BY F)
+)
+ORDER BY criteria DESC
+LIMIT 1
+)
+
+0.0022330284118652344
+SELECT *
+FROM (SELECT B AS B, CASE WHEN 1723 > c THEN (-(CAST(21876227801.2069 AS DOUBLE)/1723)* 21876227801.2069 + (s/c)*s + (21876227801.2069-s)/(1723-c)*(21876227801.2069-s)) ELSE 0 END AS criteria, c AS c, s AS s
+FROM (SELECT SUM(s) OVER joinboost_window  AS s, SUM(c) OVER joinboost_window  AS c, B AS B
+FROM (SELECT SUM(s) AS s, SUM(c) AS c, joinboost_tmp_0.B AS B
+FROM joinboost_tmp_9,joinboost_tmp_0
+WHERE joinboost_tmp_9.A IS NOT DISTINCT FROM joinboost_tmp_0.A
+GROUP BY joinboost_tmp_0.B
+)
+WINDOW joinboost_window AS (ORDER BY B)
+)
+ORDER BY criteria DESC
+LIMIT 1
+)
+
+0.00244903564453125
+SELECT *
+FROM (SELECT D AS D, CASE WHEN 1723 > c THEN (-(CAST(21876227801.2069 AS DOUBLE)/1723)* 21876227801.2069 + (s/c)*s + (21876227801.2069-s)/(1723-c)*(21876227801.2069-s)) ELSE 0 END AS criteria, c AS c, s AS s
+FROM (SELECT SUM(s) OVER joinboost_window  AS s, SUM(c) OVER joinboost_window  AS c, D AS D
+FROM (SELECT SUM(s) AS s, SUM(c) AS c, joinboost_tmp_0.D AS D
+FROM joinboost_tmp_9,joinboost_tmp_0
+WHERE joinboost_tmp_9.A IS NOT DISTINCT FROM joinboost_tmp_0.A
+GROUP BY joinboost_tmp_0.D
+)
+WINDOW joinboost_window AS (ORDER BY D)
+)
+ORDER BY criteria DESC
+LIMIT 1
+)
+
+0.0019559860229492188
+--Sending Message from S to joinboost_tmp_0 m_type is Message.UNDECIDED
+CREATE OR REPLACE TABLE joinboost_tmp_11 AS SELECT S.A AS A
+FROM S
+WHERE S.A <= 3197 AND S.A <= 1981
+GROUP BY S.A
+
+0.00029540061950683594
+--Sending Message from joinboost_tmp_0 to T m_type is Message.FULL
+CREATE OR REPLACE TABLE joinboost_tmp_12 AS SELECT SUM(s) AS s, SUM(c) AS c, joinboost_tmp_0.B AS B
+FROM joinboost_tmp_11,joinboost_tmp_0
+WHERE joinboost_tmp_11.A IS NOT DISTINCT FROM joinboost_tmp_0.A
+GROUP BY joinboost_tmp_0.B
+
+0.001146078109741211
+--Sending Message from S to joinboost_tmp_0 m_type is Message.UNDECIDED
+CREATE OR REPLACE TABLE joinboost_tmp_13 AS SELECT S.A AS A
+FROM S
+WHERE S.A <= 3197 AND S.A > 1981
+GROUP BY S.A
+
+0.0002791881561279297
+--Sending Message from joinboost_tmp_0 to T m_type is Message.FULL
+CREATE OR REPLACE TABLE joinboost_tmp_14 AS SELECT SUM(s) AS s, SUM(c) AS c, joinboost_tmp_0.B AS B
+FROM joinboost_tmp_13,joinboost_tmp_0
+WHERE joinboost_tmp_13.A IS NOT DISTINCT FROM joinboost_tmp_0.A
+GROUP BY joinboost_tmp_0.B
+
+0.001199960708618164
+SELECT *
+FROM (SELECT A AS A, CASE WHEN 3957 > c THEN (-(CAST(-27908994518.1029 AS DOUBLE)/3957)* -27908994518.1029 + (s/c)*s + (-27908994518.1029-s)/(3957-c)*(-27908994518.1029-s)) ELSE 0 END AS criteria, c AS c, s AS s
+FROM (SELECT SUM(s) OVER joinboost_window  AS s, SUM(c) OVER joinboost_window  AS c, A AS A
+FROM (SELECT SUM(s) AS s, SUM(c) AS c, S.A AS A
+FROM joinboost_tmp_1,S
+WHERE joinboost_tmp_1.A IS NOT DISTINCT FROM S.A AND S.A <= 3197 AND S.A <= 1981
+GROUP BY S.A
+)
+WINDOW joinboost_window AS (ORDER BY A)
+)
+ORDER BY criteria DESC
+LIMIT 1
+)
+
+0.002748727798461914
+SELECT *
+FROM (SELECT E AS E, CASE WHEN 3957 > c THEN (-(CAST(-27908994518.1029 AS DOUBLE)/3957)* -27908994518.1029 + (s/c)*s + (-27908994518.1029-s)/(3957-c)*(-27908994518.1029-s)) ELSE 0 END AS criteria, c AS c, s AS s
+FROM (SELECT SUM(s) OVER joinboost_window  AS s, SUM(c) OVER joinboost_window  AS c, E AS E
+FROM (SELECT SUM(s) AS s, SUM(c) AS c, S.E AS E
+FROM joinboost_tmp_1,S
+WHERE joinboost_tmp_1.A IS NOT DISTINCT FROM S.A AND S.A <= 3197 AND S.A <= 1981
+GROUP BY S.E
+)
+WINDOW joinboost_window AS (ORDER BY E)
+)
+ORDER BY criteria DESC
+LIMIT 1
+)
+
+0.002259492874145508
+SELECT *
+FROM (SELECT F AS F, CASE WHEN 3957 > c THEN (-(CAST(-27908994518.1029 AS DOUBLE)/3957)* -27908994518.1029 + (s/c)*s + (-27908994518.1029-s)/(3957-c)*(-27908994518.1029-s)) ELSE 0 END AS criteria, c AS c, s AS s
+FROM (SELECT SUM(s) OVER joinboost_window  AS s, SUM(c) OVER joinboost_window  AS c, F AS F
+FROM (SELECT SUM(s) AS s, SUM(c) AS c, T.F AS F
+FROM joinboost_tmp_12,T
+WHERE joinboost_tmp_12.B IS NOT DISTINCT FROM T.B
+GROUP BY T.F
+)
+WINDOW joinboost_window AS (ORDER BY F)
+)
+ORDER BY criteria DESC
+LIMIT 1
+)
+
+0.003790616989135742
+SELECT *
+FROM (SELECT B AS B, CASE WHEN 3957 > c THEN (-(CAST(-27908994518.1029 AS DOUBLE)/3957)* -27908994518.1029 + (s/c)*s + (-27908994518.1029-s)/(3957-c)*(-27908994518.1029-s)) ELSE 0 END AS criteria, c AS c, s AS s
+FROM (SELECT SUM(s) OVER joinboost_window  AS s, SUM(c) OVER joinboost_window  AS c, B AS B
+FROM (SELECT SUM(s) AS s, SUM(c) AS c, joinboost_tmp_0.B AS B
+FROM joinboost_tmp_11,joinboost_tmp_0
+WHERE joinboost_tmp_11.A IS NOT DISTINCT FROM joinboost_tmp_0.A
+GROUP BY joinboost_tmp_0.B
+)
+WINDOW joinboost_window AS (ORDER BY B)
+)
+ORDER BY criteria DESC
+LIMIT 1
+)
+
+0.004174232482910156
+SELECT *
+FROM (SELECT D AS D, CASE WHEN 3957 > c THEN (-(CAST(-27908994518.1029 AS DOUBLE)/3957)* -27908994518.1029 + (s/c)*s + (-27908994518.1029-s)/(3957-c)*(-27908994518.1029-s)) ELSE 0 END AS criteria, c AS c, s AS s
+FROM (SELECT SUM(s) OVER joinboost_window  AS s, SUM(c) OVER joinboost_window  AS c, D AS D
+FROM (SELECT SUM(s) AS s, SUM(c) AS c, joinboost_tmp_0.D AS D
+FROM joinboost_tmp_11,joinboost_tmp_0
+WHERE joinboost_tmp_11.A IS NOT DISTINCT FROM joinboost_tmp_0.A
+GROUP BY joinboost_tmp_0.D
+)
+WINDOW joinboost_window AS (ORDER BY D)
+)
+ORDER BY criteria DESC
+LIMIT 1
+)
+
+0.0026581287384033203
+SELECT *
+FROM (SELECT A AS A, CASE WHEN 2469 > c THEN (-(CAST(-3666994597.1893 AS DOUBLE)/2469)* -3666994597.1893 + (s/c)*s + (-3666994597.1893-s)/(2469-c)*(-3666994597.1893-s)) ELSE 0 END AS criteria, c AS c, s AS s
+FROM (SELECT SUM(s) OVER joinboost_window  AS s, SUM(c) OVER joinboost_window  AS c, A AS A
+FROM (SELECT SUM(s) AS s, SUM(c) AS c, S.A AS A
+FROM joinboost_tmp_1,S
+WHERE joinboost_tmp_1.A IS NOT DISTINCT FROM S.A AND S.A <= 3197 AND S.A > 1981
+GROUP BY S.A
+)
+WINDOW joinboost_window AS (ORDER BY A)
+)
+ORDER BY criteria DESC
+LIMIT 1
+)
+
+0.0018887519836425781
+SELECT *
+FROM (SELECT E AS E, CASE WHEN 2469 > c THEN (-(CAST(-3666994597.1893 AS DOUBLE)/2469)* -3666994597.1893 + (s/c)*s + (-3666994597.1893-s)/(2469-c)*(-3666994597.1893-s)) ELSE 0 END AS criteria, c AS c, s AS s
+FROM (SELECT SUM(s) OVER joinboost_window  AS s, SUM(c) OVER joinboost_window  AS c, E AS E
+FROM (SELECT SUM(s) AS s, SUM(c) AS c, S.E AS E
+FROM joinboost_tmp_1,S
+WHERE joinboost_tmp_1.A IS NOT DISTINCT FROM S.A AND S.A <= 3197 AND S.A > 1981
+GROUP BY S.E
+)
+WINDOW joinboost_window AS (ORDER BY E)
+)
+ORDER BY criteria DESC
+LIMIT 1
+)
+
+0.0017201900482177734
+SELECT *
+FROM (SELECT F AS F, CASE WHEN 2469 > c THEN (-(CAST(-3666994597.1893 AS DOUBLE)/2469)* -3666994597.1893 + (s/c)*s + (-3666994597.1893-s)/(2469-c)*(-3666994597.1893-s)) ELSE 0 END AS criteria, c AS c, s AS s
+FROM (SELECT SUM(s) OVER joinboost_window  AS s, SUM(c) OVER joinboost_window  AS c, F AS F
+FROM (SELECT SUM(s) AS s, SUM(c) AS c, T.F AS F
+FROM joinboost_tmp_14,T
+WHERE joinboost_tmp_14.B IS NOT DISTINCT FROM T.B
+GROUP BY T.F
+)
+WINDOW joinboost_window AS (ORDER BY F)
+)
+ORDER BY criteria DESC
+LIMIT 1
+)
+
+0.0028095245361328125
+SELECT *
+FROM (SELECT B AS B, CASE WHEN 2469 > c THEN (-(CAST(-3666994597.1893 AS DOUBLE)/2469)* -3666994597.1893 + (s/c)*s + (-3666994597.1893-s)/(2469-c)*(-3666994597.1893-s)) ELSE 0 END AS criteria, c AS c, s AS s
+FROM (SELECT SUM(s) OVER joinboost_window  AS s, SUM(c) OVER joinboost_window  AS c, B AS B
+FROM (SELECT SUM(s) AS s, SUM(c) AS c, joinboost_tmp_0.B AS B
+FROM joinboost_tmp_13,joinboost_tmp_0
+WHERE joinboost_tmp_13.A IS NOT DISTINCT FROM joinboost_tmp_0.A
+GROUP BY joinboost_tmp_0.B
+)
+WINDOW joinboost_window AS (ORDER BY B)
+)
+ORDER BY criteria DESC
+LIMIT 1
+)
+
+0.0031104087829589844
+SELECT *
+FROM (SELECT D AS D, CASE WHEN 2469 > c THEN (-(CAST(-3666994597.1893 AS DOUBLE)/2469)* -3666994597.1893 + (s/c)*s + (-3666994597.1893-s)/(2469-c)*(-3666994597.1893-s)) ELSE 0 END AS criteria, c AS c, s AS s
+FROM (SELECT SUM(s) OVER joinboost_window  AS s, SUM(c) OVER joinboost_window  AS c, D AS D
+FROM (SELECT SUM(s) AS s, SUM(c) AS c, joinboost_tmp_0.D AS D
+FROM joinboost_tmp_13,joinboost_tmp_0
+WHERE joinboost_tmp_13.A IS NOT DISTINCT FROM joinboost_tmp_0.A
+GROUP BY joinboost_tmp_0.D
+)
+WINDOW joinboost_window AS (ORDER BY D)
+)
+ORDER BY criteria DESC
+LIMIT 1
+)
+
+0.0023262500762939453
+--Sending Message from joinboost_tmp_0 to S m_type is Message.FULL
+CREATE OR REPLACE TABLE joinboost_tmp_15 AS SELECT SUM(s) AS s, SUM(c) AS c, joinboost_tmp_0.A AS A
+FROM joinboost_tmp_0
+WHERE joinboost_tmp_0.D <= 963
+GROUP BY joinboost_tmp_0.A
+
+0.0007796287536621094
+--Sending Message from joinboost_tmp_0 to T m_type is Message.FULL
+CREATE OR REPLACE TABLE joinboost_tmp_16 AS SELECT SUM(s) AS s, SUM(c) AS c, joinboost_tmp_0.B AS B
+FROM joinboost_tmp_11,joinboost_tmp_0
+WHERE joinboost_tmp_11.A IS NOT DISTINCT FROM joinboost_tmp_0.A AND joinboost_tmp_0.D <= 963
+GROUP BY joinboost_tmp_0.B
+
+0.0011112689971923828
+--Sending Message from joinboost_tmp_0 to S m_type is Message.FULL
+CREATE OR REPLACE TABLE joinboost_tmp_17 AS SELECT SUM(s) AS s, SUM(c) AS c, joinboost_tmp_0.A AS A
+FROM joinboost_tmp_0
+WHERE joinboost_tmp_0.D > 963
+GROUP BY joinboost_tmp_0.A
+
+0.0009582042694091797
+--Sending Message from joinboost_tmp_0 to T m_type is Message.FULL
+CREATE OR REPLACE TABLE joinboost_tmp_18 AS SELECT SUM(s) AS s, SUM(c) AS c, joinboost_tmp_0.B AS B
+FROM joinboost_tmp_11,joinboost_tmp_0
+WHERE joinboost_tmp_11.A IS NOT DISTINCT FROM joinboost_tmp_0.A AND joinboost_tmp_0.D > 963
+GROUP BY joinboost_tmp_0.B
+
+0.0012013912200927734
+--Sending Message from S to joinboost_tmp_0 m_type is Message.UNDECIDED
+CREATE OR REPLACE TABLE joinboost_tmp_19 AS SELECT S.A AS A
+FROM S
+WHERE S.A > 3197 AND S.A > 4134 AND S.A <= 4587
+GROUP BY S.A
+
+0.00030231475830078125
+--Sending Message from joinboost_tmp_0 to T m_type is Message.FULL
+CREATE OR REPLACE TABLE joinboost_tmp_20 AS SELECT SUM(s) AS s, SUM(c) AS c, joinboost_tmp_0.B AS B
+FROM joinboost_tmp_19,joinboost_tmp_0
+WHERE joinboost_tmp_19.A IS NOT DISTINCT FROM joinboost_tmp_0.A
+GROUP BY joinboost_tmp_0.B
+
+0.0009367465972900391
+--Sending Message from S to joinboost_tmp_0 m_type is Message.UNDECIDED
+CREATE OR REPLACE TABLE joinboost_tmp_21 AS SELECT S.A AS A
+FROM S
+WHERE S.A > 3197 AND S.A > 4134 AND S.A > 4587
+GROUP BY S.A
+
+0.00030040740966796875
+--Sending Message from joinboost_tmp_0 to T m_type is Message.FULL
+CREATE OR REPLACE TABLE joinboost_tmp_22 AS SELECT SUM(s) AS s, SUM(c) AS c, joinboost_tmp_0.B AS B
+FROM joinboost_tmp_21,joinboost_tmp_0
+WHERE joinboost_tmp_21.A IS NOT DISTINCT FROM joinboost_tmp_0.A
+GROUP BY joinboost_tmp_0.B
+
+0.0009143352508544922
+--Sending Message from S to joinboost_tmp_0 m_type is Message.UNDECIDED
+CREATE OR REPLACE TABLE joinboost_tmp_23 AS SELECT S.A AS A
+FROM S
+WHERE S.A <= 3197 AND S.A > 1981 AND S.A <= 2770
+GROUP BY S.A
+
+0.0003371238708496094
+--Sending Message from joinboost_tmp_0 to T m_type is Message.FULL
+CREATE OR REPLACE TABLE joinboost_tmp_24 AS SELECT SUM(s) AS s, SUM(c) AS c, joinboost_tmp_0.B AS B
+FROM joinboost_tmp_23,joinboost_tmp_0
+WHERE joinboost_tmp_23.A IS NOT DISTINCT FROM joinboost_tmp_0.A
+GROUP BY joinboost_tmp_0.B
+
+0.0010273456573486328
+--Sending Message from S to joinboost_tmp_0 m_type is Message.UNDECIDED
+CREATE OR REPLACE TABLE joinboost_tmp_25 AS SELECT S.A AS A
+FROM S
+WHERE S.A <= 3197 AND S.A > 1981 AND S.A > 2770
+GROUP BY S.A
+
+0.00029659271240234375
+--Sending Message from joinboost_tmp_0 to T m_type is Message.FULL
+CREATE OR REPLACE TABLE joinboost_tmp_26 AS SELECT SUM(s) AS s, SUM(c) AS c, joinboost_tmp_0.B AS B
+FROM joinboost_tmp_25,joinboost_tmp_0
+WHERE joinboost_tmp_25.A IS NOT DISTINCT FROM joinboost_tmp_0.A
+GROUP BY joinboost_tmp_0.B
+
+0.0009329319000244141
+--Sending Message from S to joinboost_tmp_0 m_type is Message.UNDECIDED
+CREATE OR REPLACE TABLE joinboost_tmp_27 AS SELECT S.A AS A
+FROM S
+WHERE S.A > 3197 AND S.A <= 4134 AND S.A <= 3667
+GROUP BY S.A
+
+0.000316619873046875
+--Sending Message from joinboost_tmp_0 to T m_type is Message.FULL
+CREATE OR REPLACE TABLE joinboost_tmp_28 AS SELECT SUM(s) AS s, SUM(c) AS c, joinboost_tmp_0.B AS B
+FROM joinboost_tmp_27,joinboost_tmp_0
+WHERE joinboost_tmp_27.A IS NOT DISTINCT FROM joinboost_tmp_0.A
+GROUP BY joinboost_tmp_0.B
+
+0.0009169578552246094
+--Sending Message from S to joinboost_tmp_0 m_type is Message.UNDECIDED
+CREATE OR REPLACE TABLE joinboost_tmp_29 AS SELECT S.A AS A
+FROM S
+WHERE S.A > 3197 AND S.A <= 4134 AND S.A > 3667
+GROUP BY S.A
+
+0.0003199577331542969
+--Sending Message from joinboost_tmp_0 to T m_type is Message.FULL
+CREATE OR REPLACE TABLE joinboost_tmp_30 AS SELECT SUM(s) AS s, SUM(c) AS c, joinboost_tmp_0.B AS B
+FROM joinboost_tmp_29,joinboost_tmp_0
+WHERE joinboost_tmp_29.A IS NOT DISTINCT FROM joinboost_tmp_0.A
+GROUP BY joinboost_tmp_0.B
+
+0.0009126663208007812
+DROP TABLE IF EXISTS joinboost_tmp_1;
+
+5.841255187988281e-05
+DROP TABLE IF EXISTS joinboost_tmp_2;
+
+3.123283386230469e-05
+DROP TABLE IF EXISTS joinboost_tmp_3;
+
+2.4080276489257812e-05
+DROP TABLE IF EXISTS joinboost_tmp_1;
+
+2.1696090698242188e-05
+DROP TABLE IF EXISTS joinboost_tmp_4;
+
+2.384185791015625e-05
+DROP TABLE IF EXISTS joinboost_tmp_5;
+
+2.2411346435546875e-05
+DROP TABLE IF EXISTS joinboost_tmp_1;
+
+2.002716064453125e-05
+DROP TABLE IF EXISTS joinboost_tmp_6;
+
+2.3365020751953125e-05
+DROP TABLE IF EXISTS joinboost_tmp_7;
+
+2.3603439331054688e-05
+DROP TABLE IF EXISTS joinboost_tmp_1;
+
+1.9788742065429688e-05
+DROP TABLE IF EXISTS joinboost_tmp_8;
+
+2.3365020751953125e-05
+DROP TABLE IF EXISTS joinboost_tmp_9;
+
+2.1457672119140625e-05
+DROP TABLE IF EXISTS joinboost_tmp_1;
+
+1.9073486328125e-05
+DROP TABLE IF EXISTS joinboost_tmp_10;
+
+2.4557113647460938e-05
+DROP TABLE IF EXISTS joinboost_tmp_11;
+
+2.2649765014648438e-05
+DROP TABLE IF EXISTS joinboost_tmp_1;
+
+1.9311904907226562e-05
+DROP TABLE IF EXISTS joinboost_tmp_12;
+
+2.3365020751953125e-05
+DROP TABLE IF EXISTS joinboost_tmp_13;
+
+2.1457672119140625e-05
+DROP TABLE IF EXISTS joinboost_tmp_1;
+
+1.9311904907226562e-05
+DROP TABLE IF EXISTS joinboost_tmp_14;
+
+2.2649765014648438e-05
+DROP TABLE IF EXISTS joinboost_tmp_11;
+
+2.0503997802734375e-05
+DROP TABLE IF EXISTS joinboost_tmp_15;
+
+2.2172927856445312e-05
+DROP TABLE IF EXISTS joinboost_tmp_16;
+
+2.5272369384765625e-05
+DROP TABLE IF EXISTS joinboost_tmp_11;
+
+1.9550323486328125e-05
+DROP TABLE IF EXISTS joinboost_tmp_17;
+
+2.288818359375e-05
+DROP TABLE IF EXISTS joinboost_tmp_18;
+
+2.4557113647460938e-05
+DROP TABLE IF EXISTS joinboost_tmp_19;
+
+2.09808349609375e-05
+DROP TABLE IF EXISTS joinboost_tmp_1;
+
+1.9550323486328125e-05
+DROP TABLE IF EXISTS joinboost_tmp_20;
+
+2.3365020751953125e-05
+DROP TABLE IF EXISTS joinboost_tmp_21;
+
+2.1696090698242188e-05
+DROP TABLE IF EXISTS joinboost_tmp_1;
+
+2.002716064453125e-05
+DROP TABLE IF EXISTS joinboost_tmp_22;
+
+2.2649765014648438e-05
+DROP TABLE IF EXISTS joinboost_tmp_23;
+
+2.1457672119140625e-05
+DROP TABLE IF EXISTS joinboost_tmp_1;
+
+1.9788742065429688e-05
+DROP TABLE IF EXISTS joinboost_tmp_24;
+
+2.2172927856445312e-05
+DROP TABLE IF EXISTS joinboost_tmp_25;
+
+2.1696090698242188e-05
+DROP TABLE IF EXISTS joinboost_tmp_1;
+
+2.0503997802734375e-05
+DROP TABLE IF EXISTS joinboost_tmp_26;
+
+2.3365020751953125e-05
+DROP TABLE IF EXISTS joinboost_tmp_27;
+
+2.1696090698242188e-05
+DROP TABLE IF EXISTS joinboost_tmp_1;
+
+1.9788742065429688e-05
+DROP TABLE IF EXISTS joinboost_tmp_28;
+
+2.3126602172851562e-05
+DROP TABLE IF EXISTS joinboost_tmp_29;
+
+2.2649765014648438e-05
+DROP TABLE IF EXISTS joinboost_tmp_1;
+
+1.9311904907226562e-05
+DROP TABLE IF EXISTS joinboost_tmp_30;
+
+0.0004889965057373047
+CREATE OR REPLACE TABLE joinboost_tmp_31 AS
+SELECT C,5825150.9697+
+CASE
+ WHEN A <= 3197 AND A <= 1981 AND D <= 963 THEN CAST(-5671945.596612928759894459103 AS DOUBLE)
+ WHEN A <= 3197 AND A <= 1981 AND D > 963 THEN CAST(-8322336.378526382153249272551 AS DOUBLE)
+ WHEN A > 3197 AND A > 4134 AND A > 4587 THEN CAST(14692866.08994912280701754386 AS DOUBLE)
+ WHEN A <= 3197 AND A > 1981 AND A > 2770 THEN CAST(579584.8480676537585421412301 AS DOUBLE)
+ WHEN A > 3197 AND A > 4134 AND A <= 4587 THEN CAST(10730215.77684377880184331797 AS DOUBLE)
+ WHEN A <= 3197 AND A > 1981 AND A <= 2770 THEN CAST(-2624682.648518353236957888121 AS DOUBLE)
+ WHEN A > 3197 AND A <= 4134 AND A <= 3667 THEN CAST(3546818.395705405405405405405 AS DOUBLE)
+ WHEN A > 3197 AND A <= 4134 AND A > 3667 THEN CAST(6931916.088615334773218142549 AS DOUBLE)
+ELSE 0 END
+AS prediction FROM test
+0.001279592514038086
+CREATE OR REPLACE TABLE joinboost_tmp_32 AS SELECT SQRT(AVG(POW(C - prediction,2))) AS RMSE
+FROM joinboost_tmp_31
+
+0.0004897117614746094
+SELECT *
+FROM joinboost_tmp_32
+
+9.226799011230469e-05

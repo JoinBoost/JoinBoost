@@ -38,12 +38,12 @@ class JoinGraph:
     
     # add relation, features and target variable to join graph
     # current assumption: Y is in the fact table
-    def add_relation_attrs(self, relation: str, X: list, y: str = None):
+    def add_relation(self, relation: str, X: list, y: str = None):
         self.joins[relation] = dict()
-        
-        for x in X:
-            if relation not in self.relation_schema:
+        if relation not in self.relation_schema:
                 self.relation_schema[relation] = {}
+                
+        for x in X:
             # by default, assume all features to be numerical
             self.relation_schema[relation][x] = 'NUM'
             
@@ -120,8 +120,8 @@ class JoinGraph:
     
     def check_all_features_exist(self):
         for table in self.relation_schema:
-            for features in self.relation_schema[table]:
-                self.check_features_exist(table, features)
+            features = self.relation_schema[table].keys()
+            self.check_features_exist(table, features)
         
     def check_features_exist(self, table, features):
         attributes = self.exe.get_schema(table)

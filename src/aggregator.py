@@ -3,7 +3,7 @@ from enum import Enum
 # TODO: make aggregator class (like operator in database), so we can do simple composition and optimization
 Aggregator = Enum('Aggregator', 'SUM MAX MIN SUB SUM_PROD PROD DIV COUNT DISTINCT_COUNT IDENTITY')
 Annotation = Enum('NULL', 'NULL NOT_NULL NOT_GREATER GREATER DISTINCT NOT_DISTINCT IN NOT_IN')
-Message = Enum('Message', 'IDENTITY SELECTION VARIANCE COVARIANCE')
+Message = Enum('Message', 'IDENTITY SELECTION FULL UNDECIDED')
 
 def parse_agg(agg, para):
     if agg == Aggregator.SUM:

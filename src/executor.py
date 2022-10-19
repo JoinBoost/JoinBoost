@@ -147,7 +147,7 @@ class DuckdbExecutor(Executor):
         elif mode == 3:
             return self._execute_query(spja)
         elif mode == 4:
-            sql = '(' + spja + ')\n'
+            sql = '(' + spja + ')'
             return sql    
         else:
             name_ = (table_name if table_name is not None else self.get_next_name())

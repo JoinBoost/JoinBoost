@@ -55,7 +55,7 @@ class DecisionTree(DummyModel):
         self.model_def = []
         super().fit(jg)
         self.cjt = CJT(semi_ring=self.semi_ring, join_graph=self.jg)
-        self.cjt.lift(jg.get_target_var() + "-" + str(self.constant_))
+        self.cjt.lift(jg.get_target_var() + "- (" + str(self.constant_) + ")")
         self.semi_ring.set_semi_ring(0, self.count_)
         self.train_one()
     

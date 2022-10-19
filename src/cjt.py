@@ -67,12 +67,12 @@ class CJT(JoinGraph):
     def calibration(self, rooto_table: str = None):
         if not rooto_table:
             rooto_table = self.target_relation
-        self.upward_message_passing(rooto_table, m_type =  Message.IDENTITY)
-        self.downward_message_passing(rooto_table, m_type =  Message.VARIANCE)
+        self.upward_message_passing(rooto_table, m_type = Message.IDENTITY)
+        self.downward_message_passing(rooto_table, m_type = Message.FULL)
 
     def downward_message_passing(self, 
                                  rooto_table: str = None, 
-                                 m_type: Message = Message.SELECTION):
+                                 m_type: Message = Message.UNDECIDED):
         msgs = []
         if not rooto_table:
             rooto_table = self.target_relation
@@ -81,33 +81,33 @@ class CJT(JoinGraph):
     
     # TODO: this is not working if upward_message_passing from non-fact table
     def upward_message_passing(self, rooto_table: str = None, 
-                               m_type: Message = Message.IDENTITY):
+                               m_type: Message = Message.UNDECIDED):
         if not rooto_table:
             rooto_table = self.target_relation
         self._post_dfs(rooto_table, m_type=m_type)
 
     def _post_dfs(self, currento_table: str, 
-                  parento_table: str = None, 
-                  m_type: Message = Message.IDENTITY):
+                  parent_table: str = None, 
+                  m_type: Message = Message.UNDECIDED):
         jg = self.get_joins()
         if currento_table not in jg:
             return
         for c_neighbor in jg[currento_table]:
-            if c_neighbor != parento_table:
+            if c_neighbor != parent_table:
                 self._post_dfs(c_neighbor, currento_table, m_type=m_type)
-        if parento_table:
-            self._send_message(from_table=currento_table, to_table=parento_table, m_type=m_type)
+        if parent_table:
+            self._send_message(from_table=currento_table, to_table=parent_table, m_type=m_type)
 
     def _pre_dfs(self, currento_table: str, 
-                 parento_table: str = None, 
-                 m_type: Message = Message.SELECTION):
+                 parent_table: str = None, 
+                 m_type: Message = Message.UNDECIDED):
         joins = self.get_joins()
         if currento_table not in joins:
             return
         if currento_table == self.target_relation:
-            m_type = Message.VARIANCE
+            m_type = Message.FULL
         for c_neighbor in joins[currento_table]:
-            if c_neighbor != parento_table:
+            if c_neighbor != parent_table:
                 self._send_message(from_table=currento_table, to_table=c_neighbor, m_type=m_type)
                 self._pre_dfs(c_neighbor, currento_table, m_type=m_type)
 
@@ -145,9 +145,9 @@ class CJT(JoinGraph):
         return incoming_messages, join_conds
 
 
-    # 3 message types: identity, selection, variance
-    def _send_message(self, from_table: str, to_table: str, m_type: Message = Message.VARIANCE):
-        # print('--Sending Message from', from_table, 'to', to_table, 'm_type is', m_type)
+    # 3 message types: identity, selection, FULL
+    def _send_message(self, from_table: str, to_table: str, m_type: Message = Message.UNDECIDED):
+#         print('--Sending Message from', from_table, 'to', to_table, 'm_type is', m_type)
         # identity message optimization
         if m_type == Message.IDENTITY:
             self.joins[from_table][to_table].update({'message_type': m_type,})
@@ -159,11 +159,21 @@ class CJT(JoinGraph):
         # join with incoming messages
         incoming_messages, join_conds = self._get_income_messages(from_table, to_table)
         
+        # assume fact table. Relax it for many-to-many!!
+        if m_type == Message.UNDECIDED:
+            if from_table == self.target_relation:
+                m_type = Message.FULL
+            else:
+                m_type = Message.SELECTION
+                for message_type in [m['message_type'] for m in incoming_messages]:
+                    if message_type == Message.FULL:
+                        m_type = Message.FULL
+
         # get the group_by key for this message
         l_join_keys, _ = self.get_join_keys(from_table, to_table)
         
         # compute aggregation
-        aggregation = (self.semi_ring.col_sum() if m_type == Message.VARIANCE else {})
+        aggregation = (self.semi_ring.col_sum() if m_type == Message.FULL else {})
         for attr in l_join_keys:
             aggregation[attr] = (from_table + "." + attr, Aggregator.IDENTITY)
             
