@@ -134,22 +134,25 @@ class CJT(JoinGraph):
                              condition=1):
         incoming_messages, join_conds = [], []
         for neighbour_table in self.joins[table]:
-            # to_table could be removed for semi-join
-            if neighbour_table != excluded_table:
-                incoming_message = self.joins[neighbour_table][table]
-                if incoming_message['message_type'] == Message.IDENTITY:
-                    continue
-                    
-                # get the join conditions between from_table and incoming_message
-                l_join_keys, r_join_keys = self.get_join_keys(neighbour_table, table)
-                incoming_messages.append(incoming_message)
-                if condition == 1:
-                    join_conds += [incoming_message["message"] + "." + l_join_keys[i] + " IS NOT DISTINCT FROM " +
-                                   table + "." + r_join_keys[i] for i in range(len(l_join_keys))]
-                if condition == 2:
-                    join_conds += ['(' + ','.join([table + '.' + key for key in r_join_keys]) + ') in (SELECT (' 
-                                   + ','.join([incoming_message["message"] + '.' + key for key in l_join_keys]) 
-                                   + ') FROM ' + incoming_message["message"] + ')']
+            # if neighbour_table != excluded_table:
+            incoming_message = self.joins[neighbour_table][table]
+            if incoming_message['message_type'] == Message.IDENTITY:
+                continue
+            
+            # semijoin optimization
+            if excluded_table == neighbour_table:
+                incoming_message = {'message': incoming_message['message'], 'message_type': Message.SELECTION}
+
+            # get the join conditions between from_table and incoming_message
+            l_join_keys, r_join_keys = self.get_join_keys(neighbour_table, table)
+            incoming_messages.append(incoming_message)
+            if condition == 1:
+                join_conds += [incoming_message["message"] + "." + l_join_keys[i] + " IS NOT DISTINCT FROM " +
+                               table + "." + r_join_keys[i] for i in range(len(l_join_keys))]
+            if condition == 2:
+                join_conds += ['(' + ','.join([table + '.' + key for key in r_join_keys]) + ') in (SELECT (' 
+                               + ','.join([incoming_message["message"] + '.' + key for key in l_join_keys]) 
+                               + ') FROM ' + incoming_message["message"] + ')']
         return incoming_messages, join_conds
 
 
