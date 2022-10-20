@@ -131,7 +131,7 @@ class CJT(JoinGraph):
     def _get_income_messages(self, 
                              table: str, 
                              excluded_table: str = '', 
-                             condition=1):
+                             condition=1, semi_join_opt=True):
         incoming_messages, join_conds = [], []
         for neighbour_table in self.joins[table]:
             # if neighbour_table != excluded_table:
@@ -141,7 +141,10 @@ class CJT(JoinGraph):
             
             # semijoin optimization
             if excluded_table == neighbour_table:
-                incoming_message = {'message': incoming_message['message'], 'message_type': Message.SELECTION}
+                if semi_join_opt:
+                    incoming_message = {'message': incoming_message['message'], 'message_type': Message.SELECTION}
+                else:
+                    continue
 
             # get the join conditions between from_table and incoming_message
             l_join_keys, r_join_keys = self.get_join_keys(neighbour_table, table)
