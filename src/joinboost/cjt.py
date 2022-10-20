@@ -140,9 +140,12 @@ class CJT(JoinGraph):
                 continue
             
             # semijoin optimization
+            # Naively, the table is excluded
+            # but we can use its message for semi-join to accelerate message passing
             if excluded_table == neighbour_table:
                 if semi_join_opt:
-                    incoming_message = {'message': incoming_message['message'], 'message_type': Message.SELECTION}
+                    incoming_message = copy.deepcopy(incoming_message)
+                    incoming_message['message_type'] = Message.SELECTION
                 else:
                     continue
 
@@ -161,7 +164,7 @@ class CJT(JoinGraph):
 
     # 3 message types: identity, selection, FULL
     def _send_message(self, from_table: str, to_table: str, m_type: Message = Message.UNDECIDED):
-#         print('--Sending Message from', from_table, 'to', to_table, 'm_type is', m_type)
+    # print('--Sending Message from', from_table, 'to', to_table, 'm_type is', m_type)
         # identity message optimization
         if m_type == Message.IDENTITY:
             self.joins[from_table][to_table].update({'message_type': m_type,})

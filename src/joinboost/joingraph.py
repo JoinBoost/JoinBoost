@@ -36,6 +36,26 @@ class JoinGraph:
     def get_joins(self):
         return self.joins
     
+    def check_acyclic(self):
+        seen = set()
+        
+        def dfs(table_name):
+            seen.add(table_name)
+            for neighbour in self.joins[table_name]:
+                if neighbour in seen:
+                    if table_name not in self.joins[neighbour]:
+                        return False
+                else:
+                    dfs(neighbour)
+            return True
+        
+        for table_name in self.joins:
+            if table_name not in seen:
+                if not dfs(table_name):
+                    return False
+        
+        return True
+    
     # add relation, features and target variable to join graph
     # current assumption: Y is in the fact table
     def add_relation(self, relation: str, X: list, y: str = None):
