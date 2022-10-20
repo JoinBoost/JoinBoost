@@ -28,7 +28,7 @@ JoinBoost APIs are similar to Sklearn, Xgboost and LightGBM. The main difference
 import duckdb
 from joinboost.executor import DuckdbExecutor
 from joinboost.joingraph import JoinGraph
-from joinboost.app import GradientBoosting
+from joinboost.app import DecisionTree
 
 # DuckDB connector
 con = duckdb.connect(database='duckdb')
