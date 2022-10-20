@@ -32,9 +32,8 @@ from joinboost.app import DecisionTree
 
 # DuckDB connector
 con = duckdb.connect(database='duckdb')
-exe = DuckdbExecutor(con, debug=False)
 
-dataset = JoinGraph(exe=exe)
+dataset = JoinGraph(con)
 dataset.add_relation("sales", [], y = 'total_sales')
 dataset.add_relation("items", ["family","class","perishable"])
 dataset.add_join("sales", "items", ["item_nbr"], ["item_nbr"])
