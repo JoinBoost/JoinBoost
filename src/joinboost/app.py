@@ -281,3 +281,5 @@ class GradientBoosting(DecisionTree):
             self.cjt.exe.update_query("s=s-(" + str(pred) + ")",
                                      cur_cjt.get_target_relation(),
                                      join_conds)
+            
+            

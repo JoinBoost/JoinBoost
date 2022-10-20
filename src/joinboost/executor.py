@@ -2,6 +2,15 @@ from abc import ABC, abstractmethod
 from .aggregator import *
 import time
 
+def ExecutorFactory(con):
+    if issubclass(type(con), Executor):
+        return con
+    elif type(con).__name__ == 'DuckDBPyConnection':
+        return DuckdbExecutor(con)
+    else:
+        raise Exception("Unknown connector with type " + type(con).__name__)
+        
+        
 class Executor(ABC):
     '''Assume input data are csvs'''
 

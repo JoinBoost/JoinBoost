@@ -10,8 +10,8 @@ from joinboost.joingraph import JoinGraph
 from joinboost.app import DecisionTree,GradientBoosting
 
 class TestDecision(unittest.TestCase):
-        
-    def test_synthetic(self):
+    
+    def load_synthetic(self):
         join = pd.read_csv("../data/synthetic/RST.csv")
         con = duckdb.connect(database=':memory:')
         con.execute("CREATE TABLE R AS SELECT * FROM '../data/synthetic/R.csv'")
@@ -20,10 +20,28 @@ class TestDecision(unittest.TestCase):
         con.execute("CREATE TABLE test AS SELECT * FROM '../data/synthetic/RST.csv'")
         x = ["A", "B", "D", "E", "F"]
         y = "C"
-
-        exe = DuckdbExecutor(con, debug=False)
+        return x, y, join, con
     
-        dataset = JoinGraph(exe=exe)
+    def load_favorita(self):
+        join = pd.read_csv('../data/favorita/train_small.csv')
+        con = duckdb.connect(database=':memory:')
+        con.execute("CREATE TABLE holidays AS SELECT * FROM '../data/favorita/holidays.csv';")
+        con.execute("CREATE TABLE oil AS SELECT * FROM '../data/favorita/oil.csv';")
+        con.execute("CREATE TABLE transactions AS SELECT * FROM '../data/favorita/transactions.csv';")
+        con.execute("CREATE TABLE stores AS SELECT * FROM '../data/favorita/stores.csv';")
+        con.execute("CREATE TABLE items AS SELECT * FROM '../data/favorita/items.csv';")
+        con.execute("CREATE TABLE sales AS SELECT * FROM '../data/favorita/sales_small.csv';")
+        con.execute("CREATE TABLE train AS SELECT * FROM '../data/favorita/train_small.csv';")
+
+        y = "Y"
+        x = ["htype", "locale", "locale_name", "transferred","f2","dcoilwtico","f3","transactions",
+             "f5","city","state","stype","cluster","f4","family","class","perishable","f1"]
+        return x, y, join, con
+    
+    def test_synthetic(self):
+        x, y, join, con = self.load_synthetic()
+        
+        dataset = JoinGraph(con)
         dataset.add_relation('R', ['B', 'D'], y = 'C')
         dataset.add_relation('S', ['A', 'E'])
         dataset.add_relation('T', ['F'])
@@ -41,22 +59,10 @@ class TestDecision(unittest.TestCase):
         self.assertTrue(abs(gb.compute_rmse('test')[0] - math.sqrt(mse)) < 1e-3)
     
     def test_favorita(self):
-        con = duckdb.connect(database=':memory:')
-        con.execute("CREATE OR REPLACE TABLE holidays AS SELECT * FROM '../data/favorita/holidays.csv';")
-        con.execute("CREATE OR REPLACE TABLE oil AS SELECT * FROM '../data/favorita/oil.csv';")
-        con.execute("CREATE OR REPLACE TABLE transactions AS SELECT * FROM '../data/favorita/transactions.csv';")
-        con.execute("CREATE OR REPLACE TABLE stores AS SELECT * FROM '../data/favorita/stores.csv';")
-        con.execute("CREATE OR REPLACE TABLE items AS SELECT * FROM '../data/favorita/items.csv';")
-        con.execute("CREATE OR REPLACE TABLE sales AS SELECT * FROM '../data/favorita/sales_small.csv';")
-        con.execute("CREATE OR REPLACE TABLE train AS SELECT * FROM '../data/favorita/train_small.csv';")
-
-        y = "Y"
-        x = ["htype", "locale", "locale_name", "transferred","f2","dcoilwtico","f3","transactions",
-             "f5","city","state","stype","cluster","f4","family","class","perishable","f1"]
-
+        x, y, join, con = self.load_favorita()
         exe = DuckdbExecutor(con, debug=False)
     
-        dataset = JoinGraph(exe=exe)
+        dataset = JoinGraph(exe)
         dataset.add_relation("sales", [], y = 'Y')
         dataset.add_relation("holidays", ["htype", "locale", "locale_name", "transferred","f2"])
         dataset.add_relation("oil", ["dcoilwtico","f3"])
@@ -75,31 +81,20 @@ class TestDecision(unittest.TestCase):
         reg.fit(dataset)
 
         
-        data = pd.read_csv('../data/favorita/train_small.csv')
+        
         clf = DecisionTreeRegressor(max_depth=depth)
-        clf = clf.fit(data[x], data[y])
-        mse = mean_squared_error(data[y], clf.predict(data[x]))
+        clf = clf.fit(join[x], join[y])
+        mse = mean_squared_error(join[y], clf.predict(join[x]))
         math.sqrt(mse)
         self.assertTrue(abs(reg.compute_rmse('train')[0] - math.sqrt(mse)) < 1e-3)
         
     def test_gradient_boosting(self):
-        con = duckdb.connect(database=':memory:')
-        con.execute("CREATE OR REPLACE TABLE holidays AS SELECT * FROM '../data/favorita/holidays.csv';")
-        con.execute("CREATE OR REPLACE TABLE oil AS SELECT * FROM '../data/favorita/oil.csv';")
-        con.execute("CREATE OR REPLACE TABLE transactions AS SELECT * FROM '../data/favorita/transactions.csv';")
-        con.execute("CREATE OR REPLACE TABLE stores AS SELECT * FROM '../data/favorita/stores.csv';")
-        con.execute("CREATE OR REPLACE TABLE items AS SELECT * FROM '../data/favorita/items.csv';")
-        con.execute("CREATE OR REPLACE TABLE sales AS SELECT * FROM '../data/favorita/sales_small.csv';")
-        con.execute("CREATE OR REPLACE TABLE train AS SELECT * FROM '../data/favorita/train_small.csv';")
-
-        y = "Y"
-        x = ["htype", "locale", "locale_name", "transferred","f2","dcoilwtico","f3","transactions",
-             "f5","city","state","stype","cluster","f4","family","class","perishable","f1"]
-
+        x, y, join, con = self.load_favorita()
+        
         exe = DuckdbExecutor(con, debug=False)
         depth = 3
         iteration = 3
-        dataset = JoinGraph(exe=exe)
+        dataset = JoinGraph(exe)
         dataset.add_relation("sales", [], y = 'Y')
         dataset.add_relation("holidays", ["htype", "locale", "locale_name", "transferred","f2"])
         dataset.add_relation("oil", ["dcoilwtico","f3"])
@@ -116,12 +111,9 @@ class TestDecision(unittest.TestCase):
         reg = GradientBoosting(learning_rate=1, max_leaves=2 ** depth, max_depth=depth, iteration = iteration)
 
         reg.fit(dataset)
-
-        
-        data = pd.read_csv('../data/favorita/train_small.csv')
         clf = GradientBoostingRegressor(max_depth=depth,learning_rate=1, n_estimators=iteration)
-        clf = clf.fit(data[x], data[y])
-        mse = mean_squared_error(data[y], clf.predict(data[x]))
+        clf = clf.fit(join[x], join[y])
+        mse = mean_squared_error(join[y], clf.predict(join[x]))
         math.sqrt(mse)
         self.assertTrue(abs(reg.compute_rmse('train')[0] - math.sqrt(mse)) < 1e-3)
 

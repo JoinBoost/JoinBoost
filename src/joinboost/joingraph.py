@@ -1,6 +1,6 @@
 from .aggregator import Aggregator
 import copy
-from .executor import Executor
+from .executor import ExecutorFactory
 
 class JoinGraph:
     def __init__(self, 
@@ -10,7 +10,7 @@ class JoinGraph:
                 target_var = None,
                 target_relation = None):
         
-        self.exe = exe
+        self.exe = ExecutorFactory(exe)
         # maps each from_relation => to_relation => {keys: (from_keys, to_keys)}
         self.joins = copy.deepcopy(joins)
         # maps each relation => feature => feature_type
