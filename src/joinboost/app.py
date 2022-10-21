@@ -183,8 +183,14 @@ class DecisionTree(DummyModel):
                                's': ('s', Aggregator.IDENTITY),
                                'c': ('c', Aggregator.IDENTITY)}
                     obj_view = self.cjt.exe.execute_spja_query(agg_exp, [absoprtion_view])
-                    view_to_max = self.cjt.exe.window_query(obj_view, [attr], 'object', ['s', 'c'])
-                else:
+                    agg_exp = cur_semi_ring.col_sum()
+                    agg_exp[attr] = (attr, Aggregator.IDENTITY)
+                    agg_exp['object'] = ('object', Aggregator.IDENTITY)
+                    view_to_max = self.cjt.exe.execute_spja_query(agg_exp,
+                                                                  [obj_view], 
+                                                                  window_by=['object'],
+                                                                  mode=4)
+                elif attr_type == 'CAT':
                     view_to_max = absoprtion_view
                 
                 # TODO: move this logic somewhere else
