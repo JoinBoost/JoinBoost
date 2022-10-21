@@ -124,7 +124,7 @@ class JoinGraph:
         self.joins[table_name_left][table_name_right] = {"keys": (left_keys, right_keys)}
         self.joins[table_name_right][table_name_left] = {"keys": (right_keys, left_keys)}
         
-    def rename(self, table_prev, table_after):
+    def replace(self, table_prev, table_after):
         if table_prev not in self.relation_schema: 
             raise Exception(table_prev + ' doesn\'t exit!')
         if table_after in self.relation_schema: 

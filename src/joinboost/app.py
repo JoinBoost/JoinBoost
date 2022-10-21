@@ -16,16 +16,18 @@ class DummyModel(App):
         super().__init__()
         self.semi_ring = varSemiRing()
         self.prefix = "joinboost_tmp_"
+        self.model_def = []
     
     def fit(self,
            jg: JoinGraph):
-        jg._preprocess()
-        self.jg = jg
+        self.cjt = jg
+        self.cjt._preprocess()
 
         # compute the total average
-        agg_exp = self.semi_ring.col_sum(s=self.jg.get_target_var(), c = '1')
-        TS, TC = self.jg.exe.execute_spja_query(agg_exp,
-                                              [self.jg.get_target_relation()],
+        # Try to make it a with clause?
+        agg_exp = self.semi_ring.col_sum(s=self.cjt.get_target_var(), c = '1')
+        TS, TC = self.cjt.exe.execute_spja_query(agg_exp,
+                                              [self.cjt.get_target_relation()],
                                               mode = 3)[0]
         mean = TS / TC
         self.semi_ring.set_semi_ring(TS, TC)
@@ -41,20 +43,35 @@ class DecisionTree(DummyModel):
     def __init__(self,                
                  max_leaves: int = 31,
                  learning_rate: float = 1, 
-                 max_depth: int = 6):
+                 max_depth: int = 6,
+                 subsample: float = 1):
         super().__init__()
         self.max_leaves = max_leaves
         self.learning_rate = learning_rate
         self.max_depth = max_depth
+        self.subsample = subsample
         
     def fit(self,
            jg: JoinGraph):
-        self.model_def = []
+        # shall we first sample then fit dummy model, or first fit dummy model then sample?
         super().fit(jg)
-        self.cjt = CJT(semi_ring=self.semi_ring, join_graph=self.jg)
-        self.cjt.lift(jg.get_target_var() + "- (" + str(self.constant_) + ")")
+        self.cjt = CJT(semi_ring=self.semi_ring, join_graph=self.cjt)
+        self.preprocess()
+        
+        self.cjt.lift(self.cjt.get_target_var() + "- (" + str(self.constant_) + ")")
         self.semi_ring.set_semi_ring(0, self.count_)
+        
         self.train_one()
+    
+    def preprocess(self):
+        if self.subsample < 1:
+            # TODO: Possible to sample 0 tuples.
+            # Add check to make sure the sampled table has tuples
+            new_fact_name = self.cjt.exe.execute_spja_query(from_tables=[self.cjt.target_relation], 
+                                                            sample_rate=self.subsample,
+                                                            mode = 4)
+            self.cjt.replace(self.cjt.target_relation, new_fact_name)
+        
     
     def train_one(self, last = True):
         # store (node_id) -> cjt
@@ -80,7 +97,8 @@ class DecisionTree(DummyModel):
         for cur_cjt in self.leaf_nodes:
             annotations = cur_cjt.get_all_parsed_annotations()
             TS, TC = cur_cjt.get_semi_ring().get_value()
-            pred = TS / TC * self.learning_rate
+            
+            pred = float(TS / TC)* self.learning_rate
             if annotations:
                 cur_model_def.append((pred, annotations))
         if cur_model_def:
@@ -92,8 +110,9 @@ class DecisionTree(DummyModel):
                                        self.model_def, [self.cjt.get_target_var()])
         predict_agg = {'RMSE': ('SQRT(AVG(POW(' + self.cjt.get_target_var() + ' - prediction,2)))',
                                 Aggregator.IDENTITY)}
-        predict = self.cjt.exe.execute_spja_query(predict_agg, [view])
-        return self.cjt.exe.select_all(predict)[0]
+        predict = self.cjt.exe.execute_spja_query(predict_agg, [view], mode=4)
+        return self.cjt.exe.execute_spja_query(from_tables=[predict], 
+                                               mode=3)[0]
 
     def _clean_messages(self):
         for cjt in self.nodes.values():
@@ -114,7 +133,7 @@ class DecisionTree(DummyModel):
             attr_view = self.cjt.exe.execute_spja_query({attr: (attr, Aggregator.IDENTITY)},
                                                         [view_ord_by_obj],
                                                         ['s/c <=' + str(obj)])
-            attrs = [str(x[0])  for x in self.cjt.exe.select_all(attr_view)]
+            attrs = [str(x[0])  for x in self.cjt.exe.execute_spja_query(from_tables=[attr_view], mode=3)]
             l_annotation = (attr, Annotation.IN, attrs)
             r_annotation = (attr, Annotation.NOT_IN, attrs)
         elif cur_value == 'NULL':
@@ -183,7 +202,7 @@ class DecisionTree(DummyModel):
                                                           limit=1, 
                                                           mode=4)
                 
-                results = self.cjt.exe.select_all(view_max)
+                results = self.cjt.exe.execute_spja_query(from_tables=[view_max], mode=3)
                 if not results:
                     continue
                 cur_value, cur_criteria, c, s = results[0]
@@ -260,12 +279,11 @@ class GradientBoosting(DecisionTree):
                  learning_rate: float = 1, 
                  max_depth: int = 6,
                  iteration: int = 1):
-        super(GradientBoosting, self).__init__(max_leaves,learning_rate,max_depth)
+        super().__init__(max_leaves,learning_rate,max_depth)
         self.iteration = iteration
     
     def fit(self,
            jg: JoinGraph):
-        total_update_time = 0
         super().fit(jg)
         
         for _ in range(self.iteration - 1):
@@ -282,5 +300,22 @@ class GradientBoosting(DecisionTree):
             self.cjt.exe.update_query("s=s-(" + str(pred) + ")",
                                       target_relation,
                                       join_conds)
+            
+class RandomForest(DecisionTree):
+    def __init__(self,
+                 max_leaves: int = 31,
+                 learning_rate: float = 1, 
+                 max_depth: int = 6,
+                 subsample: float = 1,
+                 iteration: int = 1,):
+        super().__init__(max_leaves,learning_rate,max_depth,subsample)
+        self.iteration = iteration
+        self.learning_rate = 1/iteration
+    
+    def fit(self,
+           jg: JoinGraph):
+        
+        for _ in range(self.iteration):
+            super().fit(jg)
             
             

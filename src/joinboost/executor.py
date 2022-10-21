@@ -16,9 +16,10 @@ class Executor(ABC):
 
     def __init__(self):
         self.view_id = 0
+        self.prefix = 'joinboost_tmp_'
 
     def get_next_name(self):
-        name = 'joinboost_tmp_' + str(self.view_id)
+        name = self.prefix + str(self.view_id)
         self.view_id += 1
         return name
     
@@ -76,13 +77,9 @@ class DuckdbExecutor(Executor):
             cond += 'ELSE 0 END\n'
             conds.append(cond)
         return conds
-
-    def select_all(self, table: str):
-        return self.execute_spja_query({None: ('*', Aggregator.IDENTITY)}, 
-                                       from_tables=[table], 
-                                       mode=3)
     
     def delete_table(self, table: str):
+        self.check_table(table)
         sql = 'DROP TABLE IF EXISTS ' + table + ';\n'
         self._execute_query(sql)
         
@@ -122,10 +119,15 @@ class DuckdbExecutor(Executor):
         self._execute_query(sql)
         return view
     
+    def check_table(self, table):
+        if not table.startswith(self.prefix):
+            raise("Don't modify user tables!")
+    
     def update_query(self,
                      update_expression,
                      table,
                      select_conds: list = []):
+        self.check_table(table)
         sql = "UPDATE " + table + " SET " + update_expression + " \n"
         if len(select_conds) > 0:
             sql += "WHERE " + " AND ".join(select_conds) + "\n"
@@ -136,7 +138,7 @@ class DuckdbExecutor(Executor):
     # mode = 3 will execute the query and return the result
     # mode = 4 will create the sql query and return the query (for nested query)
     def execute_spja_query(self, 
-                           aggregate_expressions: dict = {},
+                           aggregate_expressions: dict = {None: ('*', Aggregator.IDENTITY)},
                            from_tables: list = [],
                            select_conds: list = [],
                            group_by: list = [], 
@@ -144,16 +146,18 @@ class DuckdbExecutor(Executor):
                            table_name: str = None,
                            order_by: str = None,
                            limit: int = None,
+                           sample_rate: float = None,
                            replace: bool = True,
                            mode: int = 5):
         
         spja = self.spja_query(aggregate_expressions=aggregate_expressions,
                                from_tables=from_tables,
                                select_conds = select_conds,
-                               window_by=window_by,
                                group_by=group_by, 
+                               window_by=window_by,
                                order_by=order_by,
-                               limit=limit,)
+                               limit=limit,
+                               sample_rate=sample_rate)
         
         if mode == 1:
             name_ = (table_name if table_name is not None else self.get_next_name())
@@ -185,6 +189,7 @@ class DuckdbExecutor(Executor):
                    group_by: list = [], 
                    order_by: str = None,
                    limit: int = None,
+                   sample_rate: float = None,
                    ):
         
         parsed_aggregate_expressions = []
@@ -206,8 +211,10 @@ class DuckdbExecutor(Executor):
             sql += "GROUP BY " + ",".join(group_by) + '\n'
         if order_by is not None:
             sql += 'ORDER BY ' + order_by + '\n'
-        if limit  is not None:
+        if limit is not None:
             sql += 'LIMIT ' + str(limit) + '\n'
+        if sample_rate is not None:
+            sql += 'USING SAMPLE ' + str(sample_rate*100) + ' %\n'
         return sql
 
     def _execute_query(self, q):

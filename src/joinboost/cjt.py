@@ -213,4 +213,4 @@ class CJT(JoinGraph):
         new_fact_name = self.exe.execute_spja_query(lift_exp,
                                                     [self.target_relation],
                                                     mode = 1)
-        self.rename(self.target_relation, new_fact_name)
+        self.replace(self.target_relation, new_fact_name)
