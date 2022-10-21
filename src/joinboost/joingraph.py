@@ -8,8 +8,7 @@ class JoinGraph:
                 joins = {}, 
                 relation_schema = {},
                 target_var = None,
-                target_relation = None,
-                data_type = 'NUM'):
+                target_relation = None):
         
         self.exe = ExecutorFactory(exe)
         # maps each from_relation => to_relation => {keys: (from_keys, to_keys)}
@@ -18,7 +17,6 @@ class JoinGraph:
         self.relation_schema = copy.deepcopy(relation_schema)
         self.target_var = target_var
         self.target_relation = target_relation
-        self.data_type = data_type
     
     def get_relations(self): 
         return list(self.relation_schema.keys())
@@ -60,14 +58,22 @@ class JoinGraph:
     
     # add relation, features and target variable to join graph
     # current assumption: Y is in the fact table
-    def add_relation(self, relation: str, X: list, y: str = None):
+    def add_relation(self,
+                     relation: str, 
+                     X: list = [], 
+                     y: str = None, 
+                     categorical_feature: list = []):
+        
         self.joins[relation] = dict()
         if relation not in self.relation_schema:
                 self.relation_schema[relation] = {}
                 
         for x in X:
             # by default, assume all features to be numerical
-            self.relation_schema[relation][x] = self.data_type
+            self.relation_schema[relation][x] = "NUM"
+            
+        for x in categorical_feature:
+            self.relation_schema[relation][x] = "LCAT"
             
         if y is not None:
             if self.target_var is not None:

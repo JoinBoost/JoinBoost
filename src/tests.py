@@ -4,8 +4,7 @@ import time
 import pandas as pd
 import duckdb
 import lightgbm
-import matplotlib.pyplot as plt
-from sklearn.tree import DecisionTreeRegressor, export_text
+from sklearn.tree import DecisionTreeRegressor
 from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.metrics import mean_squared_error
 from joinboost.executor import DuckdbExecutor
@@ -98,7 +97,7 @@ class TestDecision(unittest.TestCase):
              "f5","city","state","stype","cluster","f4","family","class","perishable","f1"]
 
         exe = DuckdbExecutor(con, debug=False)
-        depth = 5
+        depth = 3
         iteration = 3
         dataset = JoinGraph(exe=exe)
         dataset.add_relation("sales", [], y = 'Y')
@@ -125,41 +124,45 @@ class TestDecision(unittest.TestCase):
         self.assertTrue(abs(reg.compute_rmse('train')[0] - math.sqrt(mse)) < 1e-3)
     
     def test_lightgbm_catigorial(self):
-        join = pd.read_csv("../data/synthetic/RST.csv")
+        R = pd.read_csv("../data/synthetic-very-small/R.csv")
         con = duckdb.connect(database=':memory:')
-        con.execute("CREATE TABLE R AS SELECT * FROM '../data/synthetic/R.csv'")
-        con.execute("CREATE TABLE S AS SELECT * FROM '../data/synthetic/S.csv'")
-        con.execute("CREATE TABLE T AS SELECT * FROM '../data/synthetic/T.csv'")
-        con.execute("CREATE TABLE test AS SELECT * FROM '../data/synthetic/RST.csv'")
-        x = ["A", "B", "D", "E", "F"]
+        con.execute("CREATE TABLE R AS SELECT * FROM R")
+        x = ["D"]
         y = "H"
 
         exe = DuckdbExecutor(con, debug=False)
-    
-        dataset = JoinGraph(exe=exe, data_type='LCAT')
-        dataset.add_relation('R', ['B', 'D'], y = 'H')
-        dataset.add_relation('S', ['A', 'E'])
-        dataset.add_relation('T', ['F'])
-        dataset.add_join("R", "S", ["A"], ["A"])
-        dataset.add_join("R", "T", ["B"], ["B"])
-        
-        iteration = 3
-        depth = 3
 
-        reg = GradientBoosting(learning_rate=1, max_leaves=2 ** depth - 1, max_depth=depth, iteration = iteration)
+        dataset = JoinGraph(exe=exe)
+        dataset.add_relation('R', categorical_feature=['D'], y = 'H')
+
+        iteration = 1
+        depth = 1
+
+        reg = GradientBoosting(learning_rate=1, 
+                               max_depth=depth, 
+                               iteration = iteration)
 
         reg.fit(dataset)
 
-        
-        clf = lightgbm.LGBMRegressor(learning_rate=1, num_leaves=2 ** depth - 1, max_depth=depth, min_child_samples=0, 
-                                     objective='RMSE', cat_l2=0, cat_smooth=0, deterministic=True,
-                                     max_bin=10000, min_data_in_bin=1, n_estimators=iteration, 
-                                     max_cat_threshold=10000, max_cat_to_onehot=1, min_data_per_group=1)
-        clf.fit(join[x], join[y], feature_name=x, categorical_feature=x)
-        mse = mean_squared_error(join[y], clf.predict(join[x]))
+        clf = lightgbm.LGBMRegressor(learning_rate=1, 
+                                     max_depth=depth, 
+                                     min_child_samples=1, 
+                                     objective='RMSE', 
+                                     cat_l2=0, 
+                                     cat_smooth=0, 
+                                     deterministic=True,
+                                     max_bin=20000, 
+                                     min_data_in_bin=1, 
+                                     n_estimators=iteration, 
+                                     max_cat_threshold=10000, 
+                                     max_cat_to_onehot=1, 
+                                     min_data_per_group=1)
+
+        clf.fit(R[x], R[y], feature_name=x, categorical_feature=x)
+        mse = mean_squared_error(R[y], clf.predict(R[x]))
+
         print(math.sqrt(mse))
-        print(reg.compute_rmse('test')[0])
-        # print(reg.compute_rmse('test')[0])
+        print(reg.compute_rmse('R')[0])
 
 if __name__ == '__main__':
     unittest.main()

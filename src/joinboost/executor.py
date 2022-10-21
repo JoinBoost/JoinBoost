@@ -131,9 +131,9 @@ class DuckdbExecutor(Executor):
             sql += "WHERE " + " AND ".join(select_conds) + "\n"
         self._execute_query(sql)
     
-    # mode = 1 will create the query result as table and return table name
-    # mode = 2 will create the query result as table and return view name
-    # mode = 3 will create the query result and return the result
+    # mode = 1 will write the query result to a table and return table name
+    # mode = 2 will create the query as view and return view name
+    # mode = 3 will execute the query and return the result
     # mode = 4 will create the sql query and return the query (for nested query)
     def execute_spja_query(self, 
                            aggregate_expressions: dict = {},
@@ -223,6 +223,8 @@ class DuckdbExecutor(Executor):
         result = None
         try:
             result = self.conn.fetchall()
+            if self.debug:
+                print(result)
         except Exception as e:
             print(e)
         return result
