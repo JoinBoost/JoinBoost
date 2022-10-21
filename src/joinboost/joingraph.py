@@ -8,7 +8,8 @@ class JoinGraph:
                 joins = {}, 
                 relation_schema = {},
                 target_var = None,
-                target_relation = None):
+                target_relation = None,
+                data_type = 'NUM'):
         
         self.exe = ExecutorFactory(exe)
         # maps each from_relation => to_relation => {keys: (from_keys, to_keys)}
@@ -17,6 +18,7 @@ class JoinGraph:
         self.relation_schema = copy.deepcopy(relation_schema)
         self.target_var = target_var
         self.target_relation = target_relation
+        self.data_type = data_type
     
     def get_relations(self): 
         return list(self.relation_schema.keys())
@@ -65,7 +67,7 @@ class JoinGraph:
                 
         for x in X:
             # by default, assume all features to be numerical
-            self.relation_schema[relation][x] = 'NUM'
+            self.relation_schema[relation][x] = self.data_type
             
         if y is not None:
             if self.target_var is not None:

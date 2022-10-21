@@ -113,7 +113,7 @@ class DecisionTree(DummyModel):
             view_ord_by_obj = self.cjt.exe.window_query(obj_view, [attr], 'object', ['s', 'c'])
             attr_view = self.cjt.exe.execute_spja_query({attr: (attr, Aggregator.IDENTITY)},
                                                         [view_ord_by_obj],
-                                                        annotations=['s/c <=' + str(obj)])
+                                                        ['s/c <=' + str(obj)])
             attrs = [str(x[0])  for x in self.cjt.exe.select_all(attr_view)]
             l_annotation = (attr, Annotation.IN, attrs)
             r_annotation = (attr, Annotation.NOT_IN, attrs)
@@ -187,7 +187,6 @@ class DecisionTree(DummyModel):
                 if not results:
                     continue
                 cur_value, cur_criteria, c, s = results[0]
-                # print(results[0])
                 if cur_criteria >= best_criteria:
                     best_criteria = cur_criteria
                     # relation name, split attribute, split value, new s, new c  
@@ -275,11 +274,13 @@ class GradientBoosting(DecisionTree):
     def _update_error(self):
         for cur_cjt in self.leaf_nodes:
             cur_cond = []
+            target_relation = cur_cjt.get_target_relation()
             TS, TC = cur_cjt.get_semi_ring().get_value()
             pred = TS / TC * self.learning_rate
             _, join_conds = cur_cjt._get_income_messages(cur_cjt.get_target_relation(), condition=2)
+            join_conds += cur_cjt.get_parsed_annotations(target_relation)
             self.cjt.exe.update_query("s=s-(" + str(pred) + ")",
-                                     cur_cjt.get_target_relation(),
-                                     join_conds)
+                                      target_relation,
+                                      join_conds)
             
             

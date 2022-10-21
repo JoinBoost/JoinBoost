@@ -1,8 +1,11 @@
 import unittest
 import math
+import time
 import pandas as pd
 import duckdb
-from sklearn.tree import DecisionTreeRegressor
+import lightgbm
+import matplotlib.pyplot as plt
+from sklearn.tree import DecisionTreeRegressor, export_text
 from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.metrics import mean_squared_error
 from joinboost.executor import DuckdbExecutor
@@ -10,8 +13,8 @@ from joinboost.joingraph import JoinGraph
 from joinboost.app import DecisionTree,GradientBoosting
 
 class TestDecision(unittest.TestCase):
-    
-    def load_synthetic(self):
+        
+    def test_synthetic(self):
         join = pd.read_csv("../data/synthetic/RST.csv")
         con = duckdb.connect(database=':memory:')
         con.execute("CREATE TABLE R AS SELECT * FROM '../data/synthetic/R.csv'")
@@ -19,30 +22,12 @@ class TestDecision(unittest.TestCase):
         con.execute("CREATE TABLE T AS SELECT * FROM '../data/synthetic/T.csv'")
         con.execute("CREATE TABLE test AS SELECT * FROM '../data/synthetic/RST.csv'")
         x = ["A", "B", "D", "E", "F"]
-        y = "C"
-        return x, y, join, con
-    
-    def load_favorita(self):
-        join = pd.read_csv('../data/favorita/train_small.csv')
-        con = duckdb.connect(database=':memory:')
-        con.execute("CREATE TABLE holidays AS SELECT * FROM '../data/favorita/holidays.csv';")
-        con.execute("CREATE TABLE oil AS SELECT * FROM '../data/favorita/oil.csv';")
-        con.execute("CREATE TABLE transactions AS SELECT * FROM '../data/favorita/transactions.csv';")
-        con.execute("CREATE TABLE stores AS SELECT * FROM '../data/favorita/stores.csv';")
-        con.execute("CREATE TABLE items AS SELECT * FROM '../data/favorita/items.csv';")
-        con.execute("CREATE TABLE sales AS SELECT * FROM '../data/favorita/sales_small.csv';")
-        con.execute("CREATE TABLE train AS SELECT * FROM '../data/favorita/train_small.csv';")
+        y = "H"
 
-        y = "Y"
-        x = ["htype", "locale", "locale_name", "transferred","f2","dcoilwtico","f3","transactions",
-             "f5","city","state","stype","cluster","f4","family","class","perishable","f1"]
-        return x, y, join, con
+        exe = DuckdbExecutor(con, debug=False)
     
-    def test_synthetic(self):
-        x, y, join, con = self.load_synthetic()
-        
-        dataset = JoinGraph(con)
-        dataset.add_relation('R', ['B', 'D'], y = 'C')
+        dataset = JoinGraph(exe=exe)
+        dataset.add_relation('R', ['B', 'D'], y = 'H')
         dataset.add_relation('S', ['A', 'E'])
         dataset.add_relation('T', ['F'])
         dataset.add_join("R", "S", ["A"], ["A"])
@@ -59,10 +44,22 @@ class TestDecision(unittest.TestCase):
         self.assertTrue(abs(gb.compute_rmse('test')[0] - math.sqrt(mse)) < 1e-3)
     
     def test_favorita(self):
-        x, y, join, con = self.load_favorita()
+        con = duckdb.connect(database=':memory:')
+        con.execute("CREATE OR REPLACE TABLE holidays AS SELECT * FROM '../data/favorita/holidays.csv';")
+        con.execute("CREATE OR REPLACE TABLE oil AS SELECT * FROM '../data/favorita/oil.csv';")
+        con.execute("CREATE OR REPLACE TABLE transactions AS SELECT * FROM '../data/favorita/transactions.csv';")
+        con.execute("CREATE OR REPLACE TABLE stores AS SELECT * FROM '../data/favorita/stores.csv';")
+        con.execute("CREATE OR REPLACE TABLE items AS SELECT * FROM '../data/favorita/items.csv';")
+        con.execute("CREATE OR REPLACE TABLE sales AS SELECT * FROM '../data/favorita/sales_small.csv';")
+        con.execute("CREATE OR REPLACE TABLE train AS SELECT * FROM '../data/favorita/train_small.csv';")
+
+        y = "Y"
+        x = ["htype", "locale", "locale_name", "transferred","f2","dcoilwtico","f3","transactions",
+             "f5","city","state","stype","cluster","f4","family","class","perishable","f1"]
+
         exe = DuckdbExecutor(con, debug=False)
     
-        dataset = JoinGraph(exe)
+        dataset = JoinGraph(exe=exe)
         dataset.add_relation("sales", [], y = 'Y')
         dataset.add_relation("holidays", ["htype", "locale", "locale_name", "transferred","f2"])
         dataset.add_relation("oil", ["dcoilwtico","f3"])
@@ -80,21 +77,30 @@ class TestDecision(unittest.TestCase):
 
         reg.fit(dataset)
 
-        
-        
+        data = pd.read_csv('../data/favorita/train_small.csv')
         clf = DecisionTreeRegressor(max_depth=depth)
-        clf = clf.fit(join[x], join[y])
-        mse = mean_squared_error(join[y], clf.predict(join[x]))
-        math.sqrt(mse)
+        clf = clf.fit(data[x], data[y])
+        mse = mean_squared_error(data[y], clf.predict(data[x]))
         self.assertTrue(abs(reg.compute_rmse('train')[0] - math.sqrt(mse)) < 1e-3)
         
     def test_gradient_boosting(self):
-        x, y, join, con = self.load_favorita()
-        
+        con = duckdb.connect(database=':memory:')
+        con.execute("CREATE OR REPLACE TABLE holidays AS SELECT * FROM '../data/favorita/holidays.csv';")
+        con.execute("CREATE OR REPLACE TABLE oil AS SELECT * FROM '../data/favorita/oil.csv';")
+        con.execute("CREATE OR REPLACE TABLE transactions AS SELECT * FROM '../data/favorita/transactions.csv';")
+        con.execute("CREATE OR REPLACE TABLE stores AS SELECT * FROM '../data/favorita/stores.csv';")
+        con.execute("CREATE OR REPLACE TABLE items AS SELECT * FROM '../data/favorita/items.csv';")
+        con.execute("CREATE OR REPLACE TABLE sales AS SELECT * FROM '../data/favorita/sales_small.csv';")
+        con.execute("CREATE OR REPLACE TABLE train AS SELECT * FROM '../data/favorita/train_small.csv';")
+
+        y = "Y"
+        x = ["htype", "locale", "locale_name", "transferred","f2","dcoilwtico","f3","transactions",
+             "f5","city","state","stype","cluster","f4","family","class","perishable","f1"]
+
         exe = DuckdbExecutor(con, debug=False)
-        depth = 3
+        depth = 5
         iteration = 3
-        dataset = JoinGraph(exe)
+        dataset = JoinGraph(exe=exe)
         dataset.add_relation("sales", [], y = 'Y')
         dataset.add_relation("holidays", ["htype", "locale", "locale_name", "transferred","f2"])
         dataset.add_relation("oil", ["dcoilwtico","f3"])
@@ -107,15 +113,53 @@ class TestDecision(unittest.TestCase):
         dataset.add_join("transactions", "holidays", ["date"], ["date"])
         dataset.add_join("holidays", "oil", ["date"], ["date"])
 
-        
         reg = GradientBoosting(learning_rate=1, max_leaves=2 ** depth, max_depth=depth, iteration = iteration)
 
         reg.fit(dataset)
+
+        
+        data = pd.read_csv('../data/favorita/train_small.csv')
         clf = GradientBoostingRegressor(max_depth=depth,learning_rate=1, n_estimators=iteration)
-        clf = clf.fit(join[x], join[y])
-        mse = mean_squared_error(join[y], clf.predict(join[x]))
-        math.sqrt(mse)
+        clf = clf.fit(data[x], data[y])
+        mse = mean_squared_error(data[y], clf.predict(data[x]))
         self.assertTrue(abs(reg.compute_rmse('train')[0] - math.sqrt(mse)) < 1e-3)
+    
+    def test_lightgbm_catigorial(self):
+        join = pd.read_csv("../data/synthetic/RST.csv")
+        con = duckdb.connect(database=':memory:')
+        con.execute("CREATE TABLE R AS SELECT * FROM '../data/synthetic/R.csv'")
+        con.execute("CREATE TABLE S AS SELECT * FROM '../data/synthetic/S.csv'")
+        con.execute("CREATE TABLE T AS SELECT * FROM '../data/synthetic/T.csv'")
+        con.execute("CREATE TABLE test AS SELECT * FROM '../data/synthetic/RST.csv'")
+        x = ["A", "B", "D", "E", "F"]
+        y = "H"
+
+        exe = DuckdbExecutor(con, debug=False)
+    
+        dataset = JoinGraph(exe=exe, data_type='LCAT')
+        dataset.add_relation('R', ['B', 'D'], y = 'H')
+        dataset.add_relation('S', ['A', 'E'])
+        dataset.add_relation('T', ['F'])
+        dataset.add_join("R", "S", ["A"], ["A"])
+        dataset.add_join("R", "T", ["B"], ["B"])
+        
+        iteration = 3
+        depth = 3
+
+        reg = GradientBoosting(learning_rate=1, max_leaves=2 ** depth - 1, max_depth=depth, iteration = iteration)
+
+        reg.fit(dataset)
+
+        
+        clf = lightgbm.LGBMRegressor(learning_rate=1, num_leaves=2 ** depth - 1, max_depth=depth, min_child_samples=0, 
+                                     objective='RMSE', cat_l2=0, cat_smooth=0, deterministic=True,
+                                     max_bin=10000, min_data_in_bin=1, n_estimators=iteration, 
+                                     max_cat_threshold=10000, max_cat_to_onehot=1, min_data_per_group=1)
+        clf.fit(join[x], join[y], feature_name=x, categorical_feature=x)
+        mse = mean_squared_error(join[y], clf.predict(join[x]))
+        print(math.sqrt(mse))
+        print(reg.compute_rmse('test')[0])
+        # print(reg.compute_rmse('test')[0])
 
 if __name__ == '__main__':
     unittest.main()
