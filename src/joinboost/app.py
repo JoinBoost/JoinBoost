@@ -20,14 +20,13 @@ class DummyModel(App):
     
     def fit(self,
            jg: JoinGraph):
-        self.cjt = jg
-        self.cjt._preprocess()
+        jg._preprocess()
 
         # compute the total average
         # Try to make it a with clause?
-        agg_exp = self.semi_ring.col_sum(s=self.cjt.get_target_var(), c = '1')
-        TS, TC = self.cjt.exe.execute_spja_query(agg_exp,
-                                              [self.cjt.get_target_relation()],
+        agg_exp = self.semi_ring.col_sum(s=jg.get_target_var(), c = '1')
+        TS, TC = jg.exe.execute_spja_query(agg_exp,
+                                              [jg.get_target_relation()],
                                               mode = 3)[0]
         mean = TS / TC
         self.semi_ring.set_semi_ring(TS, TC)
@@ -44,26 +43,29 @@ class DecisionTree(DummyModel):
                  max_leaves: int = 31,
                  learning_rate: float = 1, 
                  max_depth: int = 6,
-                 subsample: float = 1):
+                 subsample: float = 1,
+                 debug: bool = False):
+        
         super().__init__()
         self.max_leaves = max_leaves
         self.learning_rate = learning_rate
         self.max_depth = max_depth
         self.subsample = subsample
+        self.debug = debug
         
     def fit(self,
            jg: JoinGraph):
         # shall we first sample then fit dummy model, or first fit dummy model then sample?
+        self.cjt = CJT(semi_ring=self.semi_ring, join_graph=jg)
+        self.create_sample()
         super().fit(jg)
-        self.cjt = CJT(semi_ring=self.semi_ring, join_graph=self.cjt)
-        self.preprocess()
         
         self.cjt.lift(self.cjt.get_target_var() + "- (" + str(self.constant_) + ")")
         self.semi_ring.set_semi_ring(0, self.count_)
         
         self.train_one()
     
-    def preprocess(self):
+    def create_sample(self):
         if self.subsample < 1:
             # TODO: Possible to sample 0 tuples.
             # Add check to make sure the sampled table has tuples
@@ -90,7 +92,9 @@ class DecisionTree(DummyModel):
             self._update_error()
             
         self._build_model()
-        self._clean_messages()
+        # TODO: should clean all temp tables, not just messages
+        if not self.debug:
+            self._clean_messages()
         
     def _build_model(self):
         cur_model_def = []
@@ -176,13 +180,16 @@ class DecisionTree(DummyModel):
                                                                   window_by=[attr],
                                                                   mode=4)
                 
-                # TODO: remove window function
                 elif attr_type == 'LCAT':
+                    # TODO: further optimization. We don't need to keep the attr.
+                    # The only thing we care for splitting is the sum_s/sum_c
                     agg_exp = {attr: (attr, Aggregator.IDENTITY),
                                'object': (('s', 'c'), Aggregator.DIV),
                                's': ('s', Aggregator.IDENTITY),
                                'c': ('c', Aggregator.IDENTITY)}
-                    obj_view = self.cjt.exe.execute_spja_query(agg_exp, [absoprtion_view])
+                    obj_view = self.cjt.exe.execute_spja_query(agg_exp, 
+                                                               [absoprtion_view],
+                                                               mode=4)
                     agg_exp = cur_semi_ring.col_sum()
                     agg_exp[attr] = (attr, Aggregator.IDENTITY)
                     agg_exp['object'] = ('object', Aggregator.IDENTITY)
@@ -284,8 +291,9 @@ class GradientBoosting(DecisionTree):
                  max_leaves: int = 31,
                  learning_rate: float = 1, 
                  max_depth: int = 6,
-                 iteration: int = 1):
-        super().__init__(max_leaves,learning_rate,max_depth)
+                 iteration: int = 1,
+                 debug: bool = False):
+        super().__init__(max_leaves,learning_rate,max_depth,debug=debug)
         self.iteration = iteration
     
     def fit(self,
@@ -313,8 +321,9 @@ class RandomForest(DecisionTree):
                  learning_rate: float = 1, 
                  max_depth: int = 6,
                  subsample: float = 1,
-                 iteration: int = 1,):
-        super().__init__(max_leaves,learning_rate,max_depth,subsample)
+                 iteration: int = 1,
+                 debug: bool = False):
+        super().__init__(max_leaves,learning_rate,max_depth,subsample,debug=debug)
         self.iteration = iteration
         self.learning_rate = 1/iteration
     

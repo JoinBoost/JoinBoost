@@ -194,9 +194,8 @@ class TestModel(unittest.TestCase):
 
         clf.fit(R[x], R[y], feature_name=x, categorical_feature=x)
         mse = mean_squared_error(R[y], clf.predict(R[x]))
-
-        print(math.sqrt(mse))
-        print(reg.compute_rmse('R')[0])
+        
+        self.assertTrue(reg.compute_rmse('R')[0] < math.sqrt(mse))
 
 if __name__ == '__main__':
     unittest.main()

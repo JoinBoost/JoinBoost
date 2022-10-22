@@ -2,13 +2,25 @@ from abc import ABC, abstractmethod
 from .aggregator import *
 import time
 
-def ExecutorFactory(con):
-    if issubclass(type(con), Executor):
+class ExecutorException(Exception):
+    pass
+
+
+def ExecutorFactory(con=None):
+    # By default if con is not specified, user uses Pandas datafrmae
+    if con is None:
+        try:
+            import duckdb
+        except:
+            raise ExecutorException("To support Pandas dataframe, please install duckdb.")
+        con = duckdb.connect(database=':memory:')
+        return PandasExecutor(con)
+    elif issubclass(type(con), Executor):
         return con
     elif type(con).__name__ == 'DuckDBPyConnection':
         return DuckdbExecutor(con)
     else:
-        raise Exception("Unknown connector with type " + type(con).__name__)
+        raise ExecutorException("Unknown connector with type " + type(con).__name__)
         
         
 class Executor(ABC):
@@ -28,7 +40,10 @@ class Executor(ABC):
     
     def select_all(self, table):
         pass
-
+    
+    def add_table(self, table: str, table_address):
+        pass
+    
     def delete_table(self, table: str):
         pass
 
@@ -54,6 +69,7 @@ class Executor(ABC):
                            table_name: str = '',
                            replace: bool = True) -> str:
         pass
+
 
 
 class DuckdbExecutor(Executor):
@@ -121,7 +137,7 @@ class DuckdbExecutor(Executor):
     
     def check_table(self, table):
         if not table.startswith(self.prefix):
-            raise("Don't modify user tables!")
+            raise Exception("Don't modify user tables!")
     
     def update_query(self,
                      update_expression,
@@ -138,17 +154,17 @@ class DuckdbExecutor(Executor):
     # mode = 3 will execute the query and return the result
     # mode = 4 will create the sql query and return the query (for nested query)
     def execute_spja_query(self, 
+                           # By default, we select all
                            aggregate_expressions: dict = {None: ('*', Aggregator.IDENTITY)},
                            from_tables: list = [],
                            select_conds: list = [],
                            group_by: list = [], 
                            window_by: list = [],
-                           table_name: str = None,
                            order_by: str = None,
                            limit: int = None,
                            sample_rate: float = None,
                            replace: bool = True,
-                           mode: int = 5):
+                           mode: int = 4):
         
         spja = self.spja_query(aggregate_expressions=aggregate_expressions,
                                from_tables=from_tables,
@@ -160,24 +176,30 @@ class DuckdbExecutor(Executor):
                                sample_rate=sample_rate)
         
         if mode == 1:
-            name_ = (table_name if table_name is not None else self.get_next_name())
+            name_ = self.get_next_name()
             entity_type_ = 'TABLE '
             sql = 'CREATE ' + ('OR REPLACE ' if replace else '') + entity_type_  + name_ + ' AS '
             sql += spja
             self._execute_query(sql)
             return name_
+        
+        elif mode == 2:
+            name_ = self.get_next_name()
+            entity_type_ = 'VIEW '
+            sql = 'CREATE ' + ('OR REPLACE ' if replace else '') + entity_type_  + name_ + ' AS '
+            sql += spja
+            self._execute_query(sql)
+            return name_
+        
         elif mode == 3:
             return self._execute_query(spja)
+        
         elif mode == 4:
             sql = '(' + spja + ')'
-            return sql    
+            return sql
+        
         else:
-            name_ = (table_name if table_name is not None else self.get_next_name())
-            entity_type_ = 'TABLE '
-            sql = 'CREATE ' + ('OR REPLACE ' if replace else '') + entity_type_  + name_ + ' AS '
-            sql += spja
-            self._execute_query(sql)
-            return name_
+            raise ExecutorException('Unsupported mode for query execution!')
         
     
     
@@ -236,3 +258,8 @@ class DuckdbExecutor(Executor):
             print(e)
         return result
 
+class PandasExecutor(DuckdbExecutor):
+    def add_table(self, table: str, table_address):
+        if table_address is None:
+            raise ExecutorException("Please pass in the pandas dataframe!")
+        self.conn.register(table, table_address)

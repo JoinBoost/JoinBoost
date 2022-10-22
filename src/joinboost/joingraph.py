@@ -2,9 +2,12 @@ from .aggregator import Aggregator
 import copy
 from .executor import ExecutorFactory
 
+class JoinGraphException(Exception):
+    pass
+
 class JoinGraph:
     def __init__(self, 
-                exe, 
+                exe = None, 
                 joins = {}, 
                 relation_schema = {},
                 target_var = None,
@@ -39,22 +42,23 @@ class JoinGraph:
     def check_acyclic(self):
         seen = set()
         
-        def dfs(table_name):
-            seen.add(table_name)
-            for neighbour in self.joins[table_name]:
-                if neighbour in seen:
-                    if table_name not in self.joins[neighbour]:
+        def dfs(cur_table, parent=None):
+            seen.add(cur_table)
+            for neighbour in self.joins[cur_table]:
+                if neighbour != parent: 
+                    if neighbour in seen:
                         return False
-                else:
-                    dfs(neighbour)
+                    else:
+                        dfs(neighbour, cur_table)
             return True
         
-        for table_name in self.joins:
-            if table_name not in seen:
-                if not dfs(table_name):
-                    return False
+        # check acyclic
+        if not dfs(list(self.joins.keys())[0]):
+            raise JoinGraphException("The join graph is cyclic!")
         
-        return True
+        # check not disjoint
+        if len(seen) != len(self.joins):
+            raise JoinGraphException("The join graph is disjoint!")
     
     # add relation, features and target variable to join graph
     # current assumption: Y is in the fact table
@@ -62,12 +66,16 @@ class JoinGraph:
                      relation: str, 
                      X: list = [], 
                      y: str = None, 
-                     categorical_feature: list = []):
+                     categorical_feature: list = [],
+                     relation_address = None):
         
+        self.exe.add_table(relation, relation_address)
         self.joins[relation] = dict()
         if relation not in self.relation_schema:
                 self.relation_schema[relation] = {}
-                
+        
+        self.check_features_exist(relation, X + ([y] if y is not None else []))
+        
         for x in X:
             # by default, assume all features to be numerical
             self.relation_schema[relation][x] = "NUM"
@@ -84,17 +92,18 @@ class JoinGraph:
     # get features for each table
     def get_relation_features(self, r_name):
         if r_name not in self.relation_schema:
-            raise Exception('Attribute not in ' + r_name)
+            raise JoinGraphException('Attribute not in ' + r_name)
         return list(self.relation_schema[r_name].keys())
     
     # get the join keys between two tables
     # all get all the join keys of one table
+    # TODO: check if the join keys exist
     def get_join_keys(self, f_table: str, t_table: str = None):
         if f_table not in self.joins:
             return []
         if t_table:
             if t_table not in self.joins[f_table]:
-                raise Exception(t_table, 'not connected to', f_table)
+                raise JoinGraphException(t_table, 'not connected to', f_table)
             return self.joins[f_table][t_table]["keys"]
         else:
             keys = set()
@@ -112,11 +121,11 @@ class JoinGraph:
 
     def add_join(self, table_name_left: str, table_name_right: str, left_keys: list, right_keys: list):
         if len(left_keys) != len(right_keys):
-            raise Exception('Join keys have different lengths!')
+            raise JoinGraphException('Join keys have different lengths!')
         if table_name_left not in self.relation_schema:
-            raise Exception(table_name_left + ' doesn\'t exit!')
+            raise JoinGraphException(table_name_left + ' doesn\'t exit!')
         if table_name_right not in self.relation_schema:
-            raise Exception(table_name_right + ' doesn\'t exit!')
+            raise JoinGraphException(table_name_right + ' doesn\'t exit!')
 
         left_keys = [attr for attr in left_keys]
         right_keys = [attr for attr in right_keys]
@@ -126,9 +135,9 @@ class JoinGraph:
         
     def replace(self, table_prev, table_after):
         if table_prev not in self.relation_schema: 
-            raise Exception(table_prev + ' doesn\'t exit!')
+            raise JoinGraphException(table_prev + ' doesn\'t exit!')
         if table_after in self.relation_schema: 
-            raise Exception(table_after + ' already exits!')
+            raise JoinGraphException(table_after + ' already exits!')
         self.relation_schema[table_after] = self.relation_schema[table_prev]
         del self.relation_schema[table_prev]
         if self.target_relation == table_prev:
@@ -144,8 +153,16 @@ class JoinGraph:
             del self.joins[table_prev]
         
     def _preprocess(self):
-        self.check_all_features_exist()
-    
+        # self.check_all_features_exist()
+        self.check_acyclic()
+        
+    def check_target_exist(self):
+        if self.target_var is None:
+            raise JoinGraphException("Target variable doesn't exist!")
+            
+        if self.target_relation is None:
+            raise JoinGraphException("Target relation doesn't exist!")
+        
     def check_all_features_exist(self):
         for table in self.relation_schema:
             features = self.relation_schema[table].keys()
@@ -154,7 +171,8 @@ class JoinGraph:
     def check_features_exist(self, table, features):
         attributes = self.exe.get_schema(table)
         if not set(features).issubset(set(attributes)):
-            Exception('Key error in ' + str(features) + '. Attribute does not exist in table' + table)
+            raise JoinGraphException('Key error in ' + str(features) + '. Attribute does not exist in table ' \
+                            + table + ' with schema ' + str(attributes))
 
 #     def decide_feature_type(self, table, attrs, attr_types, threshold, exe: Executor):
 #         self.relations.append(table)
@@ -180,3 +198,6 @@ class JoinGraph:
 # todo: remove s,c logic from app
 # infer executor from class
 # app -> models
+# support classification
+# support predict based on fact table
+# benchmark predict performance
