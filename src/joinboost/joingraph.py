@@ -14,7 +14,8 @@ class JoinGraph:
                 joins = {}, 
                 relation_schema = {},
                 target_var = None,
-                target_relation = None):
+                target_relation = None,
+                graph_html_path='JoinBoost/src/joinboost/d3graph.html'):
         
         self.exe = ExecutorFactory(exe)
         # maps each from_relation => to_relation => {keys: (from_keys, to_keys)}
@@ -25,7 +26,7 @@ class JoinGraph:
         self.target_relation = target_relation
         # some magic/random number used for jupyter notebook display
         self.session_id = int(time.time())
-        self.rep_template = open("JoinBoost/src/joinboost/d3graph.html", "r").read()
+        self.rep_template = open(graph_html_path, "r").read()
     
     def get_relations(self): 
         return list(self.relation_schema.keys())
