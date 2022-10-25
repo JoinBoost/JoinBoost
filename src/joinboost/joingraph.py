@@ -1,9 +1,12 @@
+import time
+
 from .aggregator import Aggregator
 import copy
 from .executor import ExecutorFactory
 
 class JoinGraphException(Exception):
     pass
+
 
 class JoinGraph:
     def __init__(self, 
@@ -20,6 +23,9 @@ class JoinGraph:
         self.relation_schema = copy.deepcopy(relation_schema)
         self.target_var = target_var
         self.target_relation = target_relation
+        # some magic/random number used for jupyter notebook display
+        self.session_id = int(time.time())
+        self.rep_template = open("./d3graph.html", "r").read()
     
     def get_relations(self): 
         return list(self.relation_schema.keys())
@@ -173,6 +179,32 @@ class JoinGraph:
         if not set(features).issubset(set(attributes)):
             raise JoinGraphException('Key error in ' + str(features) + '. Attribute does not exist in table ' \
                             + table + ' with schema ' + str(attributes))
+
+    # output html that displays the join graph. Taken from JoinExplorer notebook
+    def _repr_html_(self):
+        nodes = []
+        links = []
+        for table_name in self.relation_schema:
+            nodes.append({"id": table_name, "attributes": list(self.relation_schema[table_name].keys())})
+
+        # avoid edge in opposite direction
+        seen = set()
+        for table_name_left in self.joins:
+            for table_name_right in self.joins[table_name_left]:
+                if (table_name_right, table_name_left) in seen:
+                    continue
+                keys = self.joins[table_name_left][table_name_right]['keys']
+                links.append({"source": table_name_left, "target": table_name_right, \
+                              "left_keys": keys[0], "right_keys": keys[1]})
+                seen.add((table_name_left, table_name_right))
+
+        self.session_id += 1
+
+        s = self.rep_template
+        s = s.replace("{{session_id}}", str(self.session_id))
+        s = s.replace("{{nodes}}", str(nodes))
+        s = s.replace("{{links}}", str(links))
+        return s
 
 #     def decide_feature_type(self, table, attrs, attr_types, threshold, exe: Executor):
 #         self.relations.append(table)

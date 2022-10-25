@@ -7,7 +7,7 @@ class ExecutorException(Exception):
 
 
 def ExecutorFactory(con=None):
-    # By default if con is not specified, user uses Pandas datafrmae
+    # By default if con is not specified, user uses Pandas dataframe
     if con is None:
         try:
             import duckdb

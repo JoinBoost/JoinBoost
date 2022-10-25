@@ -133,3 +133,4 @@ dmypy.json
 /tests/*.ipynb
 /note
 
+.idea
