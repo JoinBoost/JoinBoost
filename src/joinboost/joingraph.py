@@ -25,7 +25,7 @@ class JoinGraph:
         self.target_relation = target_relation
         # some magic/random number used for jupyter notebook display
         self.session_id = int(time.time())
-        self.rep_template = open("/JoinBoost/src/joinboost/d3graph.html", "r").read()
+        self.rep_template = open("JoinBoost/src/joinboost/d3graph.html", "r").read()
     
     def get_relations(self): 
         return list(self.relation_schema.keys())
