@@ -166,11 +166,12 @@ class DecisionTree(DummyModel):
             self.split_candidates.put((-best_criteria, cjt_depth,) + best_criteria_ann + (cjt_id,))
             return
         
+        ts, tc = cur_semi_ring.get_value()
+        const_ = float((ts**2)/tc)
         for r_name in cjt.get_relations():
             for attr in cjt.get_relation_features(r_name):
                 attr_type, group_by = self.cjt.get_type(r_name, attr), [attr]
                 absoprtion_view = cjt.absorption(r_name, group_by, mode=4)
-                ts, tc = cur_semi_ring.get_value()
                 if attr_type == 'NUM':
                     # TODO: make ['c', 's'] be something we can get from semi-ring, for different metrics
                     agg_exp = cur_semi_ring.col_sum()
@@ -199,31 +200,27 @@ class DecisionTree(DummyModel):
                                                                   mode=4)
                 elif attr_type == 'CAT':
                     view_to_max = absoprtion_view
-                
                 # TODO: move this logic somewhere else
                 l2_agg_exp = {
                     attr: (attr, Aggregator.IDENTITY),
-                    'criteria': ('CASE WHEN ' + str(tc) + ' > c THEN (-(CAST(' + str(ts) + ' AS DOUBLE)/' + str(tc) +
-                                ')* ' + str(ts) + ' + (s/c)*s + (' + str(ts) + '-s)/(' + str(tc) + '-c)*(' + str(ts) +
-                                '-s)) ELSE 0 END', Aggregator.IDENTITY),
+                    'criteria': ('CASE WHEN ' + str(tc) + ' > c THEN ((s/c)*s + (' + str(ts) + '-s)/(' + 
+                                 str(tc) + '-c)*(' + str(ts) + '-s)) ELSE 0 END', Aggregator.IDENTITY),
                     'c': ('c', Aggregator.IDENTITY),
                     's': ('s', Aggregator.IDENTITY),
                 }
-                view_max = self.cjt.exe.execute_spja_query(l2_agg_exp, 
+                results = self.cjt.exe.execute_spja_query(l2_agg_exp, 
                                                           [view_to_max], 
                                                           order_by='criteria DESC', 
                                                           limit=1, 
-                                                          mode=4)
-                
-                results = self.cjt.exe.execute_spja_query(from_tables=[view_max], mode=3)
+                                                          mode=3)
                 if not results:
                     continue
                 cur_value, cur_criteria, c, s = results[0]
-                if cur_criteria >= best_criteria:
+                if cur_criteria > best_criteria:
                     best_criteria = cur_criteria
                     # relation name, split attribute, split value, new s, new c  
                     best_criteria_ann = (r_name, attr, str(cur_value), s, c)
-        self.split_candidates.put((-best_criteria, cjt_depth,) + best_criteria_ann + (cjt_id,))
+        self.split_candidates.put((const_-best_criteria, cjt_depth,) + best_criteria_ann + (cjt_id,))
         
     # split the semi-ring according to current split
     def split_semi_ring(self, 
