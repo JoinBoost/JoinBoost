@@ -53,6 +53,7 @@ var link = svg.append("g")
     .append("line")
     .attr('id', function(d) { return d.source + "-" + d.target;})
     .attr('stroke-width', '5px')
+    .attr('stroke', '#D3D3D3')
     .call(d3.drag()
         .on("start", dragstarted)
         .on("drag", dragged)
@@ -159,6 +160,7 @@ function dragstarted(d) {
 
     svg.selectAll("line")
       .style("stroke-width", null)
+        .style('stroke', '#D3D3D3')
 
     schemaarea.selectAll("span")
       .style("color", null)
@@ -179,6 +181,7 @@ function dragstarted(d) {
         // highligt line
         svg.selectAll("line").filter(function(cur_d) {return cur_d.source == d.source && cur_d.target == d.target;})
           .style("stroke-width", "7px")
+            .style("stroke", "#000000")
 
         schemaarea.select("#" + d.source.id).selectAll("span")
           .filter(function(cur_d) {return d.left_keys.includes(cur_d);})
