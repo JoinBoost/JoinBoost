@@ -185,7 +185,7 @@ class JoinGraph:
         nodes = []
         links = []
         for table_name in self.relation_schema:
-            nodes.append({"id": table_name, "attributes": list(self.relation_schema[table_name].keys())})
+            nodes.append({"id": table_name, "attributes": self.exe.get_schema(table_name)})
 
         # avoid edge in opposite direction
         seen = set()
