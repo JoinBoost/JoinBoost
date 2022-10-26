@@ -3,6 +3,7 @@ import time
 from .aggregator import Aggregator
 import copy
 from .executor import ExecutorFactory
+import pkgutil
 
 class JoinGraphException(Exception):
     pass
@@ -25,7 +26,7 @@ class JoinGraph:
         self.target_relation = target_relation
         # some magic/random number used for jupyter notebook display
         self.session_id = int(time.time())
-        self.rep_template = open('JoinBoost/src/joinboost/d3graph.html', "r").read()
+        self.rep_template = data = pkgutil.get_data(__name__, "d3graph.html").decode('utf-8')
     
     def get_relations(self): 
         return list(self.relation_schema.keys())
@@ -185,7 +186,9 @@ class JoinGraph:
         nodes = []
         links = []
         for table_name in self.relation_schema:
-            nodes.append({"id": table_name, "attributes": list(self.relation_schema[table_name].keys())})
+            nodes.append({"id": table_name, 
+                          "attributes": list(self.relation_schema[table_name].keys())
+                          + ([self.target_var] if table_name == self.target_relation else [])})
 
         # avoid edge in opposite direction
         seen = set()
