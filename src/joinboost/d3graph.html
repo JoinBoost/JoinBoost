@@ -52,7 +52,7 @@ var link = svg.append("g")
     .enter()
     .append("line")
     .attr('id', function(d) { return d.source + "-" + d.target;})
-    .attr('stroke-width', '8px')
+    .attr('stroke-width', '5px')
     .call(d3.drag()
         .on("start", dragstarted)
         .on("drag", dragged)
@@ -176,9 +176,9 @@ function dragstarted(d) {
           .style("color","#009efd")
     }
     else{
-        // highligt rect
+        // highligt line
         svg.selectAll("line").filter(function(cur_d) {return cur_d.source == d.source && cur_d.target == d.target;})
-          .style("stroke-width", "3px")
+          .style("stroke-width", "7px")
 
         schemaarea.select("#" + d.source.id).selectAll("span")
           .filter(function(cur_d) {return d.left_keys.includes(cur_d);})
