@@ -27,6 +27,9 @@ class JoinGraph:
         # some magic/random number used for jupyter notebook display
         self.session_id = int(time.time())
         self.rep_template = data = pkgutil.get_data(__name__, "d3graph.html").decode('utf-8')
+        # if any column has name 's' or 'c', name the sum column as 
+        # 'joinboost_preserved_s' and count column as 'joinboost_preserved_c'
+        self.rename_preserved_sc = False
     
     def get_relations(self): 
         return list(self.relation_schema.keys())
@@ -45,6 +48,9 @@ class JoinGraph:
     
     def get_joins(self):
         return self.joins
+    
+    def get_rename_preserved_sc(self):
+        return self.rename_preserved_sc
     
     def check_acyclic(self):
         seen = set()
@@ -86,6 +92,8 @@ class JoinGraph:
         for x in X:
             # by default, assume all features to be numerical
             self.relation_schema[relation][x] = "NUM"
+            if x == 's' or x == 'c':
+                self.rename_preserved_sc = True
             
         for x in categorical_feature:
             self.relation_schema[relation][x] = "LCAT"

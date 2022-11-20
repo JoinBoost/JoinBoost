@@ -63,43 +63,45 @@ class CJT(JoinGraph):
                                     self.get_message(table, self.target_relation))
         return neighbors
     
-    def calibration(self, rooto_table: str = None):
+    def calibration(self, rooto_table: str = None, sc_name=dict()):
         if not rooto_table:
             rooto_table = self.target_relation
-        self.upward_message_passing(rooto_table, m_type = Message.IDENTITY)
-        self.downward_message_passing(rooto_table, m_type = Message.FULL)
+        self.upward_message_passing(rooto_table, m_type=Message.IDENTITY, sc_name=sc_name)
+        self.downward_message_passing(rooto_table, m_type=Message.FULL, sc_name=sc_name)
 
     def downward_message_passing(self, 
                                  rooto_table: str = None, 
-                                 m_type: Message = Message.UNDECIDED):
+                                 m_type: Message = Message.UNDECIDED, sc_name=dict()):
         msgs = []
         if not rooto_table:
             rooto_table = self.target_relation
-        self._pre_dfs(rooto_table, m_type=m_type)
+        self._pre_dfs(rooto_table, m_type=m_type, sc_name=sc_name)
         return msgs
     
     # TODO: this is not working if upward_message_passing from non-fact table
     def upward_message_passing(self, rooto_table: str = None, 
-                               m_type: Message = Message.UNDECIDED):
+                               m_type: Message = Message.UNDECIDED, sc_name = dict()):
         if not rooto_table:
             rooto_table = self.target_relation
-        self._post_dfs(rooto_table, m_type=m_type)
+        self._post_dfs(rooto_table, m_type=m_type, sc_name=sc_name)
 
     def _post_dfs(self, currento_table: str, 
                   parent_table: str = None, 
-                  m_type: Message = Message.UNDECIDED):
+                  m_type: Message = Message.UNDECIDED, sc_name=dict()):
         jg = self.get_joins()
+
         if currento_table not in jg:
             return
         for c_neighbor in jg[currento_table]:
             if c_neighbor != parent_table:
-                self._post_dfs(c_neighbor, currento_table, m_type=m_type)
+                self._post_dfs(c_neighbor, currento_table, m_type=m_type, sc_name=sc_name)
         if parent_table:
-            self._send_message(from_table=currento_table, to_table=parent_table, m_type=m_type)
+            self._send_message(from_table=currento_table, to_table=parent_table,
+                               m_type=m_type, sc_name=sc_name)
 
     def _pre_dfs(self, currento_table: str, 
                  parent_table: str = None, 
-                 m_type: Message = Message.UNDECIDED):
+                 m_type: Message = Message.UNDECIDED, sc_name=dict()):
         joins = self.get_joins()
         if currento_table not in joins:
             return
@@ -107,14 +109,19 @@ class CJT(JoinGraph):
             m_type = Message.FULL
         for c_neighbor in joins[currento_table]:
             if c_neighbor != parent_table:
-                self._send_message(currento_table, c_neighbor, m_type=m_type)
-                self._pre_dfs(c_neighbor, currento_table, m_type=m_type)
+                self._send_message(currento_table, c_neighbor,
+                                   m_type=m_type, sc_name=sc_name)
+                self._pre_dfs(c_neighbor, currento_table, m_type=m_type, sc_name=sc_name)
 
-    def absorption(self, table: str, group_by: list, mode=4):
+    def absorption(self, table: str, group_by: list, mode=4, sc_name=dict()):
         from_table_attrs = self.get_relation_features(table)
         incoming_messages, join_conds = self._get_income_messages(table)
         
-        aggregate_expressions = self.semi_ring.col_sum()
+        if sc_name:
+            s_col, c_col = sc_name['s_col'], sc_name['c_col']
+            aggregate_expressions = self.semi_ring.col_sum(s_col, c_col, s_col, c_col)
+        else:
+            aggregate_expressions = self.semi_ring.col_sum()
         for attr in group_by:
             aggregate_expressions[attr] = (table + "." + attr, Aggregator.IDENTITY)
         
@@ -163,8 +170,7 @@ class CJT(JoinGraph):
 
 
     # 3 message types: identity, selection, FULL
-    def _send_message(self, from_table: str, to_table: str, m_type: Message = Message.UNDECIDED):
-    # print('--Sending Message from', from_table, 'to', to_table, 'm_type is', m_type)
+    def _send_message(self, from_table: str, to_table: str, m_type: Message = Message.UNDECIDED, sc_name=dict()):
         # identity message optimization
         if m_type == Message.IDENTITY:
             self.joins[from_table][to_table].update({'message_type': m_type,})
@@ -190,23 +196,29 @@ class CJT(JoinGraph):
         l_join_keys, _ = self.get_join_keys(from_table, to_table)
         
         # compute aggregation
-        aggregation = (self.semi_ring.col_sum() if m_type == Message.FULL else {})
+        if sc_name:
+            s_col, c_col = sc_name['s_col'], sc_name['c_col']
+            agg = self.semi_ring.col_sum(s_col, c_col, s_col, c_col)
+        else:
+            agg = self.semi_ring.col_sum()
+        # else:
+        #     aggregation = {}
+        aggregation = (agg if m_type == Message.FULL else {})
         for attr in l_join_keys:
             aggregation[attr] = (from_table + "." + attr, Aggregator.IDENTITY)
-            
+        
         message_name = self.exe.execute_spja_query(aggregation, 
                                                     from_tables=[m['message'] for m in incoming_messages]+[from_table], 
                                                     select_conds=join_conds+self.get_parsed_annotations(from_table),
                                                     group_by=[from_table + '.' + attr for attr in l_join_keys], 
                                                     mode=1)
-
         self.joins[from_table][to_table].update({'message': message_name, 'message_type': m_type})
     
     # by default, lift the target variale
-    def lift(self, var = None):
+    def lift(self, var = None, s_col='s', c_col='c'):
         if var is None:
             var = self.target_var
-        lift_exp = self.semi_ring.lift_exp(var)
+        lift_exp = self.semi_ring.lift_exp(var, s_after=s_col, c_after=c_col)
         # copy the rest attributes
         for attr in self.get_useful_attributes(self.target_relation):
             lift_exp[attr] = (attr, Aggregator.IDENTITY)
