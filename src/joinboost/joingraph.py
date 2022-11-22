@@ -86,8 +86,6 @@ class JoinGraph:
         for x in X:
             # by default, assume all features to be numerical
             self.relation_schema[relation][x] = "NUM"
-            if x == 's' or x == 'c':
-                self.rename_preserved_sc = True
             
         for x in categorical_feature:
             self.relation_schema[relation][x] = "LCAT"
