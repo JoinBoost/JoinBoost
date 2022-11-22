@@ -33,7 +33,7 @@ class TestApp(unittest.TestCase):
 		self.dataset1.add_join("holidays", "oil", ["date"], ["date"])
 		
 		self.dataset2.add_relation("sales", [], y = 'Y')
-		self.dataset2.add_relation("holidays_renamed_sc_cols", ["s", "c", "locale_name", "transferred","f2"])
+		self.dataset2.add_relation("holidays_renamed_sc_cols", ["joinboost_preserved_s", "c", "locale_name", "transferred","f2"])
 		self.dataset2.add_relation("oil", ["dcoilwtico","f3"])
 		self.dataset2.add_relation("transactions", ["transactions","f5"])
 		self.dataset2.add_relation("stores", ["city","state","stype","cluster","f4"])
@@ -51,6 +51,8 @@ class TestApp(unittest.TestCase):
 		reg2 = DecisionTree(learning_rate=1, max_leaves=2 ** depth, max_depth=depth)
 		reg2.fit(self.dataset2)
 		
+		print(reg1.compute_rmse('train')[0])
+		print(reg2.compute_rmse('train')[0])
 		self.assertTrue(reg1.compute_rmse('train')[0] == reg2.compute_rmse('train')[0])
 
 if __name__ == '__main__':
