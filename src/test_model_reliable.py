@@ -1,0 +1,64 @@
+import duckdb
+
+from joinboost.executor import DuckdbExecutor
+from joinboost.joingraph import JoinGraph
+from joinboost.app import DecisionTree,GradientBoosting
+import unittest
+
+class TestApp(unittest.TestCase):
+    def setUp(self):
+        con = duckdb.connect(database=':memory:')
+        con.execute("CREATE OR REPLACE TABLE holidays AS SELECT * FROM '../data/favorita/holidays.csv';")
+        con.execute("CREATE OR REPLACE TABLE holidays_renamed_sc_cols AS SELECT * FROM '../data/favorita/holidays_renamed_sc_cols.csv';")
+        con.execute("CREATE OR REPLACE TABLE oil AS SELECT * FROM '../data/favorita/oil.csv';")
+        con.execute("CREATE OR REPLACE TABLE transactions AS SELECT * FROM '../data/favorita/transactions.csv';")
+        con.execute("CREATE OR REPLACE TABLE stores AS SELECT * FROM '../data/favorita/stores.csv';")
+        con.execute("CREATE OR REPLACE TABLE items AS SELECT * FROM '../data/favorita/items.csv';")
+        con.execute("CREATE OR REPLACE TABLE sales AS SELECT * FROM '../data/favorita/sales_small.csv';")
+        con.execute("CREATE OR REPLACE TABLE train AS SELECT * FROM '../data/favorita/train_small.csv';")
+        exe = DuckdbExecutor(con, debug=False)
+        dataset1 = JoinGraph(exe=exe)
+        dataset2 = JoinGraph(exe=exe)
+
+        dataset1.add_relation("sales", [], y = 'Y')
+        dataset1.add_relation("holidays", ["htype", "locale", "locale_name", "transferred","f2"])
+        dataset1.add_relation("oil", ["dcoilwtico","f3"])
+        dataset1.add_relation("transactions", ["transactions","f5"])
+        dataset1.add_relation("stores", ["city","state","stype","cluster","f4"])
+        dataset1.add_relation("items", ["family","class","perishable","f1"])
+        dataset1.add_join("sales", "items", ["item_nbr"], ["item_nbr"])
+        dataset1.add_join("sales", "transactions", ["tid"], ["tid"])
+        dataset1.add_join("transactions", "stores", ["store_nbr"], ["store_nbr"])
+        dataset1.add_join("transactions", "holidays", ["date"], ["date"])
+        dataset1.add_join("holidays", "oil", ["date"], ["date"])
+        
+        dataset2.add_relation("sales", [], y = 'Y')
+        dataset2.add_relation("holidays_renamed_sc_cols", ["joinboost_preserved_s", "c", "locale_name", "transferred","f2"])
+        dataset2.add_relation("oil", ["dcoilwtico","f3"])
+        dataset2.add_relation("transactions", ["transactions","f5"])
+        dataset2.add_relation("stores", ["city","state","stype","cluster","f4"])
+        dataset2.add_relation("items", ["family","class","perishable","f1"])
+        dataset2.add_join("sales", "items", ["item_nbr"], ["item_nbr"])
+        dataset2.add_join("sales", "transactions", ["tid"], ["tid"])
+        dataset2.add_join("transactions", "stores", ["store_nbr"], ["store_nbr"])
+        dataset2.add_join("transactions", "holidays_renamed_sc_cols", ["date"], ["date"])
+        dataset2.add_join("holidays_renamed_sc_cols", "oil", ["date"], ["date"])
+        
+        return dataset1, dataset2
+    
+    # this test the case when s and c are already in the databases
+    # semi-ring should choose a different name
+    def test_add_prefix_to_preserved_sc_columns(self):
+        depth = 3
+        dataset1, dataset2 = self.setUp()        
+        reg1 = DecisionTree(learning_rate=1, max_leaves=2 ** depth, max_depth=depth)
+        reg1.fit(dataset1)
+        reg2 = DecisionTree(learning_rate=1, max_leaves=2 ** depth, max_depth=depth)
+        reg2.fit(dataset2)
+        
+        print(reg1.compute_rmse('train')[0])
+        print(reg2.compute_rmse('train')[0])
+        self.assertTrue(reg1.compute_rmse('train')[0] == reg2.compute_rmse('train')[0])
+
+if __name__ == '__main__':
+    unittest.main()
