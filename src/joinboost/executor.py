@@ -165,7 +165,6 @@ class DuckdbExecutor(Executor):
                            sample_rate: float = None,
                            replace: bool = True,
                            mode: int = 4):
-        
         spja = self.spja_query(aggregate_expressions=aggregate_expressions,
                                from_tables=from_tables,
                                select_conds = select_conds,
@@ -213,7 +212,6 @@ class DuckdbExecutor(Executor):
                    limit: int = None,
                    sample_rate: float = None,
                    ):
-        
         parsed_aggregate_expressions = []
         for target_col, aggregation_spec in aggregate_expressions.items():
             para, agg = aggregation_spec
@@ -221,7 +219,6 @@ class DuckdbExecutor(Executor):
                                 + (' OVER joinboost_window ' if len(window_by) > 0 and is_agg(agg) else '')\
                                 + (' AS ' + target_col if target_col is not None else ''))
                                                 
-        
         sql = 'SELECT ' + ', '.join(parsed_aggregate_expressions) + '\n'
         sql += "FROM " + ",".join(from_tables) + '\n'
         
