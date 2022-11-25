@@ -48,17 +48,17 @@ class TestApp(unittest.TestCase):
     
     # this test the case when s and c are already in the databases
     # semi-ring should choose a different name
-    def test_add_prefix_to_preserved_sc_columns(self):
-        depth = 3
-        dataset1, dataset2 = self.setUp()        
-        reg1 = DecisionTree(learning_rate=1, max_leaves=2 ** depth, max_depth=depth)
-        reg1.fit(dataset1)
-        reg2 = DecisionTree(learning_rate=1, max_leaves=2 ** depth, max_depth=depth)
-        reg2.fit(dataset2)
+#     def test_add_prefix_to_preserved_sc_columns(self):
+#         depth = 3
+#         dataset1, dataset2 = self.setUp()        
+#         reg1 = DecisionTree(learning_rate=1, max_leaves=2 ** depth, max_depth=depth)
+#         reg1.fit(dataset1)
+#         reg2 = DecisionTree(learning_rate=1, max_leaves=2 ** depth, max_depth=depth)
+#         reg2.fit(dataset2)
         
-        print(reg1.compute_rmse('train')[0])
-        print(reg2.compute_rmse('train')[0])
-        self.assertTrue(reg1.compute_rmse('train')[0] == reg2.compute_rmse('train')[0])
+#         print(reg1.compute_rmse('train')[0])
+#         print(reg2.compute_rmse('train')[0])
+#         self.assertTrue(reg1.compute_rmse('train')[0] == reg2.compute_rmse('train')[0])
 
 if __name__ == '__main__':
     unittest.main()
