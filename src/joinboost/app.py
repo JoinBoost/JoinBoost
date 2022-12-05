@@ -56,10 +56,12 @@ class DecisionTree(DummyModel):
         
     def fit(self,
            jg: JoinGraph):
-        super().fit(jg)
+        # super().fit(jg)
+        self.semi_ring.init_sc_columns_name(jg.get_relation_schema())
         # shall we first sample then fit dummy model, or first fit dummy model then sample?
         self.cjt = CJT(semi_ring=self.semi_ring, join_graph=jg)
         self.create_sample()
+        super().fit(jg)
 
         
         self.cjt.lift(self.cjt.get_target_var() + "- (" + str(self.constant_) + ")")
@@ -208,15 +210,18 @@ class DecisionTree(DummyModel):
                 elif attr_type == 'CAT':
                     view_to_max = absoprtion_view
                 # TODO: move this logic somewhere else
-                # '' + str(tc) + ' > c THEN ((s/c)*s + (' + str(ts) + '-s)/(' + 
-                #                  str(tc) + '-c)*(' + str(ts) + '-s)) ELSE 0 END', Aggregator.IDENTITY
+                # 'str(tc) > c THEN ( (s/c)*s + 
+                #                 ( str(ts)-s) /   (str(tc)-c)*( str(ts) -s)) ELSE 0 END', Aggregator.IDENTITY
                 tc_str = str(tc)
+                ts_str = str(ts)
                 l2_agg_exp = {
                     attr: (attr, Aggregator.IDENTITY),
                     'criteria': (
                     f"""CASE WHEN {tc_str} > {c_col}
-                            THEN (({s_col} / {c_col}) * {s_col} +
-                                ({tc_str} - {s_col}) / ({tc_str} - {c_col}) * ({tc_str} - {s_col}))
+                            THEN (
+                                ({s_col} / {c_col}) * {s_col} +
+                                ({ts_str} - {s_col}) / ({tc_str} - {c_col}) * ({ts_str} - {s_col})
+                            )
                             ELSE 0
                         END
                     """, Aggregator.IDENTITY),
