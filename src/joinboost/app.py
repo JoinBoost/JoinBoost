@@ -20,19 +20,23 @@ class DummyModel(App):
     
     def fit(self,
            jg: JoinGraph):
-        jg._preprocess()
-        self.semi_ring.init_sc_columns_name(jg.get_relation_schema())
-        # compute the total average
-        # Try to make it a with clause?
-        agg_exp = self.semi_ring.col_sum(s=jg.get_target_var(), c='1')
-        TS, TC = jg.exe.execute_spja_query(agg_exp,
-                                              [jg.get_target_relation()],
-                                              mode = 3)[0]
-        mean = TS / TC
-        self.semi_ring.set_semi_ring(TS, TC)
         
-        self.count_ = TC
-        self.constant_ = mean
+        jg._preprocess()
+        self.semi_ring.init_columns_name(jg.get_relation_schema())
+        
+        # get the gradient and hessian
+        # for rmse, g is the sum and h is the count
+        agg_exp = self.semi_ring.col_sum((jg.get_target_var(), '1'))
+        g, h = jg.exe.execute_spja_query(agg_exp,
+                                          [jg.get_target_relation()],
+                                          mode = 3)[0]
+        
+        prediction = g / h
+        self.semi_ring.set_semi_ring(g, h)
+        
+        # below currently only works for rmse
+        self.count_ = h
+        self.constant_ = prediction
 
     def predict(self):
         return self.constant_
@@ -56,8 +60,9 @@ class DecisionTree(DummyModel):
     def fit(self,
            jg: JoinGraph):
         # super().fit(jg)
-        self.semi_ring.init_sc_columns_name(jg.get_relation_schema())
+        self.semi_ring.init_columns_name(jg.get_relation_schema())
         # shall we first sample then fit dummy model, or first fit dummy model then sample?
+        # the current solution is to first sample than fit dummy model
         self.cjt = CJT(semi_ring=self.semi_ring, join_graph=jg)
         self.create_sample()
         super().fit(jg)
@@ -102,9 +107,9 @@ class DecisionTree(DummyModel):
         cur_model_def = []
         for cur_cjt in self.leaf_nodes:
             annotations = cur_cjt.get_all_parsed_annotations()
-            TS, TC = cur_cjt.get_semi_ring().get_value()
+            g, h = cur_cjt.get_semi_ring().get_value()
             
-            pred = float(TS / TC)* self.learning_rate
+            pred = float(g / h)* self.learning_rate
             if annotations:
                 cur_model_def.append((pred, annotations))
         if cur_model_def:
@@ -126,21 +131,21 @@ class DecisionTree(DummyModel):
 
     def _comp_annotations(self, r_name: str, attr: str, cur_value: str, obj: float, expanding_cjt: CJT):
         attr_type = expanding_cjt.get_relation_schema()[r_name][attr]
-        s_col, c_col = self.semi_ring.get_sc_columns_name()
+        g_col, h_col = self.semi_ring.get_columns_name()
 
         # TODO: remove window_query and everything is spja
         if attr_type == 'LCAT':
             group_by = [attr]
             absoprtion_view = expanding_cjt.absorption(r_name, [attr])
             agg_exp = {attr: (attr, Aggregator.IDENTITY),
-                       'object': ((s_col, c_col), Aggregator.DIV),
-                       s_col: (s_col, Aggregator.IDENTITY),
-                       c_col: (c_col, Aggregator.IDENTITY)}
+                       'object': ((g_col, h_col), Aggregator.DIV),
+                       g_col: (g_col, Aggregator.IDENTITY),
+                       h_col: (h_col, Aggregator.IDENTITY)}
             obj_view = self.cjt.exe.execute_spja_query(agg_exp, [absoprtion_view])
-            view_ord_by_obj = self.cjt.exe.window_query(obj_view, [attr], 'object', [s_col, c_col])
+            view_ord_by_obj = self.cjt.exe.window_query(obj_view, [attr], 'object', [g_col, h_col])
             attr_view = self.cjt.exe.execute_spja_query({attr: (attr, Aggregator.IDENTITY)},
                                                         [view_ord_by_obj],
-                                                        [f'{s_col}/{c_col} <=' + str(obj)])
+                                                        [f'{g_col}/{h_col} <=' + str(obj)])
             attrs = [str(x[0])  for x in self.cjt.exe.execute_spja_query(from_tables=[attr_view], mode=3)]
             l_annotation = (attr, Annotation.IN, attrs)
             r_annotation = (attr, Annotation.NOT_IN, attrs)
@@ -162,7 +167,7 @@ class DecisionTree(DummyModel):
         cjt = self.nodes[cjt_id]
         cur_semi_ring = cjt.get_semi_ring()
         attr_meta = self.cjt.get_relation_schema()
-        s_col, c_col = self.semi_ring.get_sc_columns_name()
+        g_col, h_col = self.semi_ring.get_columns_name()
         
         # criteria, (relation name, split attribute, split value, new s, new c)
         best_criteria, best_criteria_ann = 0, ('', '', 0, 0, 0)
@@ -171,15 +176,14 @@ class DecisionTree(DummyModel):
             self.split_candidates.put((-best_criteria, cjt_depth,) + best_criteria_ann + (cjt_id,))
             return
         
-        ts, tc = cur_semi_ring.get_value()
-        const_ = float((ts**2)/tc)
+        g, h = cur_semi_ring.get_value()
+        const_ = float((g**2)/h)
         for r_name in cjt.get_relations():
             for attr in cjt.get_relation_features(r_name):
                 attr_type, group_by = self.cjt.get_type(r_name, attr), [attr]
                 absoprtion_view = cjt.absorption(r_name, group_by, mode=4)
                 if attr_type == 'NUM':
-                    # TODO: make [c_col, s_col] be something we can get from semi-ring, for different metrics
-                    agg_exp = cur_semi_ring.col_sum(s_col, c_col)
+                    agg_exp = cur_semi_ring.col_sum((g_col, h_col))
                     agg_exp[attr] = (attr, Aggregator.IDENTITY)
                     view_to_max = self.cjt.exe.execute_spja_query(agg_exp,
                                                                   [absoprtion_view], 
@@ -190,13 +194,13 @@ class DecisionTree(DummyModel):
                     # TODO: further optimization. We don't need to keep the attr.
                     # The only thing we care for splitting is the sum_s/sum_c
                     agg_exp = {attr: (attr, Aggregator.IDENTITY),
-                               'object': ((s_col, c_col), Aggregator.DIV),
-                               s_col: (s_col, Aggregator.IDENTITY),
-                               c_col: (c_col, Aggregator.IDENTITY)}
+                               'object': ((g_col, h_col), Aggregator.DIV),
+                               g_col: (g_col, Aggregator.IDENTITY),
+                               h_col: (h_col, Aggregator.IDENTITY)}
                     obj_view = self.cjt.exe.execute_spja_query(agg_exp, 
                                                                [absoprtion_view],
                                                                mode=4)
-                    agg_exp = cur_semi_ring.col_sum(s_col, c_col)
+                    agg_exp = cur_semi_ring.col_sum((g_col, h_col))
                     agg_exp[attr] = (attr, Aggregator.IDENTITY)
                     agg_exp['object'] = ('object', Aggregator.IDENTITY)
                     view_to_max = self.cjt.exe.execute_spja_query(agg_exp,
@@ -205,25 +209,22 @@ class DecisionTree(DummyModel):
                                                                   mode=4)
                 elif attr_type == 'CAT':
                     view_to_max = absoprtion_view
-                # TODO: move this logic somewhere else
-                # CASE WHEN tc > c THEN ((s/c)*s + (ts-s)/(tc-c)*(ts-s)) ELSE 0 END
-                tc_str = str(tc)
-                ts_str = str(ts)
+                    
                 l2_agg_exp = {
                     attr: (attr, Aggregator.IDENTITY),
                     'criteria': (
-                    f"""CASE WHEN {tc_str} > {c_col}
+                    f"""CASE WHEN {h} > {h_col}
                             THEN (
-                                ({s_col} / {c_col}) * {s_col} +
-                                ({ts_str} - {s_col}) / ({tc_str} - {c_col}) * ({ts_str} - {s_col})
+                                ({g_col} / {h_col}) * {g_col} +
+                                ({g} - {g_col}) / ({h} - {h_col}) * ({g} - {g_col})
                             )
                             ELSE 0
                         END
                     """, Aggregator.IDENTITY),
                     
+                    g_col: (g_col, Aggregator.IDENTITY),
+                    h_col: (h_col, Aggregator.IDENTITY),
                     
-                    c_col: (c_col, Aggregator.IDENTITY),
-                    s_col: (s_col, Aggregator.IDENTITY),
                 }
                 results = self.cjt.exe.execute_spja_query(l2_agg_exp, 
                                                           [view_to_max], 
@@ -232,11 +233,11 @@ class DecisionTree(DummyModel):
                                                           mode=3)
                 if not results:
                     continue
-                cur_value, cur_criteria, c, s = results[0]
+                cur_value, cur_criteria, left_g, left_h = results[0]
                 if cur_criteria > best_criteria:
                     best_criteria = cur_criteria
-                    # relation name, split attribute, split value, new s, new c  
-                    best_criteria_ann = (r_name, attr, str(cur_value), s, c)
+                    # relation name, split attribute, split value, left gradient, left hessian
+                    best_criteria_ann = (r_name, attr, str(cur_value), left_g, left_h)
         self.split_candidates.put((const_-best_criteria, cjt_depth,) + best_criteria_ann + (cjt_id,))
         
     # split the semi-ring according to current split
@@ -266,12 +267,13 @@ class DecisionTree(DummyModel):
         while not self.split_candidates.empty() and \
               self.split_candidates.queue[0][0] < 0 and \
               self.split_candidates.qsize() < self.max_leaves:
-            criteria, cur_level, r_name, attr, cur_value, s, c, c_id = self.split_candidates.get()
+            criteria, cur_level, r_name, attr, cur_value, left_g, left_h, c_id = self.split_candidates.get()
             expanding_cjt = self.nodes[c_id]
-            s_name, c_name = self.semi_ring.get_sc_columns_name()
-            l_semi_ring, r_semi_ring = self.split_semi_ring(expanding_cjt.get_semi_ring(), varSemiRing(s, c))
-            l_semi_ring.set_sc_columns_name(s_name, c_name)
-            r_semi_ring.set_sc_columns_name(s_name, c_name)
+            
+            l_semi_ring = expanding_cjt.semi_ring.copy()
+            l_semi_ring.set_semi_ring(left_g, left_h)
+            
+            l_semi_ring, r_semi_ring = self.split_semi_ring(expanding_cjt.get_semi_ring(), l_semi_ring)
 
             l_cjt, r_cjt, l_id, r_id = self._get_split_cjt(expanding_cjt=expanding_cjt,
                                                            l_semi_ring=l_semi_ring,
@@ -281,7 +283,7 @@ class DecisionTree(DummyModel):
             l_annotations, r_annotations = self._comp_annotations(r_name=r_name, 
                                                                   attr=attr,
                                                                   cur_value=cur_value,
-                                                                  obj=math.ceil(s / c * 100) / 100,
+                                                                  obj=math.ceil(left_g / left_h * 100) / 100,
                                                                   expanding_cjt=expanding_cjt)
             
             # add annotations according to split conditions
@@ -324,11 +326,12 @@ class GradientBoosting(DecisionTree):
         for cur_cjt in self.leaf_nodes:
             cur_cond = []
             target_relation = cur_cjt.get_target_relation()
-            TS, TC = cur_cjt.get_semi_ring().get_value()
-            pred = TS / TC * self.learning_rate
+            g, h = cur_cjt.get_semi_ring().get_value()
+            pred = g / h * self.learning_rate
             _, join_conds = cur_cjt._get_income_messages(cur_cjt.get_target_relation(), condition=2)
             join_conds += cur_cjt.get_parsed_annotations(target_relation)
-            self.cjt.exe.update_query("s=s-(" + str(pred) + ")",
+            g_col, _ = self.semi_ring.get_columns_name()
+            self.cjt.exe.update_query(f"{g_col}={g_col}-({pred})",
                                       target_relation,
                                       join_conds)
             

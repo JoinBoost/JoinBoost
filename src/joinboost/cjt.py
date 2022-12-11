@@ -114,8 +114,8 @@ class CJT(JoinGraph):
         from_table_attrs = self.get_relation_features(table)
         incoming_messages, join_conds = self._get_income_messages(table)
         
-        s_col, c_col = self.semi_ring.get_sc_columns_name()
-        aggregate_expressions = self.semi_ring.col_sum(s_col, c_col)
+        cols = self.semi_ring.get_columns_name()
+        aggregate_expressions = self.semi_ring.col_sum(cols)
         for attr in group_by:
             aggregate_expressions[attr] = (table + "." + attr, Aggregator.IDENTITY)
         
@@ -191,8 +191,8 @@ class CJT(JoinGraph):
         l_join_keys, _ = self.get_join_keys(from_table, to_table)
         
         # compute aggregation
-        s_col, c_col = self.semi_ring.get_sc_columns_name()
-        aggregation = (self.semi_ring.col_sum(s_col, c_col) if m_type == Message.FULL else {})
+        cols = self.semi_ring.get_columns_name()
+        aggregation = (self.semi_ring.col_sum(cols) if m_type == Message.FULL else {})
         for attr in l_join_keys:
             aggregation[attr] = (from_table + "." + attr, Aggregator.IDENTITY)
 
