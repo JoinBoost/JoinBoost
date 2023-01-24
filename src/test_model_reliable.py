@@ -53,9 +53,12 @@ class TestApp(unittest.TestCase):
         reg2 = DecisionTree(learning_rate=1, max_leaves=2 ** depth, max_depth=depth)
         reg2.fit(dataset2)
         
-        print(reg1.compute_rmse('train')[0])
-        print(reg2.compute_rmse('train')[0])
-        self.assertTrue(reg1.compute_rmse('train')[0] == reg2.compute_rmse('train')[0])
+        rmse1 = reg1.compute_rmse('train')[0]
+        rmse2 = reg2.compute_rmse('train')[0]
+        
+        print(rmse1)
+        print(rmse2)
+        self.assertTrue(rmse1 == rmse2)
         # this test the case when s and c are already in the databases
         
     def test_add_prefix_to_target_variable(self):
@@ -69,6 +72,8 @@ class TestApp(unittest.TestCase):
         con.execute("CREATE OR REPLACE TABLE sales AS SELECT * FROM '../data/favorita/sales_small.csv';")
         con.execute("CREATE OR REPLACE TABLE sales_renamed_sc_cols AS SELECT * FROM '../data/favorita/sales_small_renamed_sc_cols.csv';")
         con.execute("CREATE OR REPLACE TABLE train AS SELECT * FROM '../data/favorita/train_small.csv';")
+        con.execute("CREATE OR REPLACE TABLE train_renamed AS SELECT * FROM '../data/favorita/train_small_renamed.csv';")
+        
         exe = DuckdbExecutor(con, debug=False)
         dataset1 = JoinGraph(exe=exe)
         dataset2 = JoinGraph(exe=exe)
@@ -96,16 +101,20 @@ class TestApp(unittest.TestCase):
         dataset2.add_join("transactions", "stores", ["store_nbr"], ["store_nbr"])
         dataset2.add_join("transactions", "holidays_renamed_sc_cols", ["date"], ["date"])
         dataset2.add_join("holidays_renamed_sc_cols", "oil", ["date"], ["date"])
-        
-        depth = 3      
-#         reg1 = DecisionTree(learning_rate=1, max_leaves=2 ** depth, max_depth=depth)
-#         reg1.fit(dataset1)
-#         reg2 = DecisionTree(learning_rate=1, max_leaves=2 ** depth, max_depth=depth)
-#         reg2.fit(dataset2)
-        
-#         print(reg1.compute_rmse('train')[0])
-#         print(reg2.compute_rmse('train')[0])
-#         self.assertTrue(reg1.compute_rmse('train')[0] == reg2.compute_rmse('train')[0])
+
+        depth = 3
+        reg1 = DecisionTree(learning_rate=1, max_leaves=2 ** depth, max_depth=depth)
+        reg1.fit(dataset1)  
+        reg2 = DecisionTree(learning_rate=1, max_leaves=2 ** depth, max_depth=depth)
+        reg2.fit(dataset2)
+
+        rmse1 = reg1.compute_rmse('train')[0]
+        rmse2 = reg2.compute_rmse('train_renamed')[0]
+
+        print()
+        print(rmse1)
+        print(rmse2)
+        self.assertTrue(rmse1 == rmse2)
 
 if __name__ == '__main__':
     unittest.main()
