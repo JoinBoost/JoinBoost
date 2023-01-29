@@ -123,15 +123,22 @@ class DuckdbExecutor(Executor):
             view = self.get_next_name()
         else:
             view = table_name
-        sql = 'CREATE OR REPLACE TABLE ' + view + ' AS\n'
-        sql += 'SELECT ' + ','.join(select_attrs) + ','
-        sql += base_val
+
+        cases = []
         for case_definition in case_definitions:
-            sql += operator + '\nCASE\n'
+            sql_case = f'{operator}\nCASE\n'
             for val, cond in case_definition:
-                sql += ' WHEN ' + ' AND '.join(cond) + ' THEN CAST(' + str(val) + ' AS DOUBLE)\n'
-            sql += 'ELSE 0 END\n'
-        sql += 'AS ' + cond_attr + ' FROM ' + from_table
+                conds = ' AND '.join(cond)
+                sql_case += f' WHEN {conds} THEN CAST({val} AS DOUBLE)\n'
+            sql_case += 'ELSE 0 END\n'
+            cases.append(sql_case)
+        sql_cases = ''.join(cases)
+        attrs = ",".join(select_attrs)
+        sql = f'CREATE OR REPLACE TABLE {view} AS\n' + \
+              f'SELECT {attrs}, {base_val}' + \
+              f'{sql_cases}' + \
+              f'AS {cond_attr} FROM {from_table}'
+
         self._execute_query(sql)
         return view
     
