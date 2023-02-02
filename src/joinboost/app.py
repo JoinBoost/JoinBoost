@@ -5,6 +5,7 @@ from .semiring import *
 from .aggregator import Aggregator, Annotation, Message
 from .cjt import CJT
 from queue import PriorityQueue
+import numpy as np
 
 
 class App(ABC):
@@ -38,7 +39,7 @@ class DummyModel(App):
         self.count_ = h
         self.constant_ = prediction
 
-    def predict(self):
+    def predict(self, data, mode: int):
         return self.constant_
     
 
@@ -124,6 +125,20 @@ class DecisionTree(DummyModel):
         predict = self.cjt.exe.execute_spja_query(predict_agg, [view], mode=4)
         return self.cjt.exe.execute_spja_query(from_tables=[predict], 
                                                mode=3)[0]
+    
+    # mode = 1 takes the full join as input
+    # mode = 2 takes the join graph as input (assume fact table)
+    # mode = 3 takes the fact table as input (and automatically join it with dimensional tables used in training)
+    def predict(self, data, mode: int = 1):
+        if mode == 1:
+            view = self.cjt.exe.case_query(data, '+', 'prediction', str(self.constant_),
+                                       self.model_def, [self.cjt.get_target_var()])
+            sql = f"SELECT * FROM {view};"
+            preds = self.cjt.exe._execute_query(f"select prediction from {view};")
+            return np.array([p[0] for p in preds])
+            
+            
+        
 
     def _clean_messages(self):
         for cjt in self.nodes.values():
