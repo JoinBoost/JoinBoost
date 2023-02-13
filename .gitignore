@@ -134,3 +134,7 @@ dmypy.json
 /note
 
 .idea
+.DS_Store
+
+# virtual environment
+venv/*
