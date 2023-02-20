@@ -112,7 +112,7 @@ class DuckdbExecutor(Executor):
         return view_name
     
     def case_query(self, from_table: str, operator: str, cond_attr: str, base_val: str,
-                   case_definitions: list, select_attrs: list = [], table_name: str = None):
+                   case_definitions: list, select_attrs: list = [], table_name: str = None, order_by: str = None):
         """
         Executes a SQL query with a CASE statement to perform tree-model prediction.
         Each CASE represents a tree and each WHEN within a CASE represents a leaf.
@@ -124,6 +124,7 @@ class DuckdbExecutor(Executor):
         :param case_definitions: list, a list of lists containing the (leaf prediction, leaf predicates) for each tree.
         :param select_attrs: list, list of attributes to be selected, defaults to empty
         :param table_name: str, name of the new table, defaults to None
+        :param order_by: str, name of the table to be ordered by rowid, defaults to None
         :return: str, name of the new table
         """
         
@@ -156,11 +157,12 @@ class DuckdbExecutor(Executor):
         sql = f'CREATE OR REPLACE TABLE {view} AS\n' + \
               f'SELECT {attrs}, {base_val}' + \
               f'{sql_cases}' + \
-              f'AS {cond_attr} FROM {from_table}'
-
+              f'AS {cond_attr} FROM {from_table} '
+        if order_by:
+              sql += f'ORDER BY {order_by}.rowid;'
         self._execute_query(sql)
         return view
-    
+
     def check_table(self, table):
         if not table.startswith(self.prefix):
             raise Exception("Don't modify user tables!")

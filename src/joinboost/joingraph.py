@@ -46,6 +46,9 @@ class JoinGraph:
     def get_joins(self):
         return self.joins
     
+    def has_join(self, table1, table2):
+        return table1 in self.joins[table2] and table2 in self.joins[table1]
+    
     def check_acyclic(self):
         seen = set()
         
@@ -139,6 +142,36 @@ class JoinGraph:
 
         self.joins[table_name_left][table_name_right] = {"keys": (left_keys, right_keys)}
         self.joins[table_name_right][table_name_left] = {"keys": (right_keys, left_keys)}
+        
+    def get_full_join_sql(self):
+        """Return the sql statement of full join."""
+
+        sql = []
+        seen = set()
+
+        def dfs(rel1, parent=None):
+            seen.add(rel1)
+            for rel2 in self.joins[rel1]:
+                if rel2 != parent: 
+                    if rel2 in seen:
+                        return
+                    else:
+                        keys1, keys2 = self.get_join_keys(rel1, rel2)
+                        key_sql = self._format_join_sql(rel1, rel2, keys1, keys2)
+                        if not sql:
+                            sql.append(f"{rel1} JOIN {rel2} ON {key_sql} ")
+                        else:
+                            sql.append(f"JOIN {rel2} ON {key_sql} ")
+                        dfs(rel2, rel1)
+            return
+
+        dfs(list(self.joins.keys())[0])
+        return ''.join(sql)
+    
+    def _format_join_sql(self, rel1, rel2, keys1, keys2):
+        sql = " AND ".join(f"{rel1}.{key1}={rel2}.{key2}" 
+                           for key1,key2 in zip(keys1, keys2))
+        return sql        
         
     def replace(self, table_prev, table_after):
         if table_prev not in self.relation_schema: 
