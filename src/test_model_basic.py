@@ -116,7 +116,7 @@ class TestModel(unittest.TestCase):
         reg = GradientBoosting(learning_rate=1, max_leaves=2 ** depth, max_depth=depth, iteration = iteration)
 
         reg.fit(dataset)
-        reg_prediction = reg.predict(data='train', mode=1)
+        reg_prediction = reg.predict(data='train', input_mode=1)
         
         data = pd.read_csv('../data/favorita/train_small.csv')
         clf = GradientBoostingRegressor(max_depth=depth,learning_rate=1, n_estimators=iteration)
