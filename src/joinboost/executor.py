@@ -159,7 +159,7 @@ class DuckdbExecutor(Executor):
               f'{sql_cases}' + \
               f'AS {cond_attr} FROM {from_table} '
         if order_by:
-              sql += f'ORDER BY {order_by}.rowid;'
+              sql += f'ORDER BY {order_by};'
         self._execute_query(sql)
         return view
 
