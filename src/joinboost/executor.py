@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
-from .aggregator import *
 import time
+
+from joinboost import aggregator
 
 
 class ExecutorException(Exception):
@@ -8,11 +9,30 @@ class ExecutorException(Exception):
 
 
 def ExecutorFactory(con=None):
-    # By default if con is not specified, user uses Pandas dataframe
+    """
+    Factory function to create and return Executor objects for different connectors.
+
+    Parameters
+    ----------
+    con : DuckDBPyConnection or Executor, optional
+        The connector to use for creating Executor objects.
+        By default, if `con` is not specified, the function uses a PandasExecutor.
+
+    Returns
+    -------
+    executor : Executor
+        An Executor object for the given connector.
+
+    Raises
+    ------
+    ExecutorException
+        If an unknown connector type is specified, or if the default `con` is used without installing duckdb.
+    """
+
     if con is None:
         try:
             import duckdb
-        except:
+        except ImportError:
             raise ExecutorException(
                 "To support Pandas dataframe, please install duckdb."
             )
@@ -27,7 +47,16 @@ def ExecutorFactory(con=None):
 
 
 class Executor(ABC):
-    """Assume input data are csvs"""
+    """
+    Base executor object- defines a template for special executor objects.
+
+    Attributes
+    ----------
+    view_id : int
+        The id of the next view to be created.
+    prefix : str
+        The prefix to be used for the view names.
+    """
 
     def __init__(self):
         self.view_id = 0
@@ -38,21 +67,19 @@ class Executor(ABC):
         self.view_id += 1
         return name
 
-    def get_schema(self, table):
+    @abstractmethod
+    def get_schema(self, table: str):
         pass
 
-    def select_all(self, table):
-        pass
-
+    @abstractmethod
     def add_table(self, table: str, table_address):
         pass
 
+    @abstractmethod
     def delete_table(self, table: str):
         pass
 
-    def load_table(self, table_name: str, data_dir: str):
-        pass
-
+    @abstractmethod
     def case_query(
         self,
         from_table: str,
@@ -65,11 +92,13 @@ class Executor(ABC):
     ):
         pass
 
+    @abstractmethod
     def window_query(
         self, view: str, select_attrs: list, base_attr: str, cumulative_attrs: list
     ):
         pass
 
+    @abstractmethod
     def execute_spja_query(
         self,
         mode: int,
@@ -92,26 +121,10 @@ class DuckdbExecutor(Executor):
         self.conn = conn
         self.debug = debug
 
-    def get_schema(self, table):
+    def get_schema(self, table: str) -> list:
         # duckdb stores table info in [cid, name, type, notnull, dflt_value, pk]
         table_info = self._execute_query("PRAGMA table_info(" + table + ")")
         return [x[1] for x in table_info]
-
-    def _gen_sql_case(self, leaf_conds: list):
-        conds = []
-        for leaf_cond in leaf_conds:
-            cond = "CASE\n"
-            for (pred, annotations) in leaf_cond:
-                cond += (
-                    " WHEN "
-                    + " AND ".join(annotations)
-                    + " THEN CAST("
-                    + str(pred)
-                    + " AS DOUBLE)\n"
-                )
-            cond += "ELSE 0 END\n"
-            conds.append(cond)
-        return conds
 
     def delete_table(self, table: str):
         self.check_table(table)
@@ -132,6 +145,7 @@ class DuckdbExecutor(Executor):
         self._execute_query(sql)
         return view_name
 
+    # {case: value} operator {case: value} ...
     def case_query(
         self,
         from_table: str,
@@ -139,66 +153,68 @@ class DuckdbExecutor(Executor):
         cond_attr: str,
         base_val: str,
         case_definitions: list,
-        select_attrs: list = [],
+        select_attrs: list = None,
         table_name: str = None,
-        order_by: str = None,
     ):
         """
-        Executes a SQL query with a CASE statement to perform tree-model prediction.
-        Each CASE represents a tree and each WHEN within a CASE represents a leaf.
-
-        :param from_table: str, name of the source table
-        :param operator: str, the operator used to combine predictions
-        :param cond_attr: str, name of the column used in the conditions of the case statement
-        :param base_val: int, base value for the entire tree-model
-        :param case_definitions: list, a list of lists containing the (leaf prediction, leaf predicates) for each tree.
-        :param select_attrs: list, list of attributes to be selected, defaults to empty
-        :param table_name: str, name of the new table, defaults to None
-        :param order_by: str, name of the table to be ordered by rowid, defaults to None
-        :return: str, name of the new table
+        This function creates a new table based on a query using a `CASE` statement with the specified operator.
+        Parameters
+        ----------
+        from_table : str
+            The table that the query will be run on.
+        operator : str
+            The operator to be used in the query (e.g. "+", "-", "*", etc.).
+        cond_attr : str
+            The attribute that the query will operate on.
+        base_val : str
+            The starting value for the operation.
+        case_definitions : list
+            A list of case definitions for the query. Each case definition is a list of tuples,
+            where the first element of the tuple is a value and the second element is a condition.
+        select_attrs : list
+            A list of attributes to select in the query. If left empty, the function will
+            retrieve all attributes from the table except for `cond_attr`.
+        table_name : str
+            The name of the new table that will be created. If left empty, the function will
+            generate a new name.
+        Returns
+        -------
+        str
+            The name of the new table.
         """
 
-        # If no select attributes are provided, retrieve all columns
-        # except the one used in the conditions of the case statement
         if not select_attrs:
             attrs = self._execute_query("PRAGMA table_info(" + from_table + ")")
-            for attr in attrs:
-                if attr != cond_attr:
-                    select_attrs.append(attr[1])
-
-        # If no table name is provided, generate a new one
+            select_attrs = [attr[1] for attr in attrs if attr != cond_attr]
         if not table_name:
             view = self.get_next_name()
         else:
             view = table_name
-
-        # Prepare the case statement using the provided operator
-        cases = []
+        sql = "CREATE OR REPLACE TABLE " + view + " AS\n"
+        sql += "SELECT " + ",".join(select_attrs) + ","
+        sql += base_val
         for case_definition in case_definitions:
-            sql_case = f"{operator}\nCASE\n"
+            sql += operator + "\nCASE\n"
             for val, cond in case_definition:
-                conds = " AND ".join(cond)
-                sql_case += f" WHEN {conds} THEN CAST({val} AS DOUBLE)\n"
-            sql_case += "ELSE 0 END\n"
-            cases.append(sql_case)
-        sql_cases = "".join(cases)
-
-        # Create the SELECT statement with the CASE statement
-        attrs = ",".join(select_attrs)
-        sql = (
-            f"CREATE OR REPLACE TABLE {view} AS\n"
-            + f"SELECT {attrs}, {base_val}"
-            + f"{sql_cases}"
-            + f"AS {cond_attr} FROM {from_table} "
-        )
-        if order_by:
-            sql += f"ORDER BY {order_by};"
+                sql += (
+                    " WHEN "
+                    + " AND ".join(cond)
+                    + " THEN CAST("
+                    + str(val)
+                    + " AS DOUBLE)\n"
+                )
+            sql += "ELSE 0 END\n"
+        sql += "AS " + cond_attr + " FROM " + from_table
         self._execute_query(sql)
         return view
 
     def check_table(self, table):
         if not table.startswith(self.prefix):
             raise Exception("Don't modify user tables!")
+
+    def add_table(self, table: str, table_address):
+        # TODO
+        ...
 
     def update_query(self, update_expression, table, select_conds: list = []):
         self.check_table(table)
@@ -207,14 +223,13 @@ class DuckdbExecutor(Executor):
             sql += "WHERE " + " AND ".join(select_conds) + "\n"
         self._execute_query(sql)
 
-    # mode = 1 will write the query result to a table and return table name
-    # mode = 2 will create the query as view and return view name
-    # mode = 3 will execute the query and return the result
-    # mode = 4 will create the sql query and return the query (for nested query)
+    # mode = 1 will write the query result to a table and return table name, now execute_spja_query_to_table
+    # mode = 2 will create the query as view and return view name, now execute_spja_query_as_view
+    # mode = 3 will execute the query and return the result, now execute_spja_query
+    # mode = 4 will create the sql query and return the query (for nested query), not needed, for SPJA query (be sure to add parens on the outside)
     def execute_spja_query(
         self,
-        # By default, we select all
-        aggregate_expressions: dict = {None: ("*", Aggregator.IDENTITY)},
+        aggregate_expressions: dict = {None: ("*", aggregator.Aggregator.IDENTITY)},
         from_tables: list = [],
         select_conds: list = [],
         group_by: list = [],
@@ -237,43 +252,81 @@ class DuckdbExecutor(Executor):
             sample_rate=sample_rate,
         )
 
-        if mode == 1:
-            name_ = self.get_next_name()
-            entity_type_ = "TABLE "
-            sql = (
-                "CREATE "
-                + ("OR REPLACE " if replace else "")
-                + entity_type_
-                + name_
-                + " AS "
-            )
-            sql += spja
-            self._execute_query(sql)
-            return name_
+        return self._execute_query(spja)
 
-        elif mode == 2:
-            name_ = self.get_next_name()
-            entity_type_ = "VIEW "
-            sql = (
-                "CREATE "
-                + ("OR REPLACE " if replace else "")
-                + entity_type_
-                + name_
-                + " AS "
-            )
-            sql += spja
-            self._execute_query(sql)
-            return name_
+    def execute_spja_query_to_table(
+        self,
+        aggregate_expressions: dict = {None: ("*", aggregator.Aggregator.IDENTITY)},
+        from_tables: list = [],
+        select_conds: list = [],
+        group_by: list = [],
+        window_by: list = [],
+        order_by: str = None,
+        limit: int = None,
+        sample_rate: float = None,
+        replace: bool = True,
+    ):
 
-        elif mode == 3:
-            return self._execute_query(spja)
+        spja = self.spja_query(
+            aggregate_expressions=aggregate_expressions,
+            from_tables=from_tables,
+            select_conds=select_conds,
+            group_by=group_by,
+            window_by=window_by,
+            order_by=order_by,
+            limit=limit,
+            sample_rate=sample_rate,
+        )
 
-        elif mode == 4:
-            sql = "(" + spja + ")"
-            return sql
+        name_ = self.get_next_name()
+        entity_type_ = "TABLE "
+        sql = (
+            "CREATE "
+            + ("OR REPLACE " if replace else "")
+            + entity_type_
+            + name_
+            + " AS "
+        )
+        sql += spja
+        self._execute_query(sql)
+        return name_
 
-        else:
-            raise ExecutorException("Unsupported mode for query execution!")
+    def execute_spja_query_as_view(
+        self,
+        aggregate_expressions: dict = {None: ("*", aggregator.Aggregator.IDENTITY)},
+        from_tables: list = [],
+        select_conds: list = [],
+        group_by: list = [],
+        window_by: list = [],
+        order_by: str = None,
+        limit: int = None,
+        sample_rate: float = None,
+        replace: bool = True,
+    ):
+
+        spja = self.spja_query(
+            aggregate_expressions=aggregate_expressions,
+            from_tables=from_tables,
+            select_conds=select_conds,
+            group_by=group_by,
+            window_by=window_by,
+            order_by=order_by,
+            limit=limit,
+            sample_rate=sample_rate,
+        )
+
+        name_ = self.get_next_name()
+        entity_type_ = "VIEW "
+        sql = (
+            "CREATE "
+            + ("OR REPLACE " if replace else "")
+            + entity_type_
+            + name_
+            + " AS "
+        )
+        sql += spja
+        self._execute_query(sql)
+        return name_
 
     def spja_query(
         self,
@@ -286,19 +339,14 @@ class DuckdbExecutor(Executor):
         limit: int = None,
         sample_rate: float = None,
     ):
+        # TODO: remove default list params
 
         parsed_aggregate_expressions = []
-        for target_col, aggregation_spec in aggregate_expressions.items():
-            para, agg = aggregation_spec
-            parsed_aggregate_expressions.append(
-                parse_agg(agg, para)
-                + (
-                    " OVER joinboost_window "
-                    if len(window_by) > 0 and is_agg(agg)
-                    else ""
-                )
-                + (" AS " + target_col if target_col is not None else "")
+        for target_col, (para, agg) in aggregate_expressions.items():
+            parsed_expression = self._parse_aggregate_expression(
+                target_col, para, agg, window_by=window_by
             )
+            parsed_aggregate_expressions.append(parsed_expression)
 
         sql = "SELECT " + ", ".join(parsed_aggregate_expressions) + "\n"
         sql += "FROM " + ",".join(from_tables) + "\n"
@@ -335,6 +383,18 @@ class DuckdbExecutor(Executor):
         except Exception as e:
             print(e)
         return result
+
+    def _parse_aggregate_expression(
+        self, target_col: str, para, agg: aggregator.Aggregator, window_by: list = None
+    ):
+
+        window_clause = " OVER joinboost_window " if window_by else ""
+        rename_expr = " AS " + target_col if target_col is not None else ""
+        parsed_expression = (
+            aggregator.parse_agg(agg, para) + window_clause + rename_expr
+        )
+
+        return parsed_expression
 
 
 class PandasExecutor(DuckdbExecutor):
