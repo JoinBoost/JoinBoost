@@ -1,11 +1,55 @@
-from abc import ABC, abstractmethod
 import time
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from typing import Optional, Any
+
+from frozendict import frozendict
 
 from joinboost import aggregator
 
 
 class ExecutorException(Exception):
     pass
+
+
+@dataclass()
+class SPJAData:
+    """
+    Dataclass representing an SPJA query and its associated parameters.
+
+    Attributes
+    ----------
+    aggregate_expressions : frozendict
+        A dictionary mapping column names to tuples containing the aggregation expression and the aggregator object.
+    from_tables : list
+        A list of table names to select from. By default, an empty list.
+    select_conds : list
+        A list of conditions to apply to the SELECT statement. By default, an empty list.
+    group_by : list
+        A list of column names to group by. By default, an empty list.
+    window_by : list
+        A list of column names to use for windowing. By default, an empty list.
+    order_by : list
+        The column to use for ordering the results. By default, an empty list.
+    limit : int
+        The maximum number of rows to return
+    sample_rate : float
+        The sampling rate to use for the query.
+    replace : bool
+        If True, replaces an existing table or view with the same name.
+    """
+
+    aggregate_expressions: frozendict = frozendict(
+        {None: ("*", aggregator.Aggregator.IDENTITY)}
+    )
+    from_tables: list[str] = field(default_factory=list)
+    select_conds: list[str] = field(default_factory=list)
+    group_by: list[str] = field(default_factory=list)
+    window_by: list[str] = field(default_factory=list)
+    order_by: Optional[str] = None
+    limit: Optional[int] = None
+    sample_rate: Optional[float] = None
+    replace: bool = True
 
 
 def ExecutorFactory(con=None):
@@ -116,25 +160,75 @@ class Executor(ABC):
 
 
 class DuckdbExecutor(Executor):
+    """
+    Executor object providing methods for executing queries on a DuckDB database.
+
+    Attributes
+    ----------
+    conn : Connection
+        A DuckDB connection object.
+    debug : bool
+        A flag to enable/disable debug mode.
+    """
+
     def __init__(self, conn, debug=False):
         super().__init__()
         self.conn = conn
         self.debug = debug
 
     def get_schema(self, table: str) -> list:
+        """
+        Get a list of column names in a table.
+
+        Parameters
+        ----------
+        table : str
+            The name of the table.
+
+        Returns
+        -------
+        list
+            A list of column names in the table.
+        """
         # duckdb stores table info in [cid, name, type, notnull, dflt_value, pk]
         table_info = self._execute_query("PRAGMA table_info(" + table + ")")
         return [x[1] for x in table_info]
 
     def delete_table(self, table: str):
+        """
+        Delete a table.
+
+        Parameters
+        ----------
+        table : str
+            The name of the table.
+        """
         self.check_table(table)
         sql = "DROP TABLE IF EXISTS " + table + ";\n"
         self._execute_query(sql)
 
-    # TODO: remove it
     def window_query(
         self, view: str, select_attrs: list, base_attr: str, cumulative_attrs: list
     ):
+        """
+        A function to create a window query. TODO: Remove this function.
+
+        Parameters
+        ----------
+        view : str
+            The view name.
+        select_attrs : list
+            A list of attributes to select.
+        base_attr : str
+            The base attribute.
+        cumulative_attrs : list
+            A list of cumulative attributes.
+
+        Returns
+        -------
+        str
+            The view name.
+        """
         view_name = self.get_next_name()
         sql = "CREATE OR REPLACE VIEW " + view_name + " AS SELECT * FROM\n"
         sql += "(\nSELECT " + ",".join(select_attrs)
@@ -209,6 +303,24 @@ class DuckdbExecutor(Executor):
         return view
 
     def check_table(self, table):
+        """
+        Check if a table is a user table.
+
+        Parameters
+        ----------
+        table : str
+            The name of the table to check.
+
+        Raises
+        ------
+        Exception
+            If the table does not start with the prefix specified for user tables.
+
+        Returns
+        -------
+        None
+        """
+
         if not table.startswith(self.prefix):
             raise Exception("Don't modify user tables!")
 
@@ -217,6 +329,27 @@ class DuckdbExecutor(Executor):
         ...
 
     def update_query(self, update_expression, table, select_conds: list = []):
+        """
+        Executes an SQL UPDATE statement on a specified table with the provided update_expression.
+
+        Parameters
+        ----------
+        update_expression : str
+            A string specifying the update expression to be executed.
+        table : str
+            A string specifying the name of the table to execute the update query on.
+        select_conds : list, optional
+            A list of strings specifying the selection conditions for the update query. Default is an empty list.
+
+        Raises
+        ------
+        Exception
+            If the specified table does not start with the prefix of the current DuckDBExecutor object.
+
+        Returns
+        -------
+        None
+        """
         self.check_table(table)
         sql = "UPDATE " + table + " SET " + update_expression + " \n"
         if len(select_conds) > 0:
@@ -226,100 +359,71 @@ class DuckdbExecutor(Executor):
     # mode = 1 will write the query result to a table and return table name, now execute_spja_query_to_table
     # mode = 2 will create the query as view and return view name, now execute_spja_query_as_view
     # mode = 3 will execute the query and return the result, now execute_spja_query
-    # mode = 4 will create the sql query and return the query (for nested query), not needed, for SPJA query (be sure to add parens on the outside)
-    def execute_spja_query(
-        self,
-        aggregate_expressions: dict = {None: ("*", aggregator.Aggregator.IDENTITY)},
-        from_tables: list = [],
-        select_conds: list = [],
-        group_by: list = [],
-        window_by: list = [],
-        order_by: str = None,
-        limit: int = None,
-        sample_rate: float = None,
-        replace: bool = True,
-        mode: int = 4,
-    ):
+    # mode = 4 will create the sql query and return the query (for nested query), not needed, for SPJA query
+    # Mode 4 was not moved into a function of its own
+    def execute_spja_query(self, spja_data: 'SPJAData') -> Any:
+        """
+        Executes an SPJA query using the current object's database connection.
 
-        spja = self.spja_query(
-            aggregate_expressions=aggregate_expressions,
-            from_tables=from_tables,
-            select_conds=select_conds,
-            group_by=group_by,
-            window_by=window_by,
-            order_by=order_by,
-            limit=limit,
-            sample_rate=sample_rate,
-        )
+        Parameters
+        ----------
+        spja_data : SPJAData
+            The SPJAData object containing the query parameters.
 
+        Returns
+        -------
+        Any
+            The result of the query.
+        """
+        spja = self.spja_query(spja_data)
         return self._execute_query(spja)
 
-    def execute_spja_query_to_table(
-        self,
-        aggregate_expressions: dict = {None: ("*", aggregator.Aggregator.IDENTITY)},
-        from_tables: list = [],
-        select_conds: list = [],
-        group_by: list = [],
-        window_by: list = [],
-        order_by: str = None,
-        limit: int = None,
-        sample_rate: float = None,
-        replace: bool = True,
-    ):
+    def spja_query_to_table(self, spja_data: 'SPJAData') -> str:
+        """
+        Executes an SPJA query and stores the results in a new table.
 
-        spja = self.spja_query(
-            aggregate_expressions=aggregate_expressions,
-            from_tables=from_tables,
-            select_conds=select_conds,
-            group_by=group_by,
-            window_by=window_by,
-            order_by=order_by,
-            limit=limit,
-            sample_rate=sample_rate,
-        )
+        Parameters
+        ----------
+        spja_data : SPJAData
+            The SPJAData object containing the query parameters.
 
+        Returns
+        -------
+        str
+            The name of the new table.
+        """
+        spja = self.spja_query(spja_data)
         name_ = self.get_next_name()
         entity_type_ = "TABLE "
         sql = (
-            "CREATE "
-            + ("OR REPLACE " if replace else "")
-            + entity_type_
-            + name_
-            + " AS "
+            "CREATE " + ("OR REPLACE " if spja_data.replace else "")
+            + entity_type_ + name_ + " AS "
         )
         sql += spja
         self._execute_query(sql)
         return name_
 
-    def execute_spja_query_as_view(
+    def spja_query_as_view(
         self,
-        aggregate_expressions: dict = {None: ("*", aggregator.Aggregator.IDENTITY)},
-        from_tables: list = [],
-        select_conds: list = [],
-        group_by: list = [],
-        window_by: list = [],
-        order_by: str = None,
-        limit: int = None,
-        sample_rate: float = None,
-        replace: bool = True,
+        spja_data: SPJAData,
     ):
+        """
+        Create a view from the results of an SPJA query.
 
-        spja = self.spja_query(
-            aggregate_expressions=aggregate_expressions,
-            from_tables=from_tables,
-            select_conds=select_conds,
-            group_by=group_by,
-            window_by=window_by,
-            order_by=order_by,
-            limit=limit,
-            sample_rate=sample_rate,
-        )
+        Args:
+            spja_data (SPJAData): An object representing the SPJA query to execute.
+
+        Returns:
+            str: The name of the view created by the method.
+        """
+
+        spja = self.spja_query(spja_data)
 
         name_ = self.get_next_name()
         entity_type_ = "VIEW "
         sql = (
             "CREATE "
-            + ("OR REPLACE " if replace else "")
+            + ("OR REPLACE " if self.replace else "")
             + entity_type_
             + name_
             + " AS "
@@ -330,42 +434,65 @@ class DuckdbExecutor(Executor):
 
     def spja_query(
         self,
-        aggregate_expressions: dict,
-        from_tables: list = [],
-        select_conds: list = [],
-        window_by: list = [],
-        group_by: list = [],
-        order_by: str = None,
-        limit: int = None,
-        sample_rate: float = None,
+        spja_data: SPJAData,
     ):
-        # TODO: remove default list params
+        """
+        Generates an SQL query based on the given SPJAData object and returns the query as a string.
+
+        Parameters
+        ----------
+        spja_data : SPJAData
+            The SPJAData object representing the query to be generated.
+
+        Returns
+        -------
+        str
+            The generated SQL query as a string.
+
+        """
 
         parsed_aggregate_expressions = []
-        for target_col, (para, agg) in aggregate_expressions.items():
+        for target_col, (para, agg) in spja_data.aggregate_expressions.items():
             parsed_expression = self._parse_aggregate_expression(
-                target_col, para, agg, window_by=window_by
+                target_col, para, agg, window_by=spja_data.window_by
             )
             parsed_aggregate_expressions.append(parsed_expression)
 
         sql = "SELECT " + ", ".join(parsed_aggregate_expressions) + "\n"
-        sql += "FROM " + ",".join(from_tables) + "\n"
+        sql += "FROM " + ",".join(spja_data.from_tables) + "\n"
 
-        if len(select_conds) > 0:
-            sql += "WHERE " + " AND ".join(select_conds) + "\n"
-        if len(window_by) > 0:
-            sql += "WINDOW joinboost_window AS (ORDER BY " + ",".join(window_by) + ")\n"
-        if len(group_by) > 0:
-            sql += "GROUP BY " + ",".join(group_by) + "\n"
-        if order_by is not None:
-            sql += "ORDER BY " + order_by + "\n"
-        if limit is not None:
-            sql += "LIMIT " + str(limit) + "\n"
-        if sample_rate is not None:
-            sql += "USING SAMPLE " + str(sample_rate * 100) + " %\n"
+        if len(spja_data.select_conds) > 0:
+            sql += "WHERE " + " AND ".join(spja_data.select_conds) + "\n"
+        if len(spja_data.window_by) > 0:
+            sql += (
+                "WINDOW joinboost_window AS (ORDER BY "
+                + ",".join(spja_data.window_by)
+                + ")\n"
+            )
+        if len(spja_data.group_by) > 0:
+            sql += "GROUP BY " + ",".join(spja_data.group_by) + "\n"
+        if spja_data.order_by is not None:
+            sql += "ORDER BY " + spja_data.order_by + "\n"
+        if spja_data.limit is not None:
+            sql += "LIMIT " + str(spja_data.limit) + "\n"
+        if spja_data.sample_rate is not None:
+            sql += "USING SAMPLE " + str(spja_data.sample_rate * 100) + " %\n"
         return sql
 
     def _execute_query(self, q):
+        """
+        Executes the given SQL query and returns the result.
+
+        Parameters
+        ----------
+        q : str
+            The SQL query to be executed.
+
+        Returns
+        -------
+        Any
+            The result of the query execution.
+        """
         start_time = time.time()
         if self.debug:
             print(q)
@@ -387,6 +514,23 @@ class DuckdbExecutor(Executor):
     def _parse_aggregate_expression(
         self, target_col: str, para, agg: aggregator.Aggregator, window_by: list = None
     ):
+        """
+        Parameters
+        ----------
+        target_col : str
+            The name of the target column to rename the result to.
+        para : Union[str, float, int, None]
+            The parameter of the aggregation function.
+        agg : aggregator.Aggregator
+            An aggregator object that represents the aggregation function.
+        window_by : Optional[List[str]], optional
+            A list of column names to partition the window by, by default None.
+
+        Returns
+        -------
+        str
+            The parsed SQL statement for the aggregate expression.
+        """
 
         window_clause = " OVER joinboost_window " if window_by else ""
         rename_expr = " AS " + target_col if target_col is not None else ""
