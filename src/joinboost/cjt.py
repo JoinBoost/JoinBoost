@@ -119,7 +119,8 @@ class CJT(JoinGraph):
             aggregate_expressions[attr] = (table + "." + attr, Aggregator.IDENTITY)
         
         return self.exe.execute_spja_query(aggregate_expressions, 
-                                           from_tables=[m['message'] for m in incoming_messages]+[table], 
+                                           from_tables=[m['message'] for m in incoming_messages]+[table],
+                                           join_conds=join_conds,
                                            select_conds=join_conds+self.get_parsed_annotations(table),
                                            group_by=[table + '.' + attr for attr in group_by], 
                                            mode=mode)
@@ -195,7 +196,8 @@ class CJT(JoinGraph):
             aggregation[attr] = (from_table + "." + attr, Aggregator.IDENTITY)
             
         message_name = self.exe.execute_spja_query(aggregation, 
-                                                    from_tables=[m['message'] for m in incoming_messages]+[from_table], 
+                                                    from_tables=[m['message'] for m in incoming_messages]+[from_table],
+                                                    join_conds=join_conds,
                                                     select_conds=join_conds+self.get_parsed_annotations(from_table),
                                                     group_by=[from_table + '.' + attr for attr in l_join_keys], 
                                                     mode=1)

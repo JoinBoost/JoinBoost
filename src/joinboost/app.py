@@ -1,5 +1,7 @@
 import math
 from abc import ABC
+
+from .executor import PandasExecutor
 from .joingraph import JoinGraph
 from .semiring import *
 from .aggregator import Aggregator, Annotation, Message
@@ -136,7 +138,7 @@ class DecisionTree(DummyModel):
             view_ord_by_obj = self.cjt.exe.window_query(obj_view, [attr], 'object', ['s', 'c'])
             attr_view = self.cjt.exe.execute_spja_query({attr: (attr, Aggregator.IDENTITY)},
                                                         [view_ord_by_obj],
-                                                        ['s/c <=' + str(obj)])
+                                                        select_conds=['s/c <=' + str(obj)])
             attrs = [str(x[0])  for x in self.cjt.exe.execute_spja_query(from_tables=[attr_view], mode=3)]
             l_annotation = (attr, Annotation.IN, attrs)
             r_annotation = (attr, Annotation.NOT_IN, attrs)
@@ -177,7 +179,7 @@ class DecisionTree(DummyModel):
                     agg_exp = cur_semi_ring.col_sum()
                     agg_exp[attr] = (attr, Aggregator.IDENTITY)
                     view_to_max = self.cjt.exe.execute_spja_query(agg_exp,
-                                                                  [absoprtion_view], 
+                                                                  [absoprtion_view],
                                                                   window_by=[attr],
                                                                   mode=4)
                 
@@ -200,17 +202,22 @@ class DecisionTree(DummyModel):
                                                                   mode=4)
                 elif attr_type == 'CAT':
                     view_to_max = absoprtion_view
+
+                # check if executor is of type PandasExecutor or DuckdbExecutor
                 # TODO: move this logic somewhere else
+                if isinstance(self.cjt.exe, PandasExecutor):
+                    func = lambda row:  (row['s']/row['c'])*row['s'] + (ts-row['s'])/(tc-row['c'])*(ts-row['s']) if row['c'] < tc else 0
+                else:
+                    func = 'CASE WHEN ' + str(tc) + ' > c THEN ((s/c)*s + (' + str(ts) + '-s)/(' + str(tc) + '-c)*(' + str(ts) + '-s)) ELSE 0 END'
                 l2_agg_exp = {
                     attr: (attr, Aggregator.IDENTITY),
-                    'criteria': ('CASE WHEN ' + str(tc) + ' > c THEN ((s/c)*s + (' + str(ts) + '-s)/(' + 
-                                 str(tc) + '-c)*(' + str(ts) + '-s)) ELSE 0 END', Aggregator.IDENTITY),
+                    'criteria': (func, Aggregator.IDENTITY_LAMBDA),
                     'c': ('c', Aggregator.IDENTITY),
                     's': ('s', Aggregator.IDENTITY),
                 }
                 results = self.cjt.exe.execute_spja_query(l2_agg_exp, 
                                                           [view_to_max], 
-                                                          order_by='criteria DESC', 
+                                                          order_by=[('criteria', 'DESC')],
                                                           limit=1, 
                                                           mode=3)
                 if not results:
