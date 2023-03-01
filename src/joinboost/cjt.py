@@ -1,7 +1,7 @@
 import copy
 from .semiring import SemiRing
 from .joingraph import JoinGraph
-from .executor import Executor
+from .executor import Executor, SPJAData
 from .aggregator import *
 
 
@@ -122,7 +122,7 @@ class CJT(JoinGraph):
                 self._send_message(currento_table, c_neighbor, m_type=m_type)
                 self._pre_dfs(c_neighbor, currento_table, m_type=m_type)
 
-    def absorption(self, table: str, group_by: list, mode=4):
+    def absorption(self, table: str, group_by: list):
         from_table_attrs = self.get_relation_features(table)
         incoming_messages, join_conds = self._get_income_messages(table)
 
@@ -131,13 +131,14 @@ class CJT(JoinGraph):
         for attr in group_by:
             aggregate_expressions[attr] = (table + "." + attr, Aggregator.IDENTITY)
 
-        return self.exe.execute_spja_query(
-            aggregate_expressions,
+        spja_data = SPJAData(
+            aggregate_expressions=aggregate_expressions,
             from_tables=[m["message"] for m in incoming_messages] + [table],
             select_conds=join_conds + self.get_parsed_annotations(table),
             group_by=[table + "." + attr for attr in group_by],
-            mode=mode,
         )
+
+        return self.exe.spja_query(spja_data)
 
     # get the incoming message from one table to another
     # key function for message passing, Sec 3.3 of CJT paper
@@ -231,19 +232,20 @@ class CJT(JoinGraph):
         for attr in l_join_keys:
             aggregation[attr] = (from_table + "." + attr, Aggregator.IDENTITY)
 
-        message_name = self.exe.execute_spja_query(
-            aggregation,
+        spja_data = SPJAData(
+            aggregate_expressions=aggregation,
             from_tables=[m["message"] for m in incoming_messages] + [from_table],
             select_conds=join_conds + self.get_parsed_annotations(from_table),
             group_by=[from_table + "." + attr for attr in l_join_keys],
-            mode=1,
         )
+
+        message_name = self.exe.execute_spja_query_to_table(spja_data)
 
         self.joins[from_table][to_table].update(
             {"message": message_name, "message_type": m_type}
         )
 
-    # by default, lift the target variale
+    # by default, lift the target variable
     def lift(self, var=None):
         if var is None:
             var = self.target_var
@@ -251,7 +253,8 @@ class CJT(JoinGraph):
         # copy the rest attributes
         for attr in self.get_useful_attributes(self.target_relation):
             lift_exp[attr] = (attr, Aggregator.IDENTITY)
-        new_fact_name = self.exe.execute_spja_query(
-            lift_exp, [self.target_relation], mode=1
+        spja_data = SPJAData(
+            aggregate_expressions=lift_exp, from_tables=[self.target_relation]
         )
+        new_fact_name = self.exe.execute_spja_query_to_table(spja_data)
         self.replace(self.target_relation, new_fact_name)

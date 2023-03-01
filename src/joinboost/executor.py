@@ -12,7 +12,7 @@ class ExecutorException(Exception):
     pass
 
 
-@dataclass()
+@dataclass(frozen=True)
 class SPJAData:
     """
     Dataclass representing an SPJA query and its associated parameters.
@@ -325,7 +325,6 @@ class DuckdbExecutor(Executor):
             raise Exception("Don't modify user tables!")
 
     def add_table(self, table: str, table_address):
-        # TODO
         ...
 
     def update_query(self, update_expression, table, select_conds: list = []):
@@ -356,12 +355,7 @@ class DuckdbExecutor(Executor):
             sql += "WHERE " + " AND ".join(select_conds) + "\n"
         self._execute_query(sql)
 
-    # mode = 1 will write the query result to a table and return table name, now execute_spja_query_to_table
-    # mode = 2 will create the query as view and return view name, now execute_spja_query_as_view
-    # mode = 3 will execute the query and return the result, now execute_spja_query
-    # mode = 4 will create the sql query and return the query (for nested query), not needed, for SPJA query
-    # Mode 4 was not moved into a function of its own
-    def execute_spja_query(self, spja_data: 'SPJAData') -> Any:
+    def execute_spja_query(self, spja_data: SPJAData) -> Any:
         """
         Executes an SPJA query using the current object's database connection.
 
@@ -375,10 +369,10 @@ class DuckdbExecutor(Executor):
         Any
             The result of the query.
         """
-        spja = self.spja_query(spja_data)
+        spja = self.spja_query(spja_data, parenthesize=False)
         return self._execute_query(spja)
 
-    def spja_query_to_table(self, spja_data: 'SPJAData') -> str:
+    def spja_query_to_table(self, spja_data: SPJAData) -> str:
         """
         Executes an SPJA query and stores the results in a new table.
 
@@ -392,7 +386,7 @@ class DuckdbExecutor(Executor):
         str
             The name of the new table.
         """
-        spja = self.spja_query(spja_data)
+        spja = self.spja_query(spja_data, parenthesize=False)
         name_ = self.get_next_name()
         entity_type_ = "TABLE "
         sql = (
@@ -410,14 +404,18 @@ class DuckdbExecutor(Executor):
         """
         Create a view from the results of an SPJA query.
 
-        Args:
-            spja_data (SPJAData): An object representing the SPJA query to execute.
+        Parameters
+        ----------
+        spja_data : SPJAData
+            The SPJAData object containing the query parameters.
 
-        Returns:
-            str: The name of the view created by the method.
+        Returns
+        -------
+        str
+            The name of the view created by the method.
         """
 
-        spja = self.spja_query(spja_data)
+        spja = self.spja_query(spja_data, parenthesize=False)
 
         name_ = self.get_next_name()
         entity_type_ = "VIEW "
@@ -435,6 +433,7 @@ class DuckdbExecutor(Executor):
     def spja_query(
         self,
         spja_data: SPJAData,
+        parenthesize: bool = True,
     ):
         """
         Generates an SQL query based on the given SPJAData object and returns the query as a string.
@@ -443,6 +442,8 @@ class DuckdbExecutor(Executor):
         ----------
         spja_data : SPJAData
             The SPJAData object representing the query to be generated.
+        parenthesize: bool, optional
+            wrap the query in parentheses. Default is True
 
         Returns
         -------
@@ -477,6 +478,10 @@ class DuckdbExecutor(Executor):
             sql += "LIMIT " + str(spja_data.limit) + "\n"
         if spja_data.sample_rate is not None:
             sql += "USING SAMPLE " + str(spja_data.sample_rate * 100) + " %\n"
+
+        if parenthesize:
+            sql = f'({sql})'
+
         return sql
 
     def _execute_query(self, q):
