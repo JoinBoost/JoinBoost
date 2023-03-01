@@ -42,7 +42,7 @@ reg.fit(dataset)
 ```
 
 
-[Please Check out this notebook for Demo](https://colab.research.google.com/github/zachary62/JoinBoost/blob/main/demo/JoinBoostDemo.ipynb)
+[Please Check out this notebook for Demo](https://anonymous.4open.science/r/JoinBoost-FBC4/demo/JoinBoostDemo.ipynb)
 
 ## Reproducibility
 
@@ -50,4 +50,4 @@ The technical report of JoinBoost could be found under /technical directory.
 
 We note that some optimizations discussed in the paper (e.g., inter-query parallelism, DP) are still under development in the main codes. To reproduce the experiment results from the paper, we include the prototype codes for JoinBoost under /proto folder, which includes all the optimizations. We also include Jupyter Notebook to help you use these codes to train models over Favorita. 
 
-The Favorita dataset is too large to store in Github. Please download files from https://www.dropbox.com/sh/ymwn98pvederw6x/AAC-z6R_rKvU40KZDCyitjsda?dl=0 and uncompress the files.
+The Favorita dataset is too large to store in Github. Please download files from https://www.dropbox.com/sh/ymwn98pvederw6x/AAC-z6R_rKvU40KZDCyitjsda?dl=0 and uncompress the files. The modified DuckDB to support column swap is at https://anonymous.4open.science/r/duckdb-D056.
