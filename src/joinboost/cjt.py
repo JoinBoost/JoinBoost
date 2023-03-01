@@ -54,7 +54,7 @@ class CJT(JoinGraph):
         return c_cjt
 
     def get_root_neighbors(self):
-        joins, neighbors = self.get_joins(), {}
+        joins, neighbors = self.joins, {}
         for table in joins[self.target_relation]:
             if (
                 self.joins[table][self.target_relation]["message_type"]
@@ -95,7 +95,7 @@ class CJT(JoinGraph):
         parent_table: str = None,
         m_type: Message = Message.UNDECIDED,
     ):
-        jg = self.get_joins()
+        jg = self.joins
         if currento_table not in jg:
             return
         for c_neighbor in jg[currento_table]:
@@ -112,7 +112,7 @@ class CJT(JoinGraph):
         parent_table: str = None,
         m_type: Message = Message.UNDECIDED,
     ):
-        joins = self.get_joins()
+        joins = self.joins
         if currento_table not in joins:
             return
         if currento_table == self.target_relation:

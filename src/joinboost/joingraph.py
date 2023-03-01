@@ -14,42 +14,49 @@ class JoinGraph:
     def __init__(
         self,
         exe=None,
-        joins={},
-        relation_schema={},
+        joins=None,
+        relation_schema=None,
         target_var=None,
         target_relation=None,
     ):
+        joins = joins if joins else {}
+        relation_schema = relation_schema if relation_schema else {}
 
         self.exe = ExecutorFactory(exe)
         # maps each from_relation => to_relation => {keys: (from_keys, to_keys)}
-        self.joins = copy.deepcopy(joins)
+        self._joins = copy.deepcopy(joins)
         # maps each relation => feature => feature_type
-        self.relation_schema = copy.deepcopy(relation_schema)
-        self.target_var = target_var
-        self.target_relation = target_relation
+        self._relation_schema = copy.deepcopy(relation_schema)
+        self._target_var = target_var
+        self._target_relation = target_relation
         # some magic/random number used for jupyter notebook display
         self.session_id = int(time.time())
-        self.rep_template = data = pkgutil.get_data(__name__, "d3graph.html").decode(
+        self.rep_template = pkgutil.get_data(__name__, "d3graph.html").decode(
             "utf-8"
         )
 
-    def get_relations(self):
+    @property
+    def relations(self):
         return list(self.relation_schema.keys())
 
-    def get_relation_schema(self):
-        return self.relation_schema
+    @property
+    def relation_schema(self):
+        return self._relation_schema
+
+    @property
+    def target_var(self):
+        return self._target_var
+
+    @property
+    def target_relation(self):
+        return self._target_relation
+
+    @property
+    def joins(self):
+        return self._joins
 
     def get_type(self, relation, feature):
         return self.relation_schema[relation][feature]
-
-    def get_target_var(self):
-        return self.target_var
-
-    def get_target_relation(self):
-        return self.target_relation
-
-    def get_joins(self):
-        return self.joins
 
     def has_join(self, table1, table2):
         return table1 in self.joins[table2] and table2 in self.joins[table1]
@@ -64,8 +71,7 @@ class JoinGraph:
                     if neighbour in seen:
                         return False
                     else:
-                        # TODO: This does not error out correctly! Get tests for this
-                        dfs(neighbour, cur_table)
+                        return dfs(neighbour, cur_table)
             return True
 
         # check acyclic
@@ -81,11 +87,14 @@ class JoinGraph:
     def add_relation(
         self,
         relation: str,
-        X: list = [],
+        X: list = None,
         y: str = None,
-        categorical_feature: list = [],
+        categorical_feature: list = None,
         relation_address=None,
     ):
+
+        X = X if X else []
+        categorical_feature = categorical_feature if categorical_feature else []
 
         self.exe.add_table(relation, relation_address)
         self.joins[relation] = dict()

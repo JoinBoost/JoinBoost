@@ -24,12 +24,12 @@ class DummyModel(App):
     def fit(self, jg: JoinGraph):
 
         jg._preprocess()
-        self.semi_ring.init_columns_name(jg.get_relation_schema())
+        self.semi_ring.init_columns_name(jg.relation_schema)
 
         # get the gradient and hessian
         # for rmse, g is the sum and h is the count
-        agg_exp = self.semi_ring.col_sum((jg.get_target_var(), "1"))
-        g, h = jg.exe.execute_spja_query(agg_exp, [jg.get_target_relation()], mode=3)[0]
+        agg_exp = self.semi_ring.col_sum((jg.target_var, "1"))
+        g, h = jg.exe.execute_spja_query(agg_exp, [jg.target_relation], mode=3)[0]
 
         prediction = g / h
         self.semi_ring.set_semi_ring(g, h)
@@ -64,14 +64,14 @@ class DecisionTree(DummyModel):
 
     def fit(self, jg: JoinGraph):
         # super().fit(jg)
-        self.semi_ring.init_columns_name(jg.get_relation_schema())
+        self.semi_ring.init_columns_name(jg.relation_schema)
         # shall we first sample then fit dummy model, or first fit dummy model then sample?
         # the current solution is to first sample than fit dummy model
         self.cjt = CJT(semi_ring=self.semi_ring, join_graph=jg)
         self.create_sample()
         super().fit(jg)
 
-        self.cjt.lift(self.cjt.get_target_var() + "- (" + str(self.constant_) + ")")
+        self.cjt.lift(self.cjt.target_var + "- (" + str(self.constant_) + ")")
         self.semi_ring.set_semi_ring(0, self.count_)
 
         self.train_one()
@@ -128,11 +128,11 @@ class DecisionTree(DummyModel):
             "prediction",
             str(self.constant_),
             self.model_def,
-            [self.cjt.get_target_var()],
+            [self.cjt.target_var],
         )
         predict_agg = {
             "RMSE": (
-                f"SQRT(AVG(POW({self.cjt.get_target_var()} - prediction, 2)))",
+                f"SQRT(AVG(POW({self.cjt.target_var} - prediction, 2)))",
                 Aggregator.IDENTITY,
             )
         }
@@ -161,7 +161,7 @@ class DecisionTree(DummyModel):
                 "prediction",
                 str(self.constant_),
                 self.model_def,
-                [self.cjt.get_target_var()],
+                [self.cjt.target_var],
             )
 
         elif input_mode == 2:
@@ -177,7 +177,7 @@ class DecisionTree(DummyModel):
                 "prediction",
                 str(self.constant_),
                 self.model_def,
-                [self.cjt.get_target_var()],
+                [self.cjt.target_var],
                 order_by=f"{data}.rowid",
             )
 
@@ -191,7 +191,7 @@ class DecisionTree(DummyModel):
     def _comp_annotations(
         self, r_name: str, attr: str, cur_value: str, obj: float, expanding_cjt: CJT
     ):
-        attr_type = expanding_cjt.get_relation_schema()[r_name][attr]
+        attr_type = expanding_cjt.relation_schema[r_name][attr]
         g_col, h_col = self.semi_ring.get_columns_name()
 
         # TODO: remove window_query and everything is spja
@@ -238,7 +238,7 @@ class DecisionTree(DummyModel):
     def _get_best_split(self, cjt_id: int, cjt_depth: int):
         cjt = self.nodes[cjt_id]
         cur_semi_ring = cjt.get_semi_ring()
-        attr_meta = self.cjt.get_relation_schema()
+        attr_meta = self.cjt.relation_schema
         g_col, h_col = self.semi_ring.get_columns_name()
 
         # criteria, (relation name, split attribute, split value, new s, new c)
@@ -430,11 +430,11 @@ class GradientBoosting(DecisionTree):
     def _update_error(self):
         for cur_cjt in self.leaf_nodes:
             cur_cond = []
-            target_relation = cur_cjt.get_target_relation()
+            target_relation = cur_cjt.target_relation
             g, h = cur_cjt.get_semi_ring().get_value()
             pred = g / h * self.learning_rate
             _, join_conds = cur_cjt._get_income_messages(
-                cur_cjt.get_target_relation(), condition=2
+                cur_cjt.target_relation, condition=2
             )
             join_conds += cur_cjt.get_parsed_annotations(target_relation)
             g_col, _ = self.semi_ring.get_columns_name()
