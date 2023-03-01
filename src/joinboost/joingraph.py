@@ -64,6 +64,7 @@ class JoinGraph:
                     if neighbour in seen:
                         return False
                     else:
+                        # TODO: This does not error out correctly! Get tests for this
                         dfs(neighbour, cur_table)
             return True
 
