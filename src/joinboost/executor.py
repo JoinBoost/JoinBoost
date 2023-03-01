@@ -110,31 +110,59 @@ class DuckdbExecutor(Executor):
         sql += ' WINDOW joinboost_window AS (ORDER BY ' + base_attr + ')\n)'
         self._execute_query(sql)
         return view_name
-
-    # {case: value} operator {case: value} ...
+    
     def case_query(self, from_table: str, operator: str, cond_attr: str, base_val: str,
-                   case_definitions: list, select_attrs: list = [], table_name: str = None):
-        # print(conditions)
+                   case_definitions: list, select_attrs: list = [], table_name: str = None, order_by: str = None):
+        """
+        Executes a SQL query with a CASE statement to perform tree-model prediction.
+        Each CASE represents a tree and each WHEN within a CASE represents a leaf.
+        
+        :param from_table: str, name of the source table
+        :param operator: str, the operator used to combine predictions
+        :param cond_attr: str, name of the column used in the conditions of the case statement
+        :param base_val: int, base value for the entire tree-model
+        :param case_definitions: list, a list of lists containing the (leaf prediction, leaf predicates) for each tree.
+        :param select_attrs: list, list of attributes to be selected, defaults to empty
+        :param table_name: str, name of the new table, defaults to None
+        :param order_by: str, name of the table to be ordered by rowid, defaults to None
+        :return: str, name of the new table
+        """
+        
+        # If no select attributes are provided, retrieve all columns
+        # except the one used in the conditions of the case statement
         if not select_attrs:
             attrs = self._execute_query('PRAGMA table_info(' + from_table + ')')
             for attr in attrs:
                 if attr != cond_attr: select_attrs.append(attr[1])
+                    
+        # If no table name is provided, generate a new one
         if not table_name:
             view = self.get_next_name()
         else:
             view = table_name
-        sql = 'CREATE OR REPLACE TABLE ' + view + ' AS\n'
-        sql += 'SELECT ' + ','.join(select_attrs) + ','
-        sql += base_val
+            
+        # Prepare the case statement using the provided operator
+        cases = []
         for case_definition in case_definitions:
-            sql += operator + '\nCASE\n'
+            sql_case = f'{operator}\nCASE\n'
             for val, cond in case_definition:
-                sql += ' WHEN ' + ' AND '.join(cond) + ' THEN CAST(' + str(val) + ' AS DOUBLE)\n'
-            sql += 'ELSE 0 END\n'
-        sql += 'AS ' + cond_attr + ' FROM ' + from_table
+                conds = ' AND '.join(cond)
+                sql_case += f' WHEN {conds} THEN CAST({val} AS DOUBLE)\n'
+            sql_case += 'ELSE 0 END\n'
+            cases.append(sql_case)
+        sql_cases = ''.join(cases)
+        
+        # Create the SELECT statement with the CASE statement
+        attrs = ",".join(select_attrs)
+        sql = f'CREATE OR REPLACE TABLE {view} AS\n' + \
+              f'SELECT {attrs}, {base_val}' + \
+              f'{sql_cases}' + \
+              f'AS {cond_attr} FROM {from_table} '
+        if order_by:
+              sql += f'ORDER BY {order_by};'
         self._execute_query(sql)
         return view
-    
+
     def check_table(self, table):
         if not table.startswith(self.prefix):
             raise Exception("Don't modify user tables!")

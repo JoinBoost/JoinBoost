@@ -5,6 +5,8 @@ from .semiring import *
 from .aggregator import Aggregator, Annotation, Message
 from .cjt import CJT
 from queue import PriorityQueue
+import numpy as np
+from typing import Union
 
 
 class App(ABC):
@@ -37,8 +39,11 @@ class DummyModel(App):
         # below currently only works for rmse
         self.count_ = h
         self.constant_ = prediction
+        
+        # store full join sql
+        self._full_join_sql = jg.get_full_join_sql()
 
-    def predict(self):
+    def predict(self, data: Union[str, JoinGraph], input_mode: int):
         return self.constant_
     
 
@@ -119,11 +124,48 @@ class DecisionTree(DummyModel):
         # TODO: refactor
         view = self.cjt.exe.case_query(test_table, '+', 'prediction', str(self.constant_),
                                        self.model_def, [self.cjt.get_target_var()])
-        predict_agg = {'RMSE': ('SQRT(AVG(POW(' + self.cjt.get_target_var() + ' - prediction,2)))',
-                                Aggregator.IDENTITY)}
+        predict_agg = {'RMSE': 
+            (f'SQRT(AVG(POW({self.cjt.get_target_var()} - prediction, 2)))',
+             Aggregator.IDENTITY)}
         predict = self.cjt.exe.execute_spja_query(predict_agg, [view], mode=4)
         return self.cjt.exe.execute_spja_query(from_tables=[predict], 
                                                mode=3)[0]
+    
+    # input_mode = 1 takes the full join's table name as input
+    # input_mode = 2 takes the join graph as input (assume fact table)
+    # input_mode = 3 takes the fact table's name as input (and automatically join it
+    # with dimensional tables used in training)
+    # TODO support different outputs
+    # output_mode = 1 returns a numpy array
+    # output_mode = 2 stores the prediction in a table and returns table name
+    def predict(self, data: Union[str, JoinGraph], 
+                input_mode: int = 1,
+                output_mode: int = 1,):
+        
+        if input_mode == 1:
+            assert(isinstance(data, str))
+            view = self.cjt.exe.case_query(data, '+', 'prediction',
+                                           str(self.constant_), self.model_def,
+                                           [self.cjt.get_target_var()])
+
+        elif input_mode == 2:
+            assert(isinstance(data, JoinGraph))
+            # TODO
+            pass
+
+        elif input_mode == 3:
+            assert(isinstance(data, str))
+            view = self.cjt.exe.case_query(self._full_join_sql, '+', 'prediction', 
+                                           str(self.constant_), self.model_def,
+                                           [self.cjt.get_target_var()],
+                                           order_by=f'{data}.rowid')
+
+        preds = self.cjt.exe._execute_query(f"select prediction from {view};")
+        return np.array(preds)[:, 0]
+
+
+
+
 
     def _clean_messages(self):
         for cjt in self.nodes.values():

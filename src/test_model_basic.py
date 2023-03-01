@@ -2,6 +2,7 @@ import unittest
 import math
 import time
 import pandas as pd
+import numpy as np
 import duckdb
 import lightgbm
 from sklearn.tree import DecisionTreeRegressor
@@ -115,13 +116,17 @@ class TestModel(unittest.TestCase):
         reg = GradientBoosting(learning_rate=1, max_leaves=2 ** depth, max_depth=depth, iteration = iteration)
 
         reg.fit(dataset)
-
+        reg_prediction = reg.predict(data='train', input_mode=1)
         
         data = pd.read_csv('../data/favorita/train_small.csv')
         clf = GradientBoostingRegressor(max_depth=depth,learning_rate=1, n_estimators=iteration)
         clf = clf.fit(data[x], data[y])
-        mse = mean_squared_error(data[y], clf.predict(data[x]))
-        self.assertTrue(abs(reg.compute_rmse('train')[0] - math.sqrt(mse)) < 1e-3)
+        clf_prediction = clf.predict(data[x])
+        mse = mean_squared_error(data[y], clf_prediction)
+        _reg_rmse = reg.compute_rmse('train')[0]
+
+        self.assertTrue(abs(_reg_rmse - math.sqrt(mse)) < 1e-3)
+        self.assertTrue(np.sum(np.abs(reg_prediction - clf_prediction)) < 1e-3)
     
     def test_sample_syn(self):
         data = pd.read_csv("../data/synthetic/RST.csv")
