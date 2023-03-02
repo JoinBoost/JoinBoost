@@ -2,7 +2,8 @@ import copy
 from .semiring import SemiRing
 from .joingraph import JoinGraph
 from .executor import Executor, SPJAData
-from .aggregator import *
+from .aggregator import * # MATT: Get rid of this
+# MATT: What is this?
 
 
 class CJT(JoinGraph):

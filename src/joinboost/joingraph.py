@@ -1,7 +1,6 @@
+import copy
 import time
 
-from .aggregator import Aggregator
-import copy
 from .executor import ExecutorFactory
 import pkgutil
 
@@ -116,35 +115,7 @@ class JoinGraph:
             self.target_var = y
             self.target_relation = relation
 
-    # get features for each table
-    def get_relation_features(self, r_name):
-        if r_name not in self.relation_schema:
-            raise JoinGraphException("Attribute not in " + r_name)
-        return list(self.relation_schema[r_name].keys())
-
-    # get the join keys between two tables
-    # all get all the join keys of one table
-    # TODO: check if the join keys exist
-    def get_join_keys(self, f_table: str, t_table: str = None):
-        if f_table not in self.joins:
-            return []
-        if t_table:
-            if t_table not in self.joins[f_table]:
-                raise JoinGraphException(t_table, "not connected to", f_table)
-            return self.joins[f_table][t_table]["keys"]
-        else:
-            keys = set()
-            for table in self.joins[f_table]:
-                l_keys, _ = self.joins[f_table][table]["keys"]
-                keys = keys.union(set(l_keys))
-            return list(keys)
-
-    # useful attributes are features + join keys
-    def get_useful_attributes(self, table):
-        useful_attributes = self.get_relation_features(table) + self.get_join_keys(
-            table
-        )
-        return list(set(useful_attributes))
+        # MATT: Add check_acyclic?
 
     def add_join(
         self,
@@ -153,6 +124,7 @@ class JoinGraph:
         left_keys: list,
         right_keys: list,
     ):
+        # MATT: underscore variables
         if len(left_keys) != len(right_keys):
             raise JoinGraphException("Join keys have different lengths!")
         if table_name_left not in self.relation_schema:
@@ -169,6 +141,36 @@ class JoinGraph:
         self.joins[table_name_right][table_name_left] = {
             "keys": (right_keys, left_keys)
         }
+
+    # get features for each table
+    def get_relation_features(self, r_name):
+        if r_name not in self.relation_schema:
+            raise JoinGraphException("Attribute not in " + r_name)
+        return list(self.relation_schema[r_name].keys())
+
+    # get the join keys between two tables
+    # all get all the join keys of one table
+    # TODO: check if the join keys exist
+    def get_join_keys(self, f_table: str, t_table: str = None):
+        if f_table not in self.joins:
+            return []
+        if t_table:
+            if t_table not in self.joins[f_table]:
+                raise JoinGraphException(t_table, " not connected to ", f_table)
+            return self.joins[f_table][t_table]["keys"]
+        else:
+            keys = set()
+            for table in self.joins[f_table]:
+                l_keys, _ = self.joins[f_table][table]["keys"]
+                keys = keys.union(set(l_keys))
+            return list(keys)
+
+    # useful attributes are features + join keys
+    def get_useful_attributes(self, table):
+        useful_attributes = self.get_relation_features(table) + self.get_join_keys(
+            table
+        )
+        return list(set(useful_attributes))
 
     def get_full_join_sql(self):
         """Return the sql statement of full join."""
@@ -223,6 +225,8 @@ class JoinGraph:
     def _preprocess(self):
         # self.check_all_features_exist()
         self.check_acyclic()
+
+    # MATT: get rid of this?
 
     def check_target_exist(self):
         if self.target_var is None:

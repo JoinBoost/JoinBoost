@@ -3,6 +3,9 @@ from copy import deepcopy
 from .aggregator import Aggregator, Message
 from .joingraph import JoinGraph
 
+# MATT: use proper python arithmetic methods
+# MATT: use proper abc stuff
+
 
 """Handle semi ring in DBMS"""
 
