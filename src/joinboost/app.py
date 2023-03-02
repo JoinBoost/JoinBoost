@@ -24,7 +24,7 @@ class DummyModel(App):
            jg: JoinGraph):
         
         jg._preprocess()
-        self.semi_ring.init_columns_name(jg.get_relation_schema())
+        self.semi_ring.init_columns_name(jg)
         
         # get the gradient and hessian
         # for rmse, g is the sum and h is the count
@@ -65,7 +65,7 @@ class DecisionTree(DummyModel):
     def fit(self,
            jg: JoinGraph):
         # super().fit(jg)
-        self.semi_ring.init_columns_name(jg.get_relation_schema())
+        self.semi_ring.init_columns_name(jg)
         # shall we first sample then fit dummy model, or first fit dummy model then sample?
         # the current solution is to first sample than fit dummy model
         self.cjt = CJT(semi_ring=self.semi_ring, join_graph=jg)
@@ -135,7 +135,7 @@ class DecisionTree(DummyModel):
     # input_mode = 2 takes the join graph as input (assume fact table)
     # input_mode = 3 takes the fact table's name as input (and automatically join it
     # with dimensional tables used in training)
-    # TODO support different outputs
+    # TODO: support different outputs
     # output_mode = 1 returns a numpy array
     # output_mode = 2 stores the prediction in a table and returns table name
     def predict(self, data: Union[str, JoinGraph], 
@@ -155,17 +155,28 @@ class DecisionTree(DummyModel):
 
         elif input_mode == 3:
             assert(isinstance(data, str))
+            self._update_fact_table_column_name(table=data, check_rowid_col = True)
             view = self.cjt.exe.case_query(self._full_join_sql, '+', 'prediction', 
                                            str(self.constant_), self.model_def,
                                            [self.cjt.get_target_var()],
                                            order_by=f'{data}.rowid')
+            self._update_fact_table_column_name(table=data, resume_rowid_col = True)
 
         preds = self.cjt.exe._execute_query(f"select prediction from {view};")
         return np.array(preds)[:, 0]
 
+    def _update_fact_table_column_name(self, table, check_rowid_col=False, resume_rowid_col=False):
+        """Rename/resume fact table's rowid column(if exists)."""
 
+        if self.semi_ring.target_rowid_colname:
+            if check_rowid_col:
+                old_name, new_name = "rowid", self.semi_ring.target_rowid_colname
 
+            if resume_rowid_col:
+                old_name, new_name = self.semi_ring.target_rowid_colname, "rowid"
 
+            sql = f"ALTER TABLE {table} RENAME COLUMN {old_name} TO {new_name};"
+            self.cjt.exe._execute_query(sql)
 
     def _clean_messages(self):
         for cjt in self.nodes.values():

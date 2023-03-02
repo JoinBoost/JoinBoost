@@ -33,6 +33,9 @@ class JoinGraph:
     
     def get_relation_schema(self): 
         return self.relation_schema
+
+    def get_target_rowid_colname(self): 
+        return self.target_rowid_colname
     
     def get_type(self, relation, feature): 
         return self.relation_schema[relation][feature]
@@ -84,7 +87,7 @@ class JoinGraph:
         if relation not in self.relation_schema:
                 self.relation_schema[relation] = {}
         
-        self.check_features_exist(relation, X + ([y] if y is not None else []))
+        attributes = self.check_features_exist(relation, X + ([y] if y is not None else []))
         
         for x in X:
             # by default, assume all features to be numerical
@@ -98,6 +101,15 @@ class JoinGraph:
                 print("Warning: Y already exists and has been replaced")
             self.target_var = y
             self.target_relation = relation
+            self.target_rowid_colname = self._get_target_rowid_colname(attributes)
+            
+    def _get_target_rowid_colname(self, attributes):
+        """Get the temporary rowid column name(if exists) for the target relation."""
+        attr = set(attributes)
+        tmp = "rowid"
+        while tmp in attr:
+            tmp = "joinboost_tmp_" + tmp
+        return tmp if tmp != "rowid" else ""
             
     # get features for each table
     def get_relation_features(self, r_name):
@@ -213,6 +225,7 @@ class JoinGraph:
         if not set(features).issubset(set(attributes)):
             raise JoinGraphException('Key error in ' + str(features) + '. Attribute does not exist in table ' \
                             + table + ' with schema ' + str(attributes))
+        return attributes
 
     # output html that displays the join graph. Taken from JoinExplorer notebook
     def _repr_html_(self):
