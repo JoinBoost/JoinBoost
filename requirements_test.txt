@@ -1,2 +1,2 @@
 lightgbm
-scikit-learn
+sklearn
