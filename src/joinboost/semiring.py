@@ -33,7 +33,7 @@ class GradientHessianSemiRing(SemiRing):
         self.pair = (g, h)
         self.gradient_column_name = g_name
         self.hessian_column_name = h_name
-        self.target_rowid_colname = ""
+        self.target_rowid_colname = "rowid"
 
 # for rmse, gradient is sum and hessian is count
 class varSemiRing(GradientHessianSemiRing):
@@ -50,23 +50,11 @@ class varSemiRing(GradientHessianSemiRing):
     def get_columns_name(self):
         return (self.gradient_column_name, self.hessian_column_name)
 
-    def init_columns_name(self, jg):
-        relation_schema = jg.get_relation_schema()
-
-        # if any column has name 's' or 'c', name the sum column as 
-        # 'joinboost_preserved_s' and count column as 'joinboost_preserved_c';
-        # Recursively adding prefix until both s,c columns are unique
-        cols = set()
-        for _cols in relation_schema.values():
-            for col in _cols.keys():
-                cols.add(col)
-        prefix = "joinboost_preserved_"
-        while self.gradient_column_name in cols or self.hessian_column_name in cols:
-            self.gradient_column_name = prefix + self.gradient_column_name
-            self.hessian_column_name = prefix + self.hessian_column_name
-        
-        # Store the target's rowid column name(if exists)
-        self.target_rowid_colname = jg.get_target_rowid_colname()
+    # TODO: "rowid" is DuckDB specific. maybe executor has some reserved words
+    def init_columns_name(self, jg, reserved_words=["rowid"]):
+        reserved_words += [self.gradient_column_name, self.hessian_column_name]
+        for reserved_word in reserved_words:
+            jg.replace_attribute(reserved_word)
 
     def __add__(self, other):
         result = self.copy()

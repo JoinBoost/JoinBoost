@@ -109,6 +109,10 @@ class TestApp(unittest.TestCase):
         reg2.fit(dataset2)
 
         rmse1 = reg1.compute_rmse('train')[0]
+        
+        # TODO: this is hard code. Remove it.
+        # keep track of the column updated because of the reserved words
+        dataset2.exe.rename('train_renamed', 's', 'joinboost_reserved_s')
         rmse2 = reg2.compute_rmse('train_renamed')[0]
 
         print()

@@ -33,7 +33,25 @@ class JoinGraph:
     
     def get_relation_schema(self): 
         return self.relation_schema
+    
+    def replace_relation_attribute(self, relation, before_attribute, after_attribute):
+        if relation == self.target_relation:
+            if self.target_var == before_attribute:
+                self.target_var = after_attribute
+                
+        if before_attribute in self.relation_schema[relation]:
+            self.relation_schema[relation][after_attribute] = self.relation_schema[relation][before_attribute] 
+            del self.relation_schema[relation][before_attribute] 
+        
+        for relation2 in self.joins[relation]:
+            left_join_key = self.joins[relation][relation2]['keys'][0]
+            if before_attribute in left_join_key:
+                # Find the index of the before_attribute in the list
+                index = left_join_key.index(before_attribute)
+                # Replace the old string with the new string
+                left_join_key[index] = after_attribute
 
+        
     def get_target_rowid_colname(self): 
         return self.target_rowid_colname
     
@@ -112,10 +130,10 @@ class JoinGraph:
         return tmp if tmp != "rowid" else ""
             
     # get features for each table
-    def get_relation_features(self, r_name):
-        if r_name not in self.relation_schema:
-            raise JoinGraphException('Attribute not in ' + r_name)
-        return list(self.relation_schema[r_name].keys())
+    def get_relation_features(self, relation):
+        if relation not in self.relation_schema:
+            raise JoinGraphException('Attribute not in ' + relation)
+        return list(self.relation_schema[relation].keys())
     
     # get the join keys between two tables
     # all get all the join keys of one table
@@ -255,7 +273,26 @@ class JoinGraph:
         s = s.replace("{{nodes}}", str(nodes))
         s = s.replace("{{links}}", str(links))
         return s
-
+    
+    # replace the reserved_word, if it exists in any table
+    # iterate through each table to check if reserved_word exist
+    # if so, rename it to another 
+    def replace_attribute(self, reserved_word):
+        for relation in self.get_relations():
+            # schema is a list of string
+            schema =  self.exe.get_schema(relation)
+            # check if reserved_word is in schema
+            if reserved_word in schema:
+                # if it is, keeping adding prefix to it, until the word is not in schema
+                prefix = "joinboost_reserved_"
+                new_word = prefix + reserved_word
+                while new_word in schema:
+                    new_word = prefix + new_word
+                # TODO: instead rename, create a view might be better to avoid modifying user table
+                self.exe.rename(relation, reserved_word, new_word)
+                self.replace_relation_attribute(relation, reserved_word, new_word)
+    
+    
 #     def decide_feature_type(self, table, attrs, attr_types, threshold, exe: Executor):
 #         self.relations.append(table)
 #         r_meta = {}

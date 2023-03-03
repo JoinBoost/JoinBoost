@@ -266,7 +266,11 @@ class DuckdbExecutor(Executor):
         if sample_rate is not None:
             sql += 'USING SAMPLE ' + str(sample_rate*100) + ' %\n'
         return sql
-
+    
+    def rename(self, table, old_name, new_name):
+        sql = f"ALTER TABLE {table} RENAME COLUMN {old_name} TO {new_name};"
+        self._execute_query(sql)
+    
     def _execute_query(self, q):
         start_time = time.time()
         if self.debug:

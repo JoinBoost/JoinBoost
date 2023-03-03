@@ -155,28 +155,13 @@ class DecisionTree(DummyModel):
 
         elif input_mode == 3:
             assert(isinstance(data, str))
-            self._update_fact_table_column_name(table=data, check_rowid_col = True)
             view = self.cjt.exe.case_query(self._full_join_sql, '+', 'prediction', 
                                            str(self.constant_), self.model_def,
                                            [self.cjt.get_target_var()],
                                            order_by=f'{data}.rowid')
-            self._update_fact_table_column_name(table=data, resume_rowid_col = True)
 
         preds = self.cjt.exe._execute_query(f"select prediction from {view};")
         return np.array(preds)[:, 0]
-
-    def _update_fact_table_column_name(self, table, check_rowid_col=False, resume_rowid_col=False):
-        """Rename/resume fact table's rowid column(if exists)."""
-
-        if self.semi_ring.target_rowid_colname:
-            if check_rowid_col:
-                old_name, new_name = "rowid", self.semi_ring.target_rowid_colname
-
-            if resume_rowid_col:
-                old_name, new_name = self.semi_ring.target_rowid_colname, "rowid"
-
-            sql = f"ALTER TABLE {table} RENAME COLUMN {old_name} TO {new_name};"
-            self.cjt.exe._execute_query(sql)
 
     def _clean_messages(self):
         for cjt in self.nodes.values():
