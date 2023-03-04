@@ -34,6 +34,27 @@ class JoinGraph:
     def get_relation_schema(self): 
         return self.relation_schema
     
+    def replace_relation_attribute(self, relation, before_attribute, after_attribute):
+        if relation == self.target_relation:
+            if self.target_var == before_attribute:
+                self.target_var = after_attribute
+                
+        if before_attribute in self.relation_schema[relation]:
+            self.relation_schema[relation][after_attribute] = self.relation_schema[relation][before_attribute] 
+            del self.relation_schema[relation][before_attribute] 
+        
+        for relation2 in self.joins[relation]:
+            left_join_key = self.joins[relation][relation2]['keys'][0]
+            if before_attribute in left_join_key:
+                # Find the index of the before_attribute in the list
+                index = left_join_key.index(before_attribute)
+                # Replace the old string with the new string
+                left_join_key[index] = after_attribute
+
+        
+    def get_target_rowid_colname(self): 
+        return self.target_rowid_colname
+    
     def get_type(self, relation, feature): 
         return self.relation_schema[relation][feature]
 
@@ -45,6 +66,9 @@ class JoinGraph:
     
     def get_joins(self):
         return self.joins
+    
+    def has_join(self, table1, table2):
+        return table1 in self.joins[table2] and table2 in self.joins[table1]
     
     def check_acyclic(self):
         seen = set()
@@ -81,7 +105,7 @@ class JoinGraph:
         if relation not in self.relation_schema:
                 self.relation_schema[relation] = {}
         
-        self.check_features_exist(relation, X + ([y] if y is not None else []))
+        attributes = self.check_features_exist(relation, X + ([y] if y is not None else []))
         
         for x in X:
             # by default, assume all features to be numerical
@@ -95,12 +119,21 @@ class JoinGraph:
                 print("Warning: Y already exists and has been replaced")
             self.target_var = y
             self.target_relation = relation
+            self.target_rowid_colname = self._get_target_rowid_colname(attributes)
+            
+    def _get_target_rowid_colname(self, attributes):
+        """Get the temporary rowid column name(if exists) for the target relation."""
+        attr = set(attributes)
+        tmp = "rowid"
+        while tmp in attr:
+            tmp = "joinboost_tmp_" + tmp
+        return tmp if tmp != "rowid" else ""
             
     # get features for each table
-    def get_relation_features(self, r_name):
-        if r_name not in self.relation_schema:
-            raise JoinGraphException('Attribute not in ' + r_name)
-        return list(self.relation_schema[r_name].keys())
+    def get_relation_features(self, relation):
+        if relation not in self.relation_schema:
+            raise JoinGraphException('Attribute not in ' + relation)
+        return list(self.relation_schema[relation].keys())
     
     # get the join keys between two tables
     # all get all the join keys of one table
@@ -139,6 +172,36 @@ class JoinGraph:
 
         self.joins[table_name_left][table_name_right] = {"keys": (left_keys, right_keys)}
         self.joins[table_name_right][table_name_left] = {"keys": (right_keys, left_keys)}
+        
+    def get_full_join_sql(self):
+        """Return the sql statement of full join."""
+
+        sql = []
+        seen = set()
+
+        def dfs(rel1, parent=None):
+            seen.add(rel1)
+            for rel2 in self.joins[rel1]:
+                if rel2 != parent: 
+                    if rel2 in seen:
+                        return
+                    else:
+                        keys1, keys2 = self.get_join_keys(rel1, rel2)
+                        key_sql = self._format_join_sql(rel1, rel2, keys1, keys2)
+                        if not sql:
+                            sql.append(f"{rel1} JOIN {rel2} ON {key_sql} ")
+                        else:
+                            sql.append(f"JOIN {rel2} ON {key_sql} ")
+                        dfs(rel2, rel1)
+            return
+
+        dfs(list(self.joins.keys())[0])
+        return ''.join(sql)
+    
+    def _format_join_sql(self, rel1, rel2, keys1, keys2):
+        sql = " AND ".join(f"{rel1}.{key1}={rel2}.{key2}" 
+                           for key1,key2 in zip(keys1, keys2))
+        return sql        
         
     def replace(self, table_prev, table_after):
         if table_prev not in self.relation_schema: 
@@ -180,6 +243,7 @@ class JoinGraph:
         if not set(features).issubset(set(attributes)):
             raise JoinGraphException('Key error in ' + str(features) + '. Attribute does not exist in table ' \
                             + table + ' with schema ' + str(attributes))
+        return attributes
 
     # output html that displays the join graph. Taken from JoinExplorer notebook
     def _repr_html_(self):
@@ -209,7 +273,26 @@ class JoinGraph:
         s = s.replace("{{nodes}}", str(nodes))
         s = s.replace("{{links}}", str(links))
         return s
-
+    
+    # replace the reserved_word, if it exists in any table
+    # iterate through each table to check if reserved_word exist
+    # if so, rename it to another 
+    def replace_attribute(self, reserved_word):
+        for relation in self.get_relations():
+            # schema is a list of string
+            schema =  self.exe.get_schema(relation)
+            # check if reserved_word is in schema
+            if reserved_word in schema:
+                # if it is, keeping adding prefix to it, until the word is not in schema
+                prefix = "joinboost_reserved_"
+                new_word = prefix + reserved_word
+                while new_word in schema:
+                    new_word = prefix + new_word
+                # TODO: instead rename, create a view might be better to avoid modifying user table
+                self.exe.rename(relation, reserved_word, new_word)
+                self.replace_relation_attribute(relation, reserved_word, new_word)
+    
+    
 #     def decide_feature_type(self, table, attrs, attr_types, threshold, exe: Executor):
 #         self.relations.append(table)
 #         r_meta = {}
