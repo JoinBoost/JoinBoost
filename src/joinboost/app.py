@@ -77,13 +77,13 @@ class DecisionTree(DummyModel):
         
         self.train_one()
     
-    def create_sample(self):
+    def create_sample(self, mode=1):
         if self.subsample < 1:
             # TODO: Possible to sample 0 tuples.
             # Add check to make sure the sampled table has tuples
             new_fact_name = self.cjt.exe.execute_spja_query(from_tables=[self.cjt.target_relation], 
                                                             sample_rate=self.subsample,
-                                                            mode = 4)
+                                                            mode = mode)
             self.cjt.replace(self.cjt.target_relation, new_fact_name)
         
     
