@@ -1,7 +1,7 @@
 from enum import Enum
 
 # TODO: make aggregator class (like operator in database), so we can do simple composition and optimization
-Aggregator = Enum('Aggregator', 'SUM MAX MIN SUB SUM_PROD PROD DIV COUNT DISTINCT_COUNT IDENTITY')
+Aggregator = Enum('Aggregator', 'SUM MAX MIN SUB SUM_PROD PROD DIV COUNT DISTINCT_COUNT IDENTITY IDENTITY_LAMBDA')
 Annotation = Enum('NULL', 'NULL NOT_NULL NOT_GREATER GREATER DISTINCT NOT_DISTINCT IN NOT_IN')
 Message = Enum('Message', 'IDENTITY SELECTION FULL UNDECIDED')
 
@@ -19,7 +19,7 @@ def parse_agg(agg, para):
     elif agg == Aggregator.COUNT:
         assert isinstance(para, str)
         return 'COUNT(' + para + ')'
-    elif agg == Aggregator.IDENTITY:
+    elif agg == Aggregator.IDENTITY or agg == Aggregator.IDENTITY_LAMBDA:
         return str(para)
     elif agg == Aggregator.PROD:
         assert isinstance(para, list)
