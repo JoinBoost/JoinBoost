@@ -400,45 +400,60 @@ class PandasExecutor(DuckdbExecutor):
             converted_select_conds = ' and '.join(select_conds)
             df = df.query(converted_select_conds)
 
-        # add window_by columns to group_by
-        if len(window_by) > 0:
-            # qualify window_by columns with table name in from_tables (there will only be one)
-            window_by = [from_tables[0] + '.' + col for col in window_by]
-            if len(group_by) > 0:
-                group_by += window_by
-            else:
-                group_by = window_by
-
         # group by and aggregate
-        df = self.apply_group_by_and_agg(agg_conditions, df, group_by)
+        df = self.apply_group_by_and_agg(agg_conditions, df, group_by, window_by)
 
         # sort by each column in order_by
         if len(order_by) > 0:
             for col, order in order_by:
                 df = df.sort_values(col, ascending=(order == 'ASC' or order is None))
 
+        # limit
+        if limit is not None:
+            df = df.head(limit)
+
+        df = self.reorder_columns(aggregate_expressions, df)
+
         if mode == 1 or mode == 2 or mode == 4:
             name_ = self.get_next_name()
-            print("creating table " + name_)
             # always qualify intermediate tables as future aggregations for these tables will come qualified
             for col in df.columns:
                 if col not in ['s', 'c']:
-                    df = df.rename(columns={col: name_ + '.' + col})
+                    # strip any table name from the column name
+                    df = df.rename(columns={col: name_ + '.' + col.split('.')[-1]})
+            if self.debug:
+                print("creating table " + name_)
+                print(df.head())
             df.name = name_
             self.table_registry[name_] = df
             return name_
         elif mode == 3:
-            print("returning result")
-            print(df.head())
+            if self.debug:
+                print("returning result")
+                print(df.head())
+
             return df.values.tolist()
         else:
             raise ExecutorException('Unsupported mode for query execution!')
 
-    def apply_group_by_and_agg(self, agg_conditions, df, group_by):
+    def reorder_columns(self, aggregate_expressions, df):
+        # reorder the columns according to the order of aggregate_expressions
+        if len(aggregate_expressions) > 0:
+            # get list of column names from aggregate_expressions that's also in df
+            agg_cols = [col for col in aggregate_expressions.keys() if col in df.columns]
+            # get list of column names from df
+            df_cols = df.columns
+            # merge the two lists, giving priority to agg_cols and removing duplicates
+            cols = agg_cols + [col for col in df_cols if col not in agg_cols]
+            df = df.reindex(columns=cols)
+        return df
+
+    def apply_group_by_and_agg(self, agg_conditions, df, group_by, window_by):
         if len(group_by) > 0:
             # if group_by element is not of the form joinboost_<digit>.col, then unqualify it
             for i, col in enumerate(group_by):
-                if not re.match(r'^joinboost_\d+\.\w+$', col):
+                # check if unqualified column name exists in df.columns
+                if col.split('.')[-1] in df.columns:
                     group_by[i] = col.split('.')[-1]
             inter_df = df.groupby(group_by)
             if len(agg_conditions) > 0:
@@ -454,21 +469,28 @@ class PandasExecutor(DuckdbExecutor):
                     df = df.rename(columns={col: col.split('.')[-1]})
         else:
             if len(agg_conditions) > 0:
-                # check if column does not exist and create it before applying agg_conditions (for s anc c)
-                for col in agg_conditions.keys():
-                    if col not in df.columns:
-                        df[col] = 1
+                if len(window_by) > 0:
+                    # apply cumulative sum on window_by columns in pandas dataframe
+                    df = df.sort_values(window_by)
+                    # TODO: remove hack
+                    df['s'] = df['s'].cumsum()
+                    df['c'] = df['c'].cumsum()
+                else:
+                    # check if column does not exist and create it before applying agg_conditions (for s anc c)
+                    for col in agg_conditions.keys():
+                        if col not in df.columns:
+                            df[col] = 1
 
-                # check if column is * and apply aggfunc to the entire row
-                for col in list(agg_conditions.keys()):
-                    if agg_conditions[col].column == '*':
-                        func = agg_conditions[col].aggfunc
-                        df[col] = df.apply(func, axis=1)
-                        del agg_conditions[col]
-                if len(agg_conditions) > 0:
-                    df = df.assign(temp=0).groupby('temp').agg(**agg_conditions).reset_index().drop(columns='temp')
-                for col in df.columns:
-                    df = df.rename(columns={col: col.split('.')[-1]})
+                    # check if column is * and apply aggfunc to the entire row
+                    for col in list(agg_conditions.keys()):
+                        if agg_conditions[col].column == '*':
+                            func = agg_conditions[col].aggfunc
+                            df[col] = df.apply(func, axis=1)
+                            del agg_conditions[col]
+                    if len(agg_conditions) > 0:
+                        df = df.assign(temp=0).groupby('temp').agg(**agg_conditions).reset_index().drop(columns='temp')
+                    for col in df.columns:
+                        df = df.rename(columns={col: col.split('.')[-1]})
         return df
 
     # computes join or cross (if no join condition) between all tables.
@@ -520,6 +542,17 @@ class PandasExecutor(DuckdbExecutor):
                                                        how=join_type.lower(), left_on=cond[1],
                                                        right_on=cond[0].split('.')[1],
                                                        suffixes=('', '_drop')).filter(regex='^(?!.*_drop)')
+
+
+                # unqualify all columns in temp. This is to avoid nested columns being qualified with the table name
+                if temp is not None:
+                    for col in temp.columns:
+                        temp = temp.rename(columns={col: col.split('.')[-1]})
+                    # if there are duplicate columns, drop them
+                    temp = temp.loc[:, ~temp.columns.duplicated()]
+
+
+
             if temp is not None:
                 if df is None:
                     df = temp
@@ -527,6 +560,12 @@ class PandasExecutor(DuckdbExecutor):
                     df = df.merge(temp, how='cross', suffixes=('', '_drop')).filter(regex='^(?!.*_drop)')
                 break
 
+        # final removal of all qualification of columns
+        if df is not None:
+            for col in df.columns:
+                df = df.rename(columns={col: col.split('.')[-1]})
+            # if there are duplicate columns, drop them
+            df = df.loc[:, ~df.columns.duplicated()]
         return df
 
     def convert_predicates(self, select_conds):
@@ -537,9 +576,8 @@ class PandasExecutor(DuckdbExecutor):
         select_conds = [cond for cond in select_conds if 'DISTINCT' not in cond]
         # check if predicates do not start with joinboost_<number>.col <op> <value> and if so, remove the table name
         for i, cond in enumerate(select_conds):
-            if not re.match(r'^joinboost_', cond):
-                # split by dot and remove only the first element and return everything else as it is
-                select_conds[i] = '.'.join(cond.split('.')[1:])
+            # split by dot and remove only the first element and return everything else as it is
+            select_conds[i] = '.'.join(cond.split('.')[1:])
 
         # wrap each operand (of the form identifier.identifier or identifier) with backticks, ignore any multi-digit numeric values
         select_conds = [re.sub(r'\b([a-zA-Z_0-9]+\.[a-zA-Z_]+|[a-zA-Z_]+)\b', r'`\g<1>`', cond) for cond in select_conds]
@@ -558,22 +596,24 @@ class PandasExecutor(DuckdbExecutor):
             if target_col is None:
                 target_col = para
 
-            # check if column is a number in string form, in that case use target_col as the column name
-            if str(para).isnumeric():
-                para = target_col
 
             # use named aggregation and column renaming with dictionary
             if agg == Aggregator.COUNT:
                 agg_conditions[target_col] = pd.NamedAgg(column=para, aggfunc='count')
             elif agg == Aggregator.SUM:
+                # check if column is a number in string form, in that case use target_col as the column name
+                if str(para).isnumeric():
+                    para = target_col
                 agg_conditions[target_col] = pd.NamedAgg(column=para, aggfunc='sum')
             elif agg == Aggregator.MAX:
                 agg_conditions[target_col] = pd.NamedAgg(column=para, aggfunc='max')
             elif agg == Aggregator.MIN:
                 agg_conditions[target_col] = pd.NamedAgg(column=para, aggfunc='min')
             elif agg == Aggregator.IDENTITY:
-                # don't do anything, these are automatically handled as the default
-                pass
+                if para == '1':
+                    agg_conditions[target_col] = pd.NamedAgg(column='*', aggfunc=lambda x: 1)
+                else:
+                    pass
             elif agg == Aggregator.IDENTITY_LAMBDA:
                 agg_conditions[target_col] = pd.NamedAgg(column='*', aggfunc=para)
 

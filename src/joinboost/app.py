@@ -73,8 +73,12 @@ class DecisionTree(DummyModel):
         self.cjt = CJT(semi_ring=self.semi_ring, join_graph=jg)
         self.create_sample()
         super().fit(jg)
-        
-        self.cjt.lift(self.cjt.get_target_var() + "- (" + str(self.constant_) + ")")
+
+        exp = self.cjt.get_target_var() + "- (" + str(self.constant_) + ")"
+        if isinstance(self.cjt.exe , PandasExecutor):
+            exp = lambda row: row[self.cjt.get_target_var()] - self.constant_
+
+        self.cjt.lift(exp)
         self.semi_ring.set_semi_ring(0, self.count_)
         
         self.train_one()
@@ -253,7 +257,7 @@ class DecisionTree(DummyModel):
                 # check if executor is of type PandasExecutor or DuckdbExecutor
                 # TODO: move this logic somewhere else
                 if isinstance(self.cjt.exe, PandasExecutor):
-                    func = lambda row:  (row[f'{g_col}']/row[f'{h_col}'])*row[f'{h_col}'] + (g-row['s'])/(h-row['c'])*(g-row['s']) if row['c'] < h else 0
+                    func = lambda row:  (row[f'{g_col}']/row[f'{h_col}'])*row[f'{g_col}'] + ((g-row['s'])/(h-row['c']))*(g-row['s']) if h > row['c'] else 0
                 else:
                     func = 'CASE WHEN ' + str(h) + f' > {h_col} THEN (({g_col}/{h_col})*{g_col} + (' + str(g) + f'-{g_col})/(' + str(h) + f'-{h_col})*(' + str(g) + f'-{g_col})) ELSE 0 END'
 

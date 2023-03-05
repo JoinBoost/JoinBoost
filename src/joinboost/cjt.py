@@ -1,7 +1,7 @@
 import copy
 from .semiring import SemiRing
 from .joingraph import JoinGraph
-from .executor import Executor
+from .executor import Executor, PandasExecutor
 from .aggregator import *
 
 
@@ -211,6 +211,9 @@ class CJT(JoinGraph):
         if var is None:
             var = self.target_var
         lift_exp = self.semi_ring.lift_exp(var)
+        # TODO: remove hack
+        if isinstance(self.exe, PandasExecutor):
+            lift_exp['s'] = (var, Aggregator.IDENTITY_LAMBDA)
         # copy the rest attributes
         for attr in self.get_useful_attributes(self.target_relation):
             lift_exp[attr] = (attr, Aggregator.IDENTITY)
