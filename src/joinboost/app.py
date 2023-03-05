@@ -63,7 +63,7 @@ class DecisionTree(DummyModel):
         
     def fit(self,
            jg: JoinGraph):
-        #TODO: refactor here later
+        # Create views for tables having conflicting column names with reserved words.
         self.semi_ring.init_columns_name(jg)
 
         # shall we first sample then fit dummy model, or first fit dummy model then sample?
