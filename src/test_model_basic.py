@@ -24,7 +24,7 @@ class TestModel(unittest.TestCase):
         x = ["A", "B", "D", "E", "F"]
         y = "H"
 
-        exe = DuckdbExecutor(con, debug=True)
+        exe = DuckdbExecutor(con, debug=False)
     
         dataset = JoinGraph(exe=exe)
         dataset.add_relation('R', ['B', 'D'], y='H')

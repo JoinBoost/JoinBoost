@@ -336,6 +336,7 @@ class DuckdbExecutor(Executor):
         return result
 
 class PandasExecutor(DuckdbExecutor):
+    # Because Pandas is not a database, we use a dictionary to store table_name -> dataframe
     table_registry = {}
 
     def __init__(self, conn, debug=False):
@@ -595,7 +596,6 @@ class PandasExecutor(DuckdbExecutor):
 
             if target_col is None:
                 target_col = para
-
 
             # use named aggregation and column renaming with dictionary
             if agg == Aggregator.COUNT:
