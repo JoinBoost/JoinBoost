@@ -108,7 +108,11 @@ class TestApp(unittest.TestCase):
         con.execute("CREATE OR REPLACE TABLE transactions AS SELECT * FROM '../data/favorita/transactions.csv';")
         con.execute("CREATE OR REPLACE TABLE stores AS SELECT * FROM '../data/favorita/stores.csv';")
         con.execute("CREATE OR REPLACE TABLE items AS SELECT * FROM '../data/favorita/items.csv';")
-        con.execute("CREATE OR REPLACE TABLE sales AS SELECT * FROM '../data/favorita/sales_small_rowid_col.csv';")
+        con.execute("CREATE OR REPLACE TABLE sales_original AS SELECT * FROM '../data/favorita/sales_small.csv';")
+        con.execute("""CREATE OR REPLACE TABLE sales AS 
+                    SELECT item_nbr,unit_sales,onpromotion AS rowid,tid,Y
+                    FROM sales_original;
+                    """)
 
         y = "Y"
         x = ["htype", "locale", "locale_name", "transferred","f2","dcoilwtico","f3","transactions",

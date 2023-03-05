@@ -12,13 +12,19 @@ class TestApp(unittest.TestCase):
     def test_add_prefix_to_reserved_sc_columns(self):
         con = duckdb.connect(database=':memory:')
         con.execute("CREATE OR REPLACE TABLE holidays AS SELECT * FROM '../data/favorita/holidays.csv';")
-        con.execute("CREATE OR REPLACE TABLE holidays_renamed_sc_cols AS SELECT * FROM '../data/favorita/holidays_renamed_sc_cols.csv';")
+        con.execute("""CREATE OR REPLACE TABLE holidays_renamed_sc_cols AS 
+                    SELECT date, htype AS joinboost_reserved_s, locale AS c, locale_name, transferred, f2
+                    FROM holidays;
+                    """)
         con.execute("CREATE OR REPLACE TABLE oil AS SELECT * FROM '../data/favorita/oil.csv';")
         con.execute("CREATE OR REPLACE TABLE transactions AS SELECT * FROM '../data/favorita/transactions.csv';")
         con.execute("CREATE OR REPLACE TABLE stores AS SELECT * FROM '../data/favorita/stores.csv';")
         con.execute("CREATE OR REPLACE TABLE items AS SELECT * FROM '../data/favorita/items.csv';")
         con.execute("CREATE OR REPLACE TABLE sales AS SELECT * FROM '../data/favorita/sales_small.csv';")
-        con.execute("CREATE OR REPLACE TABLE sales_renamed_sc_cols AS SELECT * FROM '../data/favorita/sales_small_renamed_sc_cols.csv';")
+        con.execute("""CREATE OR REPLACE TABLE sales_renamed_sc_cols AS 
+                    SELECT item_nbr, unit_sales, onpromotion, tid, Y AS s
+                    FROM sales;
+                    """)
         con.execute("CREATE OR REPLACE TABLE train AS SELECT * FROM '../data/favorita/train_small.csv';")
         exe = DuckdbExecutor(con, debug=False)
         dataset1 = JoinGraph(exe=exe)
@@ -65,15 +71,24 @@ class TestApp(unittest.TestCase):
     def test_add_prefix_to_target_variable(self):
         con = duckdb.connect(database=':memory:')
         con.execute("CREATE OR REPLACE TABLE holidays AS SELECT * FROM '../data/favorita/holidays.csv';")
-        con.execute("CREATE OR REPLACE TABLE holidays_renamed_sc_cols AS SELECT * FROM '../data/favorita/holidays_renamed_sc_cols.csv';")
+        con.execute("""CREATE OR REPLACE TABLE holidays_renamed_sc_cols AS 
+                    SELECT date, htype AS joinboost_reserved_s, locale AS c, locale_name, transferred, f2
+                    FROM holidays;
+                    """)
         con.execute("CREATE OR REPLACE TABLE oil AS SELECT * FROM '../data/favorita/oil.csv';")
         con.execute("CREATE OR REPLACE TABLE transactions AS SELECT * FROM '../data/favorita/transactions.csv';")
         con.execute("CREATE OR REPLACE TABLE stores AS SELECT * FROM '../data/favorita/stores.csv';")
         con.execute("CREATE OR REPLACE TABLE items AS SELECT * FROM '../data/favorita/items.csv';")
         con.execute("CREATE OR REPLACE TABLE sales AS SELECT * FROM '../data/favorita/sales_small.csv';")
-        con.execute("CREATE OR REPLACE TABLE sales_renamed_sc_cols AS SELECT * FROM '../data/favorita/sales_small_renamed_sc_cols.csv';")
+        con.execute("""CREATE OR REPLACE TABLE sales_renamed_sc_cols AS 
+                    SELECT item_nbr, unit_sales, onpromotion, tid, Y AS s
+                    FROM sales;
+                    """)
         con.execute("CREATE OR REPLACE TABLE train AS SELECT * FROM '../data/favorita/train_small.csv';")
-        con.execute("CREATE OR REPLACE TABLE train_renamed AS SELECT * FROM '../data/favorita/train_small_renamed.csv';")
+        con.execute("""CREATE OR REPLACE TABLE train_renamed AS 
+                    SELECT Y AS s,onpromotion,htype AS joinboost_reserved_s,locale AS c,locale_name,transferred,f2,date,dcoilwtico,f3,tid,transactions,f5,store_nbr,city,state,stype,cluster,f4,item_nbr,family,class,perishable,f1,unit_sales
+                    FROM train;
+                    """)
         
         exe = DuckdbExecutor(con, debug=False)
         dataset1 = JoinGraph(exe=exe)
