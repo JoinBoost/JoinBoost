@@ -16,7 +16,7 @@ class JoinGraph:
                 relation_schema = {},
                 target_var = None,
                 target_relation = None, 
-                table2view = {}):
+                view2table = {}):
         
         self.exe = ExecutorFactory(exe)
         # maps each from_relation => to_relation => {keys: (from_keys, to_keys)}
@@ -29,7 +29,7 @@ class JoinGraph:
         self.session_id = int(time.time())
         self.rep_template = data = pkgutil.get_data(__name__, "d3graph.html").decode('utf-8')
         # store table to view mapping for tables with column names conflict with reserved words  
-        self.table2view = copy.deepcopy(table2view)
+        self.view2table = copy.deepcopy(view2table)
         self._prefix = "joinboost_reserved_"
 
     def get_relations(self): 
@@ -37,7 +37,11 @@ class JoinGraph:
     
     def get_relation_schema(self): 
         return self.relation_schema
-    
+
+    # def replace_relation_by_view(self, view):
+        # if relation == self.target_relation:
+        #     self.target_relation = view
+
     def replace_relation_attribute(self, relation, before_attribute, after_attribute):
         if relation == self.target_relation:
             if self.target_var == before_attribute:
@@ -56,7 +60,7 @@ class JoinGraph:
                 left_join_key[index] = after_attribute
 
     def is_target_relation_a_view(self):
-        return self.target_relation in self.table2view
+        return self.target_relation in self.view2table
         
     def get_target_rowid_colname(self): 
         return self.target_rowid_colname
@@ -181,7 +185,6 @@ class JoinGraph:
         
     def get_full_join_sql(self):
         """Return the sql statement of full join."""
-
         sql = []
         seen = set()
 
@@ -218,9 +221,9 @@ class JoinGraph:
         del self.relation_schema[table_prev]
 
         if self.target_relation == table_prev:
-            if self.is_target_relation_a_view():
-                self.table2view[table_after] = copy.deepcopy(self.table2view[table_prev])
-                del self.table2view[table_prev]            
+            # if self.is_target_relation_a_view():
+            #     self.view2table[table_after] = copy.deepcopy(self.view2table[table_prev])
+            #     del self.view2table[table_prev]            
             self.target_relation = table_after
             
         for relation in self.joins:
@@ -294,27 +297,34 @@ class JoinGraph:
         """
         
         for relation in self.get_relations():
-            # schema is a list of string
+            # schema is a list of column names
             schema =  self.exe.get_schema(relation)
             # check if reserved_word is in schema
             if reserved_word in schema:
-                # if it is, keeping adding prefix to it, until the word is not in schema
-                new_word = self._prefix + reserved_word
-                while new_word in schema:
-                    new_word = self._prefix + new_word
-                # TODO: instead rename, create a view might be better to avoid modifying user table
-                self.exe.rename(relation, reserved_word, new_word)
-                
-                viewname = self._prefix + relation
-                if relation not in self.table2view:
-                    self.table2view[relation] = {"viewname": viewname, "cols": dict()}
-                self.table2view[relation]["cols"][new_word] = reserved_word
+                # TODO: Assume view_name is not in the schema for now.
+                view_name = self._prefix + relation
+                if view_name not in self.view2table:
+                    self.view2table[view_name] = {"relation_name": relation, "cols": dict()}
+                for col in schema:
+                    if col == reserved_word:
+                        # if it is, keeping adding prefix to it, until the word is not in schema
+                        new_word = self._prefix + col #reserved_word
+                        while new_word in schema:
+                            new_word = self._prefix + new_word
+                        # TODO: instead rename, create a view might be better to avoid modifying user table
+                        # self.exe.rename(relation, reserved_word, new_word)
+                    else:
+                        new_word = col
+                    self.view2table[view_name]["cols"][new_word] = col
                 # self.exe._execute_query(sql)
 
-                self.replace_relation_attribute(relation, reserved_word, new_word)
+                # self.replace_relation_attribute(relation, reserved_word, new_word)
+
+        
+
                 
-    def get_table2view(self):
-        return self.table2view
+    def get_view2table(self):
+        return self.view2table
     
 #     def decide_feature_type(self, table, attrs, attr_types, threshold, exe: Executor):
 #         self.relations.append(table)
