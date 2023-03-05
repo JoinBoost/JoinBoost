@@ -16,7 +16,8 @@ class CJT(JoinGraph):
                          join_graph.joins, 
                          join_graph.relation_schema,
                          join_graph.target_var,
-                         join_graph.target_relation)
+                         join_graph.target_relation,
+                         table2view = join_graph.table2view)
         # CJT get the join structure from this
         self.annotations = annotations
 

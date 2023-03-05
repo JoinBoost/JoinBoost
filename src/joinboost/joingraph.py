@@ -15,7 +15,8 @@ class JoinGraph:
                 joins = {}, 
                 relation_schema = {},
                 target_var = None,
-                target_relation = None):
+                target_relation = None, 
+                table2view = {}):
         
         self.exe = ExecutorFactory(exe)
         # maps each from_relation => to_relation => {keys: (from_keys, to_keys)}
@@ -27,7 +28,10 @@ class JoinGraph:
         # some magic/random number used for jupyter notebook display
         self.session_id = int(time.time())
         self.rep_template = data = pkgutil.get_data(__name__, "d3graph.html").decode('utf-8')
-    
+        # store table to view mapping for tables with column names conflict with reserved words  
+        self.table2view = copy.deepcopy(table2view)
+        self._prefix = "joinboost_reserved_"
+
     def get_relations(self): 
         return list(self.relation_schema.keys())
     
@@ -51,6 +55,8 @@ class JoinGraph:
                 # Replace the old string with the new string
                 left_join_key[index] = after_attribute
 
+    def is_target_relation_a_view(self):
+        return self.target_relation in self.table2view
         
     def get_target_rowid_colname(self): 
         return self.target_rowid_colname
@@ -210,7 +216,11 @@ class JoinGraph:
             raise JoinGraphException(table_after + ' already exits!')
         self.relation_schema[table_after] = self.relation_schema[table_prev]
         del self.relation_schema[table_prev]
+
         if self.target_relation == table_prev:
+            if self.is_target_relation_a_view():
+                self.table2view[table_after] = copy.deepcopy(self.table2view[table_prev])
+                del self.table2view[table_prev]            
             self.target_relation = table_after
             
         for relation in self.joins:
@@ -274,24 +284,37 @@ class JoinGraph:
         s = s.replace("{{links}}", str(links))
         return s
     
-    # replace the reserved_word, if it exists in any table
-    # iterate through each table to check if reserved_word exist
-    # if so, rename it to another 
+    
     def replace_attribute(self, reserved_word):
+        """Replace columns that have a conflict with reserved_word.
+        
+        Iterate through each table's columns to check if reserved_word exist.
+        If so, rename it to avoid conflict.
+
+        """
+        
         for relation in self.get_relations():
             # schema is a list of string
             schema =  self.exe.get_schema(relation)
             # check if reserved_word is in schema
             if reserved_word in schema:
                 # if it is, keeping adding prefix to it, until the word is not in schema
-                prefix = "joinboost_reserved_"
-                new_word = prefix + reserved_word
+                new_word = self._prefix + reserved_word
                 while new_word in schema:
-                    new_word = prefix + new_word
+                    new_word = self._prefix + new_word
                 # TODO: instead rename, create a view might be better to avoid modifying user table
                 self.exe.rename(relation, reserved_word, new_word)
+                
+                viewname = self._prefix + relation
+                if relation not in self.table2view:
+                    self.table2view[relation] = {"viewname": viewname, "cols": dict()}
+                self.table2view[relation]["cols"][new_word] = reserved_word
+                # self.exe._execute_query(sql)
+
                 self.replace_relation_attribute(relation, reserved_word, new_word)
-    
+                
+    def get_table2view(self):
+        return self.table2view
     
 #     def decide_feature_type(self, table, attrs, attr_types, threshold, exe: Executor):
 #         self.relations.append(table)

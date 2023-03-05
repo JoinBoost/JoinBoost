@@ -1,4 +1,4 @@
-s,onpromotion,htype,locale,locale_name,transferred,f2,date,dcoilwtico,f3,tid,transactions,f5,store_nbr,city,state,stype,cluster,f4,item_nbr,family,class,perishable,f1,unit_sales
+s,onpromotion,joinboost_reserved_s,locale,locale_name,transferred,f2,date,dcoilwtico,f3,tid,transactions,f5,store_nbr,city,state,stype,cluster,f4,item_nbr,family,class,perishable,f1,unit_sales
 -5739.103112581849,2,4,2,15,1,984,373,6,121,17298,2,527,8,18,12,1,5,960,451,9,168,1,296,4.0
 872.3485190238571,0,4,2,15,1,618,1420,2,47,69606,2,748,50,8,6,0,16,604,1476,3,72,0,232,3.0
 -7674.674962408274,0,2,1,4,0,354,1421,2,738,69653,6,251,45,18,12,0,13,282,2056,12,30,0,516,1.0

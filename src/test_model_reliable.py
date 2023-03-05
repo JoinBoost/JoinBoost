@@ -5,10 +5,11 @@ from joinboost.joingraph import JoinGraph
 from joinboost.app import DecisionTree,GradientBoosting
 import unittest
 
-class TestApp(unittest.TestCase):    
+class TestApp(unittest.TestCase):
+
     # this test the case when s and c are already in the databases
     # semi-ring should choose a different name
-    def test_add_prefix_to_preserved_sc_columns(self):
+    def test_add_prefix_to_reserved_sc_columns(self):
         con = duckdb.connect(database=':memory:')
         con.execute("CREATE OR REPLACE TABLE holidays AS SELECT * FROM '../data/favorita/holidays.csv';")
         con.execute("CREATE OR REPLACE TABLE holidays_renamed_sc_cols AS SELECT * FROM '../data/favorita/holidays_renamed_sc_cols.csv';")
@@ -36,7 +37,7 @@ class TestApp(unittest.TestCase):
         dataset1.add_join("holidays", "oil", ["date"], ["date"])
         
         dataset2.add_relation("sales", [], y = 'Y')
-        dataset2.add_relation("holidays_renamed_sc_cols", ["joinboost_preserved_s", "c", "locale_name", "transferred","f2"])
+        dataset2.add_relation("holidays_renamed_sc_cols", ["joinboost_reserved_s", "c", "locale_name", "transferred","f2"])
         dataset2.add_relation("oil", ["dcoilwtico","f3"])
         dataset2.add_relation("transactions", ["transactions","f5"])
         dataset2.add_relation("stores", ["city","state","stype","cluster","f4"])
@@ -60,7 +61,7 @@ class TestApp(unittest.TestCase):
         print(rmse2)
         self.assertTrue(rmse1 == rmse2)
         # this test the case when s and c are already in the databases
-        
+ 
     def test_add_prefix_to_target_variable(self):
         con = duckdb.connect(database=':memory:')
         con.execute("CREATE OR REPLACE TABLE holidays AS SELECT * FROM '../data/favorita/holidays.csv';")
@@ -91,7 +92,7 @@ class TestApp(unittest.TestCase):
         dataset1.add_join("holidays", "oil", ["date"], ["date"])
         
         dataset2.add_relation("sales_renamed_sc_cols", [], y = 's')
-        dataset2.add_relation("holidays_renamed_sc_cols", ["joinboost_preserved_s", "c", "locale_name", "transferred","f2"])
+        dataset2.add_relation("holidays_renamed_sc_cols", ["joinboost_reserved_s", "c", "locale_name", "transferred","f2"])
         dataset2.add_relation("oil", ["dcoilwtico","f3"])
         dataset2.add_relation("transactions", ["transactions","f5"])
         dataset2.add_relation("stores", ["city","state","stype","cluster","f4"])
@@ -109,10 +110,6 @@ class TestApp(unittest.TestCase):
         reg2.fit(dataset2)
 
         rmse1 = reg1.compute_rmse('train')[0]
-        
-        # TODO: this is hard code. Remove it.
-        # keep track of the column updated because of the reserved words
-        dataset2.exe.rename('train_renamed', 's', 'joinboost_reserved_s')
         rmse2 = reg2.compute_rmse('train_renamed')[0]
 
         print()

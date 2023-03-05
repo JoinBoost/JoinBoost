@@ -24,7 +24,6 @@ class DummyModel(App):
            jg: JoinGraph):
         
         jg._preprocess()
-        self.semi_ring.init_columns_name(jg)
         
         # get the gradient and hessian
         # for rmse, g is the sum and h is the count
@@ -64,8 +63,9 @@ class DecisionTree(DummyModel):
         
     def fit(self,
            jg: JoinGraph):
-        # super().fit(jg)
+        #TODO: refactor here later
         self.semi_ring.init_columns_name(jg)
+
         # shall we first sample then fit dummy model, or first fit dummy model then sample?
         # the current solution is to first sample than fit dummy model
         self.cjt = CJT(semi_ring=self.semi_ring, join_graph=jg)
@@ -121,11 +121,17 @@ class DecisionTree(DummyModel):
             self.model_def.append(cur_model_def)
         
     def compute_rmse(self, test_table: str):
+        if self.cjt.is_target_relation_a_view():
+            target = self.cjt.get_table2view()[self.cjt.get_target_relation()]['cols'][self.cjt.get_target_var()]
+        else:
+            target = self.cjt.get_target_var()
+
         # TODO: refactor
         view = self.cjt.exe.case_query(test_table, '+', 'prediction', str(self.constant_),
-                                       self.model_def, [self.cjt.get_target_var()])
+                                       self.model_def, [target])
+
         predict_agg = {'RMSE': 
-            (f'SQRT(AVG(POW({self.cjt.get_target_var()} - prediction, 2)))',
+            (f'SQRT(AVG(POW({target} - prediction, 2)))',
              Aggregator.IDENTITY)}
         predict = self.cjt.exe.execute_spja_query(predict_agg, [view], mode=4)
         return self.cjt.exe.execute_spja_query(from_tables=[predict], 
