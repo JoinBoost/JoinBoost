@@ -1,9 +1,10 @@
 import time
-
+import re
 from .aggregator import Aggregator
 import copy
 from .executor import ExecutorFactory
 import pkgutil
+
 
 class JoinGraphException(Exception):
     pass
@@ -61,10 +62,7 @@ class JoinGraph:
 
     def is_target_relation_a_view(self):
         return self.target_relation in self.view2table
-        
-    def get_target_rowid_colname(self): 
-        return self.target_rowid_colname
-    
+
     def get_type(self, relation, feature): 
         return self.relation_schema[relation][feature]
 
@@ -115,7 +113,7 @@ class JoinGraph:
         if relation not in self.relation_schema:
                 self.relation_schema[relation] = {}
         
-        attributes = self.check_features_exist(relation, X + ([y] if y is not None else []))
+        self.check_features_exist(relation, X + ([y] if y is not None else []))
         
         for x in X:
             # by default, assume all features to be numerical
@@ -129,16 +127,21 @@ class JoinGraph:
                 print("Warning: Y already exists and has been replaced")
             self.target_var = y
             self.target_relation = relation
-            self.target_rowid_colname = self._get_target_rowid_colname(attributes)
-            
-    def _get_target_rowid_colname(self, attributes):
-        """Get the temporary rowid column name(if exists) for the target relation."""
-        attr = set(attributes)
-        tmp = "rowid"
-        while tmp in attr:
-            tmp = "joinboost_tmp_" + tmp
-        return tmp if tmp != "rowid" else ""
-            
+            # self.target_rowid_colname = self._get_target_rowid_colname(attributes)
+
+
+    # Save for future use.
+    # def _get_target_rowid_colname(self, attributes):
+    #     """Get the temporary rowid column name(if exists) for the target relation."""
+    #     attr = set(attributes)
+    #     tmp = "rowid"
+    #     while tmp in attr:
+    #         tmp = "joinboost_tmp_" + tmp
+    #     return tmp if tmp != "rowid" else ""
+
+    # def get_target_rowid_colname(self): 
+    #     return self.target_rowid_colname
+ 
     # get features for each table
     def get_relation_features(self, relation):
         if relation not in self.relation_schema:
@@ -221,9 +224,9 @@ class JoinGraph:
         del self.relation_schema[table_prev]
 
         if self.target_relation == table_prev:
-            # if self.is_target_relation_a_view():
-            #     self.view2table[table_after] = copy.deepcopy(self.view2table[table_prev])
-            #     del self.view2table[table_prev]            
+            if self.is_target_relation_a_view():
+                self.view2table[table_after] = copy.deepcopy(self.view2table[table_prev])
+                del self.view2table[table_prev]            
             self.target_relation = table_after
             
         for relation in self.joins:
@@ -251,12 +254,13 @@ class JoinGraph:
             features = self.relation_schema[table].keys()
             self.check_features_exist(table, features)
         
-    def check_features_exist(self, table, features):
-        attributes = self.exe.get_schema(table)
+    def check_features_exist(self, relation, features):
+        """Check if all the features exist in the relation."""
+
+        attributes = self.exe.get_schema(relation)
         if not set(features).issubset(set(attributes)):
-            raise JoinGraphException('Key error in ' + str(features) + '. Attribute does not exist in table ' \
-                            + table + ' with schema ' + str(attributes))
-        return attributes
+            raise JoinGraphException(f"Key error in {features}." + \
+                f" Attribute does not exist in table {relation} with schema {attributes}")
 
     # output html that displays the join graph. Taken from JoinExplorer notebook
     def _repr_html_(self):
@@ -295,6 +299,8 @@ class JoinGraph:
         If so, rename it to avoid conflict.
 
         """
+        # keep track of maximum number of prefix added before reserved_word
+        max_num_prefix = 0
         
         for relation in self.get_relations():
             # schema is a list of column names
@@ -305,24 +311,33 @@ class JoinGraph:
                 view_name = self._prefix + relation
                 if view_name not in self.view2table:
                     self.view2table[view_name] = {"relation_name": relation, "cols": dict()}
+                
                 for col in schema:
-                    if col == reserved_word:
-                        # if it is, keeping adding prefix to it, until the word is not in schema
-                        new_word = self._prefix + col #reserved_word
-                        while new_word in schema:
-                            new_word = self._prefix + new_word
-                        # TODO: instead rename, create a view might be better to avoid modifying user table
-                        # self.exe.rename(relation, reserved_word, new_word)
+                    m = re.search(f'^({self._prefix})*{reserved_word}$', col)
+                    if m:
+                        # # if it is, keeping adding prefix to it, until the word is not in schema
+                        # new_word = self._prefix + col #reserved_word
+                        # while new_word in schema:
+                        #     new_word = self._prefix + new_word
+                        # # TODO: instead rename, create a view might be better to avoid modifying user table
+                        # # self.exe.rename(relation, reserved_word, new_word)
+                        # print(">= ", reserved_word, new_word, col)
+                        num_prefix = (len(col)-1) // len(self._prefix)
+                        if num_prefix <= max_num_prefix:
+                            max_num_prefix += 1
+                            new_word = self._prefix * max_num_prefix + reserved_word
+                        else:
+                            # No changes needed
+                            max_num_prefix = max(num_prefix, max_num_prefix)
+                            new_word = col
+                        print(">= ", reserved_word, new_word, col)
+                    elif col in self.view2table[view_name]["cols"]:
+                        # No changes needed
+                        continue
                     else:
                         new_word = col
                     self.view2table[view_name]["cols"][new_word] = col
-                # self.exe._execute_query(sql)
 
-                # self.replace_relation_attribute(relation, reserved_word, new_word)
-
-        
-
-                
     def get_view2table(self):
         return self.view2table
     

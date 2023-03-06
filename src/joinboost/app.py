@@ -129,7 +129,7 @@ class DecisionTree(DummyModel):
         
     def compute_rmse(self, test_table: str):
         if self.cjt.is_target_relation_a_view():
-            target = self.cjt.get_view2table()[self.cjt.get_target_relation()]['cols'][self.cjt.get_target_var()]
+            target = self.cjt.get_view2table()[self.cjt.get_target_relation()]["cols"][self.cjt.get_target_var()]
         else:
             target = self.cjt.get_target_var()
 

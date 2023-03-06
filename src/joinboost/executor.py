@@ -169,7 +169,6 @@ class DuckdbExecutor(Executor):
         if order_by:
               sql += f'ORDER BY {order_by};'
         self._execute_query(sql)
-        print(view)
         return view
 
     # Write a method that can generate a function based on the case definitions
