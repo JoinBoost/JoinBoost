@@ -38,10 +38,6 @@ class JoinGraph:
     def get_relation_schema(self): 
         return self.relation_schema
 
-    # def replace_relation_by_view(self, view):
-        # if relation == self.target_relation:
-        #     self.target_relation = view
-
     def replace_relation_attribute(self, relation, before_attribute, after_attribute):
         if relation == self.target_relation:
             if self.target_var == before_attribute:
@@ -187,6 +183,7 @@ class JoinGraph:
         
     def get_full_join_sql(self):
         """Return the sql statement of full join."""
+
         sql = []
         seen = set()
 
