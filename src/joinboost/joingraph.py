@@ -1,5 +1,4 @@
 import time
-import re
 from .aggregator import Aggregator
 import copy
 from .executor import ExecutorFactory
@@ -299,8 +298,6 @@ class JoinGraph:
         If so, rename it to avoid conflict.
 
         """
-        # keep track of maximum number of prefix added before reserved_word
-        max_num_prefix = 0
         
         for relation in self.get_relations():
             # schema is a list of column names
@@ -311,19 +308,12 @@ class JoinGraph:
                 view_name = self._prefix + relation
                 if view_name not in self.view2table:
                     self.view2table[view_name] = {"relation_name": relation, "cols": dict()}
-                
+
                 for col in schema:
-                    m = re.search(f'^({self._prefix})*{reserved_word}$', col)
-                    if m:
-                        num_prefix = (len(col)-1) // len(self._prefix)
-                        if num_prefix <= max_num_prefix:
-                            max_num_prefix += 1
-                            new_word = self._prefix * max_num_prefix + reserved_word
-                        else:
-                            # No changes needed
-                            max_num_prefix = max(num_prefix, max_num_prefix)
-                            new_word = col
-                        print(">= ", reserved_word, new_word, col)
+                    if col == reserved_word:
+                        new_word = self._prefix + reserved_word
+                        while new_word in schema:
+                            new_word = self._prefix + new_word
                     elif col in self.view2table[view_name]["cols"]:
                         # No changes needed
                         continue

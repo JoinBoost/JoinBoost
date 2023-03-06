@@ -132,7 +132,6 @@ class DecisionTree(DummyModel):
             target = self.cjt.get_view2table()[self.cjt.get_target_relation()]["cols"][self.cjt.get_target_var()]
         else:
             target = self.cjt.get_target_var()
-
         # TODO: refactor
         view = self.cjt.exe.case_query(test_table, '+', 'prediction', str(self.constant_),
                                        self.model_def, [target])
