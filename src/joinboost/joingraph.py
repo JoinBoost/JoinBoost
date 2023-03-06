@@ -315,13 +315,6 @@ class JoinGraph:
                 for col in schema:
                     m = re.search(f'^({self._prefix})*{reserved_word}$', col)
                     if m:
-                        # # if it is, keeping adding prefix to it, until the word is not in schema
-                        # new_word = self._prefix + col #reserved_word
-                        # while new_word in schema:
-                        #     new_word = self._prefix + new_word
-                        # # TODO: instead rename, create a view might be better to avoid modifying user table
-                        # # self.exe.rename(relation, reserved_word, new_word)
-                        # print(">= ", reserved_word, new_word, col)
                         num_prefix = (len(col)-1) // len(self._prefix)
                         if num_prefix <= max_num_prefix:
                             max_num_prefix += 1
