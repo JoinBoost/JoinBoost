@@ -1,6 +1,6 @@
 import math
 from abc import ABC
-from executor import SPJAData
+from .executor import SPJAData
 from .joingraph import JoinGraph
 from .semiring import *
 from .aggregator import Aggregator, Annotation, Message
