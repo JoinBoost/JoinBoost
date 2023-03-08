@@ -1,7 +1,7 @@
 import copy
 from .semiring import SemiRing
 from .joingraph import JoinGraph
-from .executor import Executor, SPJAData
+from .executor import Executor, PandasExecutor, SPJAData
 from .aggregator import *  # MATT: Get rid of this
 
 # MATT: What is this?
@@ -22,6 +22,7 @@ class CJT(JoinGraph):
         )
         # CJT get the join structure from this
         self.annotations = annotations
+
 
     def get_message(self, from_table: str, to_table: str):
         return self.joins[from_table][to_table]["message"]
@@ -192,6 +193,7 @@ class CJT(JoinGraph):
                     + ")"
                 ]
         return incoming_messages, join_conds
+
 
     # 3 message types: identity, selection, FULL
     def _send_message(

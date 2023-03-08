@@ -8,6 +8,9 @@ from frozendict import frozendict
 from joinboost import aggregator
 
 
+from .aggregator import Aggregator
+
+
 class ExecutorException(Exception):
     pass
 
@@ -159,6 +162,7 @@ class Executor(ABC):
         pass
 
 
+
 class DuckdbExecutor(Executor):
     """
     Executor object providing methods for executing queries on a DuckDB database.
@@ -194,6 +198,18 @@ class DuckdbExecutor(Executor):
         table_info = self._execute_query("PRAGMA table_info(" + table + ")")
         return [x[1] for x in table_info]
 
+    def _gen_sql_case(self, leaf_conds: list):
+        conds = []
+        for leaf_cond in leaf_conds:
+            cond = 'CASE\n'
+            for (pred, annotations) in leaf_cond:
+                cond += ' WHEN ' + ' AND '.join(annotations) + \
+                        ' THEN CAST(' + str(pred) + ' AS DOUBLE)\n'
+            cond += 'ELSE 0 END\n'
+            conds.append(cond)
+        return conds
+
+
     def delete_table(self, table: str):
         """
         Delete a table.
@@ -207,6 +223,7 @@ class DuckdbExecutor(Executor):
         sql = "DROP TABLE IF EXISTS " + table + ";\n"
         self._execute_query(sql)
 
+    # TODO: remove it
     def window_query(
         self, view: str, select_attrs: list, base_attr: str, cumulative_attrs: list
     ):
@@ -300,7 +317,33 @@ class DuckdbExecutor(Executor):
             sql += "ELSE 0 END\n"
         sql += "AS " + cond_attr + " FROM " + from_table
         self._execute_query(sql)
+        print(view)
         return view
+
+    # Write a method that can generate a function based on the case definitions
+    # The function will take in a row and return a value
+    # This function can be used to generate a new column
+    # This function will not use SQL or the database and instead will be run in pandas dataframes
+    # def case_function(self, from_table: str, operator: str, cond_attr: str, base_val: str,
+    #                  case_definitions: list, select_attrs: list = [], table_name: str = None):
+    #
+    #     def case_function(row):
+    #         result = base_val
+    #         predicates = []
+    #         for case_definition in case_definitions:
+    #
+    #             for val, conds in case_definition:
+    #                 # each cond in conds is a string of the form "attr =/>=/</<=/> val"
+    #                 # we need to split this string and then check if the row[attr] satisfies the condition
+    #                 temp = []
+    #                 for i, cond in enumerate(conds):
+    #                     attr, op, val = cond.split()
+    #                     temp += ["row['" + attr + "'] " + op + " " + val]
+    #                 val + " if  (" + " and ".join(temp) + ") else 0"
+    #
+    #         return result
+
+
 
     def check_table(self, table):
         """
@@ -487,6 +530,10 @@ class DuckdbExecutor(Executor):
 
         return sql
 
+    def rename(self, table, old_name, new_name):
+        sql = f"ALTER TABLE {table} RENAME COLUMN {old_name} TO {new_name};"
+        self._execute_query(sql)
+
     def _execute_query(self, q):
         """
         Executes the given SQL query and returns the result.
@@ -550,7 +597,287 @@ class DuckdbExecutor(Executor):
 
 
 class PandasExecutor(DuckdbExecutor):
+    # Because Pandas is not a database, we use a dictionary to store table_name -> dataframe
+    table_registry = {}
+
+    def __init__(self, conn, debug=False):
+        super().__init__(conn)
+        self.debug = debug
+        self.prefix = 'joinboost_'
+        self.table_counter = 0
+
     def add_table(self, table: str, table_address):
         if table_address is None:
             raise ExecutorException("Please pass in the pandas dataframe!")
-        self.conn.register(table, table_address)
+
+        # check if the table_address is a string path
+        if isinstance(table_address, str):
+            table_address = pd.read_csv(table_address)
+        self.table_registry[table] = table_address
+
+    def get_schema(self, table):
+        # unqualify the column names, this is required as duckdb returns unqualified column names
+        return [col.split('.')[-1] for col in self.table_registry[table].columns]
+
+
+    # mode 1: write the query result to a table and return table name
+    # mode 2: same as mode 1
+    # mode 3: execute the query and return the result
+    # mode 4: same as mode 1 (for now)
+    def execute_spja_query(self,
+                           aggregate_expressions: dict = {None: ('*', Aggregator.IDENTITY)},
+                           from_tables: list = [],
+                           join_conds: list = [],
+                           select_conds: list = [],
+                           window_by: list = [],
+                           group_by: list = [],
+                           order_by: list = [],
+                           limit: int = None,
+                           sample_rate: float = None,
+                           replace: bool = True,
+                           join_type: str = 'INNER',
+                           mode: int = 4
+                           ):
+        intermediates = {}
+        for table in from_tables:
+            intermediates[table] = self.table_registry[table]
+
+        agg_conditions = self.convert_agg_conditions(aggregate_expressions)
+
+        select_conds = self.convert_predicates(select_conds)
+
+        # join_conds are of the form "table1.col1 IS NOT DISTINCT FROM table2.col2". extract the table1.col1 and table2.col2
+        join_conds = [re.findall(r'(\w+\.\w+)', cond) for cond in join_conds]
+
+        # filter list of tables that don't have any join conditions
+        tables_to_join = [table for table in from_tables if any([cond[0].startswith(table) or cond[1].startswith(table) for cond in join_conds])]
+
+        # subtract tables_to_join from from_tables to get the tables that don't have any join conditions
+        tables_to_cross = list(set(from_tables) - set(tables_to_join))
+
+        df = self.join(intermediates, join_conds, join_type, tables_to_cross, tables_to_join)
+
+        # filter by select_conds
+        if len(select_conds) > 0:
+            converted_select_conds = ' and '.join(select_conds)
+            df = df.query(converted_select_conds)
+
+        # group by and aggregate
+        df = self.apply_group_by_and_agg(agg_conditions, df, group_by, window_by)
+
+        # sort by each column in order_by
+        if len(order_by) > 0:
+            for col, order in order_by:
+                df = df.sort_values(col, ascending=(order == 'ASC' or order is None))
+
+        # limit
+        if limit is not None:
+            df = df.head(limit)
+
+        df = self.reorder_columns(aggregate_expressions, df)
+
+        if mode == 1 or mode == 2 or mode == 4:
+            name_ = self.get_next_name()
+            # always qualify intermediate tables as future aggregations for these tables will come qualified
+            for col in df.columns:
+                if col not in ['s', 'c']:
+                    # strip any table name from the column name
+                    df = df.rename(columns={col: name_ + '.' + col.split('.')[-1]})
+            if self.debug:
+                print("creating table " + name_)
+                print(df.head())
+            df.name = name_
+            self.table_registry[name_] = df
+            return name_
+        elif mode == 3:
+            if self.debug:
+                print("returning result")
+                print(df.head())
+
+            return df.values.tolist()
+        else:
+            raise ExecutorException('Unsupported mode for query execution!')
+
+    def reorder_columns(self, aggregate_expressions, df):
+        # reorder the columns according to the order of aggregate_expressions
+        if len(aggregate_expressions) > 0:
+            # get list of column names from aggregate_expressions that's also in df
+            agg_cols = [col for col in aggregate_expressions.keys() if col in df.columns]
+            # get list of column names from df
+            df_cols = df.columns
+            # merge the two lists, giving priority to agg_cols and removing duplicates
+            cols = agg_cols + [col for col in df_cols if col not in agg_cols]
+            df = df.reindex(columns=cols)
+        return df
+
+    def apply_group_by_and_agg(self, agg_conditions, df, group_by, window_by):
+        if len(group_by) > 0:
+            # if group_by element is not of the form joinboost_<digit>.col, then unqualify it
+            for i, col in enumerate(group_by):
+                # check if unqualified column name exists in df.columns
+                if col.split('.')[-1] in df.columns:
+                    group_by[i] = col.split('.')[-1]
+            inter_df = df.groupby(group_by)
+            if len(agg_conditions) > 0:
+                # check if column does not exist and create it before applying agg_conditions
+                for col in agg_conditions.keys():
+                    # generate unqualified names in df.columns
+                    unqualified_cols = [col.split('.')[-1] for col in df.columns]
+                    if col not in df.columns and col not in unqualified_cols:
+                        df[col] = 1
+                df = inter_df.agg(**agg_conditions).reset_index()
+                # unqualify all columns in df. This is to avoid nested columns being qualified with the table name
+                for col in df.columns:
+                    df = df.rename(columns={col: col.split('.')[-1]})
+        else:
+            if len(agg_conditions) > 0:
+                if len(window_by) > 0:
+                    # apply cumulative sum on window_by columns in pandas dataframe
+                    df = df.sort_values(window_by)
+                    # TODO: remove hack
+                    df['s'] = df['s'].cumsum()
+                    df['c'] = df['c'].cumsum()
+                else:
+                    # check if column does not exist and create it before applying agg_conditions (for s anc c)
+                    for col in agg_conditions.keys():
+                        if col not in df.columns:
+                            df[col] = 1
+
+                    # check if column is * and apply aggfunc to the entire row
+                    for col in list(agg_conditions.keys()):
+                        if agg_conditions[col].column == '*':
+                            func = agg_conditions[col].aggfunc
+                            df[col] = df.apply(func, axis=1)
+                            del agg_conditions[col]
+                    if len(agg_conditions) > 0:
+                        df = df.assign(temp=0).groupby('temp').agg(**agg_conditions).reset_index().drop(columns='temp')
+                    for col in df.columns:
+                        df = df.rename(columns={col: col.split('.')[-1]})
+        return df
+
+    # computes join or cross (if no join condition) between all tables.
+    def join(self, intermediates, join_conds, join_type, tables_to_cross, tables_to_join):
+        df = None
+        # handle cross joins
+        if len(tables_to_cross) > 0:
+            for table in tables_to_cross:
+                if df is None:
+                    df = intermediates[table]
+                else:
+                    df = df.merge(intermediates[table], how='cross',
+                                  suffixes=('', '_drop')).filter(regex='^(?!.*_drop)')
+        # generate pairwise combination of tables to join
+        for table1, table2 in itertools.combinations(tables_to_join, 2):
+            # search join_conds for the join condition between table1 and table2
+            for cond in join_conds:
+                temp = None
+                if (cond[0] in intermediates[table1].columns and cond[1] in intermediates[table2].columns) or \
+                        (cond[1] in intermediates[table1].columns and cond[0] in intermediates[table2].columns):
+                    # join the two tables
+
+                    temp = intermediates[table1].merge(intermediates[table2],
+                                                       how=join_type.lower(), left_on=cond[0], right_on=cond[1],
+                                                       suffixes=('', '_drop')).filter(regex='^(?!.*_drop)')
+
+                    # check join conditions when unqualified column names are used
+                elif (cond[0].split('.')[1] in intermediates[table1].columns and cond[1].split('.')[1] in intermediates[
+                    table2].columns) or \
+                        (cond[1].split('.')[1] in intermediates[table1].columns and cond[0].split('.')[1] in
+                         intermediates[table2].columns):
+                    # join the two tables
+                    temp = intermediates[table1].merge(intermediates[table2],
+                                                       how=join_type.lower(), left_on=cond[0].split('.')[1],
+                                                       right_on=cond[1].split('.')[1],
+                                                       suffixes=('', '_drop')).filter(regex='^(?!.*_drop)')
+                    # check if one join condition is qualified and the other is not
+                elif (cond[0] in intermediates[table1].columns and cond[1].split('.')[1] in intermediates[
+                    table2].columns):
+                    # join the two tables
+                    temp = intermediates[table1].merge(intermediates[table2],
+                                                       how=join_type.lower(), left_on=cond[0],
+                                                       right_on=cond[1].split('.')[1],
+                                                       suffixes=('', '_drop')).filter(regex='^(?!.*_drop)')
+                elif (cond[1] in intermediates[table2].columns and cond[0].split('.')[1] in intermediates[
+                    table1].columns):
+                    # join the two tables
+                    temp = intermediates[table1].merge(intermediates[table2],
+                                                       how=join_type.lower(), left_on=cond[1],
+                                                       right_on=cond[0].split('.')[1],
+                                                       suffixes=('', '_drop')).filter(regex='^(?!.*_drop)')
+
+
+                # unqualify all columns in temp. This is to avoid nested columns being qualified with the table name
+                if temp is not None:
+                    for col in temp.columns:
+                        temp = temp.rename(columns={col: col.split('.')[-1]})
+                    # if there are duplicate columns, drop them
+                    temp = temp.loc[:, ~temp.columns.duplicated()]
+
+
+
+            if temp is not None:
+                if df is None:
+                    df = temp
+                else:
+                    df = df.merge(temp, how='cross', suffixes=('', '_drop')).filter(regex='^(?!.*_drop)')
+                break
+
+        # final removal of all qualification of columns
+        if df is not None:
+            for col in df.columns:
+                df = df.rename(columns={col: col.split('.')[-1]})
+            # if there are duplicate columns, drop them
+            df = df.loc[:, ~df.columns.duplicated()]
+        return df
+
+    def convert_predicates(self, select_conds):
+        # TODO: handle in and not in
+        # replace ' = ' with ' == ' but only if = is not part of <> or <= or >=
+        select_conds = [re.sub(r'(?<!<|>)=(?!=)', '==', cond) for cond in select_conds]
+        # ignore predicates of the form 's.a is not distinct from t.b'
+        select_conds = [cond for cond in select_conds if 'DISTINCT' not in cond]
+        # check if predicates do not start with joinboost_<number>.col <op> <value> and if so, remove the table name
+        for i, cond in enumerate(select_conds):
+            # split by dot and remove only the first element and return everything else as it is
+            select_conds[i] = '.'.join(cond.split('.')[1:])
+
+        # wrap each operand (of the form identifier.identifier or identifier) with backticks, ignore any multi-digit numeric values
+        select_conds = [re.sub(r'\b([a-zA-Z_0-9]+\.[a-zA-Z_]+|[a-zA-Z_]+)\b', r'`\g<1>`', cond) for cond in select_conds]
+
+        # wrap each select condition with parentheses
+        select_conds = ['(' + cond + ')' for cond in select_conds]
+
+        return select_conds
+
+    def convert_agg_conditions(self, aggregate_expressions):
+        agg_conditions = {}
+        # handle aggregate expressions
+        for target_col, aggregation_spec in aggregate_expressions.items():
+            para, agg = aggregation_spec
+
+            if target_col is None:
+                target_col = para
+
+            # use named aggregation and column renaming with dictionary
+            if agg == Aggregator.COUNT:
+                agg_conditions[target_col] = pd.NamedAgg(column=para, aggfunc='count')
+            elif agg == Aggregator.SUM:
+                # check if column is a number in string form, in that case use target_col as the column name
+                if str(para).isnumeric():
+                    para = target_col
+                agg_conditions[target_col] = pd.NamedAgg(column=para, aggfunc='sum')
+            elif agg == Aggregator.MAX:
+                agg_conditions[target_col] = pd.NamedAgg(column=para, aggfunc='max')
+            elif agg == Aggregator.MIN:
+                agg_conditions[target_col] = pd.NamedAgg(column=para, aggfunc='min')
+            elif agg == Aggregator.IDENTITY:
+                if para == '1':
+                    agg_conditions[target_col] = pd.NamedAgg(column='*', aggfunc=lambda x: 1)
+                else:
+                    pass
+            elif agg == Aggregator.IDENTITY_LAMBDA:
+                agg_conditions[target_col] = pd.NamedAgg(column='*', aggfunc=para)
+
+            else:
+                raise ExecutorException('Unsupported aggregation function!')
+        return agg_conditions
