@@ -42,7 +42,7 @@ reg.fit(dataset)
 ```
 
 
-[Please Check out this notebook for Demo](https://colab.research.google.com/github/zachary62/JoinBoost/blob/main/demo/JoinBoostDemo.ipynb)
+[Please Check out this notebook for Demo](https://anonymous.4open.science/r/JoinBoost-FBC4/demo/JoinBoostDemo.ipynb)
 
 ## Reproducibility
 
