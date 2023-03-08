@@ -268,7 +268,7 @@ class DecisionTree(DummyModel):
 
         g, h = cur_semi_ring.get_value()
         const_ = float((g**2) / h)
-        for r_name in cjt.get_relations():
+        for r_name in cjt.relations:
             for attr in cjt.get_relation_features(r_name):
                 attr_type, group_by = self.cjt.get_type(r_name, attr), [attr]
                 absoprtion_view = cjt.absorption(r_name, group_by)

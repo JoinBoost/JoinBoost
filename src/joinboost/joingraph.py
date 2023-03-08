@@ -68,7 +68,9 @@ class JoinGraph:
                     if neighbour in seen:
                         return False
                     else:
-                        return dfs(neighbour, cur_table)
+                        acyclic = dfs(neighbour, parent=cur_table)
+                        if acyclic is False:
+                            return False
             return True
 
         # check acyclic
@@ -210,7 +212,7 @@ class JoinGraph:
         self.relation_schema[table_after] = self.relation_schema[table_prev]
         del self.relation_schema[table_prev]
         if self.target_relation == table_prev:
-            self.target_relation = table_after
+            self._target_relation = table_after
 
         for relation in self.joins:
             if table_prev in self.joins[relation]:
