@@ -390,8 +390,11 @@ class DuckdbExecutor(Executor):
         name_ = self.get_next_name()
         entity_type_ = "TABLE "
         sql = (
-            "CREATE " + ("OR REPLACE " if spja_data.replace else "")
-            + entity_type_ + name_ + " AS "
+            "CREATE "
+            + ("OR REPLACE " if spja_data.replace else "")
+            + entity_type_
+            + name_
+            + " AS "
         )
         sql += spja
         self._execute_query(sql)
@@ -480,7 +483,7 @@ class DuckdbExecutor(Executor):
             sql += "USING SAMPLE " + str(spja_data.sample_rate * 100) + " %\n"
 
         if parenthesize:
-            sql = f'({sql})'
+            sql = f"({sql})"
 
         return sql
 

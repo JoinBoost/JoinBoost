@@ -30,9 +30,7 @@ class JoinGraph:
         self._target_relation = target_relation
         # some magic/random number used for jupyter notebook display
         self.session_id = int(time.time())
-        self.rep_template = pkgutil.get_data(__name__, "d3graph.html").decode(
-            "utf-8"
-        )
+        self.rep_template = pkgutil.get_data(__name__, "d3graph.html").decode("utf-8")
 
     @property
     def relations(self):
@@ -110,10 +108,11 @@ class JoinGraph:
             self.relation_schema[relation][x] = "LCAT"
 
         if y is not None:
-            if self.target_var is not None:
-                print("Warning: Y already exists and has been replaced")
-            self.target_var = y
-            self.target_relation = relation
+            if self.target_var is not None and self.target_var != y:
+                err_msg = f"Attempted to set target variable to {y}, but already set to {self.target_var}."
+                raise JoinGraphException(err_msg)
+            self._target_var = y
+            self._target_relation = relation
 
         # MATT: Add check_acyclic?
 
