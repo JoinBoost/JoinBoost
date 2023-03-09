@@ -1,9 +1,13 @@
 import time
+import re
+from frozendict import frozendict
+import itertools
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Optional, Any
 
-from frozendict import frozendict
+import pandas as pd
 
 from joinboost import aggregator
 
@@ -28,6 +32,8 @@ class SPJAData:
         A list of table names to select from. By default, an empty list.
     select_conds : list
         A list of conditions to apply to the SELECT statement. By default, an empty list.
+    join_conds : list
+        A list of conditions of the form "table1.col1 IS NOT DISTINCT FROM table2.col2". By default, an empty list.
     group_by : list
         A list of column names to group by. By default, an empty list.
     window_by : list
@@ -40,6 +46,8 @@ class SPJAData:
         The sampling rate to use for the query.
     replace : bool
         If True, replaces an existing table or view with the same name.
+    join_type : str
+        The type of join to use for the query. By default, "INNER".
     """
 
     aggregate_expressions: frozendict = frozendict(
@@ -47,12 +55,14 @@ class SPJAData:
     )
     from_tables: list[str] = field(default_factory=list)
     select_conds: list[str] = field(default_factory=list)
+    join_conds: list[str] = field(default_factory=list)
     group_by: list[str] = field(default_factory=list)
     window_by: list[str] = field(default_factory=list)
-    order_by: Optional[str] = None
+    order_by: list[str] = field(default_factory=list)
     limit: Optional[int] = None
     sample_rate: Optional[float] = None
     replace: bool = True
+    join_type: str = "INNER"
 
 
 def ExecutorFactory(con=None):
@@ -257,65 +267,55 @@ class DuckdbExecutor(Executor):
         return view_name
 
     # {case: value} operator {case: value} ...
-    def case_query(
-        self,
-        from_table: str,
-        operator: str,
-        cond_attr: str,
-        base_val: str,
-        case_definitions: list,
-        select_attrs: list = None,
-        table_name: str = None,
-    ):
+    def case_query(self, from_table: str, operator: str, cond_attr: str, base_val: str,
+                   case_definitions: list, select_attrs: list = [], table_name: str = None, order_by: str = None):
         """
-        This function creates a new table based on a query using a `CASE` statement with the specified operator.
-        Parameters
-        ----------
-        from_table : str
-            The table that the query will be run on.
-        operator : str
-            The operator to be used in the query (e.g. "+", "-", "*", etc.).
-        cond_attr : str
-            The attribute that the query will operate on.
-        base_val : str
-            The starting value for the operation.
-        case_definitions : list
-            A list of case definitions for the query. Each case definition is a list of tuples,
-            where the first element of the tuple is a value and the second element is a condition.
-        select_attrs : list
-            A list of attributes to select in the query. If left empty, the function will
-            retrieve all attributes from the table except for `cond_attr`.
-        table_name : str
-            The name of the new table that will be created. If left empty, the function will
-            generate a new name.
-        Returns
-        -------
-        str
-            The name of the new table.
+        Executes a SQL query with a CASE statement to perform tree-model prediction.
+        Each CASE represents a tree and each WHEN within a CASE represents a leaf.
+
+        :param from_table: str, name of the source table
+        :param operator: str, the operator used to combine predictions
+        :param cond_attr: str, name of the column used in the conditions of the case statement
+        :param base_val: int, base value for the entire tree-model
+        :param case_definitions: list, a list of lists containing the (leaf prediction, leaf predicates) for each tree.
+        :param select_attrs: list, list of attributes to be selected, defaults to empty
+        :param table_name: str, name of the new table, defaults to None
+        :param order_by: str, name of the table to be ordered by rowid, defaults to None
+        :return: str, name of the new table
         """
 
+        # If no select attributes are provided, retrieve all columns
+        # except the one used in the conditions of the case statement
         if not select_attrs:
-            attrs = self._execute_query("PRAGMA table_info(" + from_table + ")")
-            select_attrs = [attr[1] for attr in attrs if attr != cond_attr]
+            attrs = self._execute_query('PRAGMA table_info(' + from_table + ')')
+            for attr in attrs:
+                if attr != cond_attr: select_attrs.append(attr[1])
+
+        # If no table name is provided, generate a new one
         if not table_name:
             view = self.get_next_name()
         else:
             view = table_name
-        sql = "CREATE OR REPLACE TABLE " + view + " AS\n"
-        sql += "SELECT " + ",".join(select_attrs) + ","
-        sql += base_val
+
+        # Prepare the case statement using the provided operator
+        cases = []
         for case_definition in case_definitions:
-            sql += operator + "\nCASE\n"
+            sql_case = f'{operator}\nCASE\n'
             for val, cond in case_definition:
-                sql += (
-                    " WHEN "
-                    + " AND ".join(cond)
-                    + " THEN CAST("
-                    + str(val)
-                    + " AS DOUBLE)\n"
-                )
-            sql += "ELSE 0 END\n"
-        sql += "AS " + cond_attr + " FROM " + from_table
+                conds = ' AND '.join(cond)
+                sql_case += f' WHEN {conds} THEN CAST({val} AS DOUBLE)\n'
+            sql_case += 'ELSE 0 END\n'
+            cases.append(sql_case)
+        sql_cases = ''.join(cases)
+
+        # Create the SELECT statement with the CASE statement
+        attrs = ",".join(select_attrs)
+        sql = f'CREATE OR REPLACE TABLE {view} AS\n' + \
+              f'SELECT {attrs}, {base_val}' + \
+              f'{sql_cases}' + \
+              f'AS {cond_attr} FROM {from_table} '
+        if order_by:
+            sql += f'ORDER BY {order_by};'
         self._execute_query(sql)
         print(view)
         return view
@@ -518,8 +518,8 @@ class DuckdbExecutor(Executor):
             )
         if len(spja_data.group_by) > 0:
             sql += "GROUP BY " + ",".join(spja_data.group_by) + "\n"
-        if spja_data.order_by is not None:
-            sql += "ORDER BY " + spja_data.order_by + "\n"
+        if len(spja_data.order_by) > 0:
+            sql += 'ORDER BY ' + ",".join([f"{col} {order}" for (col, order) in spja_data.order_by]) + '\n'
         if spja_data.limit is not None:
             sql += "LIMIT " + str(spja_data.limit) + "\n"
         if spja_data.sample_rate is not None:
@@ -587,7 +587,7 @@ class DuckdbExecutor(Executor):
             The parsed SQL statement for the aggregate expression.
         """
 
-        window_clause = " OVER joinboost_window " if window_by else ""
+        window_clause = " OVER joinboost_window " if window_by and aggregator.is_agg(agg) else ""
         rename_expr = " AS " + target_col if target_col is not None else ""
         parsed_expression = (
             aggregator.parse_agg(agg, para) + window_clause + rename_expr
@@ -625,37 +625,27 @@ class PandasExecutor(DuckdbExecutor):
     # mode 3: execute the query and return the result
     # mode 4: same as mode 1 (for now)
     def execute_spja_query(self,
-                           aggregate_expressions: dict = {None: ('*', Aggregator.IDENTITY)},
-                           from_tables: list = [],
-                           join_conds: list = [],
-                           select_conds: list = [],
-                           window_by: list = [],
-                           group_by: list = [],
-                           order_by: list = [],
-                           limit: int = None,
-                           sample_rate: float = None,
-                           replace: bool = True,
-                           join_type: str = 'INNER',
+                           spja_data: SPJAData,
                            mode: int = 4
                            ):
         intermediates = {}
-        for table in from_tables:
+        for table in spja_data.from_tables:
             intermediates[table] = self.table_registry[table]
 
-        agg_conditions = self.convert_agg_conditions(aggregate_expressions)
+        agg_conditions = self.convert_agg_conditions(spja_data.aggregate_expressions)
 
-        select_conds = self.convert_predicates(select_conds)
+        select_conds = self.convert_predicates(spja_data.select_conds)
 
         # join_conds are of the form "table1.col1 IS NOT DISTINCT FROM table2.col2". extract the table1.col1 and table2.col2
-        join_conds = [re.findall(r'(\w+\.\w+)', cond) for cond in join_conds]
+        join_conds = [re.findall(r'(\w+\.\w+)', cond) for cond in spja_data.join_conds]
 
         # filter list of tables that don't have any join conditions
-        tables_to_join = [table for table in from_tables if any([cond[0].startswith(table) or cond[1].startswith(table) for cond in join_conds])]
+        tables_to_join = [table for table in spja_data.from_tables if any([cond[0].startswith(table) or cond[1].startswith(table) for cond in join_conds])]
 
         # subtract tables_to_join from from_tables to get the tables that don't have any join conditions
-        tables_to_cross = list(set(from_tables) - set(tables_to_join))
+        tables_to_cross = list(set(spja_data.from_tables) - set(tables_to_join))
 
-        df = self.join(intermediates, join_conds, join_type, tables_to_cross, tables_to_join)
+        df = self.join(intermediates, join_conds, spja_data.join_type, tables_to_cross, tables_to_join)
 
         # filter by select_conds
         if len(select_conds) > 0:
@@ -663,18 +653,18 @@ class PandasExecutor(DuckdbExecutor):
             df = df.query(converted_select_conds)
 
         # group by and aggregate
-        df = self.apply_group_by_and_agg(agg_conditions, df, group_by, window_by)
+        df = self.apply_group_by_and_agg(agg_conditions, df, spja_data.group_by, spja_data.window_by)
 
         # sort by each column in order_by
-        if len(order_by) > 0:
-            for col, order in order_by:
+        if len(spja_data.order_by) > 0:
+            for col, order in spja_data.order_by:
                 df = df.sort_values(col, ascending=(order == 'ASC' or order is None))
 
         # limit
-        if limit is not None:
-            df = df.head(limit)
+        if spja_data.limit is not None:
+            df = df.head(spja_data.limit)
 
-        df = self.reorder_columns(aggregate_expressions, df)
+        df = self.reorder_columns(spja_data.aggregate_expressions, df)
 
         if mode == 1 or mode == 2 or mode == 4:
             name_ = self.get_next_name()

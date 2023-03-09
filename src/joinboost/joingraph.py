@@ -60,8 +60,6 @@ class JoinGraph:
     def get_target_rowid_colname(self):
         return self.target_rowid_colname
 
-    def get_type(self, relation, feature):
-
     @property
     def relation_schema(self):
         return self._relation_schema
@@ -136,10 +134,11 @@ class JoinGraph:
             self.relation_schema[relation][x] = "LCAT"
 
         if y is not None:
-            if self.target_var is not None:
-                print("Warning: Y already exists and has been replaced")
-            self.target_var = y
-            self.target_relation = relation
+            if self.target_var is not None and self.target_var != y:
+                err_msg = f"Attempted to set target variable to {y}, but already set to {self.target_var}."
+                raise JoinGraphException(err_msg)
+            self._target_var = y
+            self._target_relation = relation
             self.target_rowid_colname = self._get_target_rowid_colname(attributes)
 
     def _get_target_rowid_colname(self, attributes):
@@ -149,14 +148,6 @@ class JoinGraph:
         while tmp in attr:
             tmp = "joinboost_tmp_" + tmp
         return tmp if tmp != "rowid" else ""
-
-            if self.target_var is not None and self.target_var != y:
-                err_msg = f"Attempted to set target variable to {y}, but already set to {self.target_var}."
-                raise JoinGraphException(err_msg)
-            self._target_var = y
-            self._target_relation = relation
-
-        # MATT: Add check_acyclic?
 
     def add_join(
         self,
@@ -182,9 +173,11 @@ class JoinGraph:
         self.joins[table_name_right][table_name_left] = {
             "keys": (right_keys, left_keys)
         }
+        # MATT: Add check_acyclic?
 
     # get features for each table
     def get_relation_features(self, relation):
+
         if relation not in self.relation_schema:
             raise JoinGraphException('Attribute not in ' + relation)
         return list(self.relation_schema[relation].keys())
@@ -292,14 +285,6 @@ class JoinGraph:
             raise JoinGraphException('Key error in ' + str(features) + '. Attribute does not exist in table ' \
                             + table + ' with schema ' + str(attributes))
         return attributes
-            raise JoinGraphException(
-                "Key error in "
-                + str(features)
-                + ". Attribute does not exist in table "
-                + table
-                + " with schema "
-                + str(attributes)
-            )
 
     # output html that displays the join graph. Taken from JoinExplorer notebook
     def _repr_html_(self):
@@ -340,7 +325,7 @@ class JoinGraph:
     # iterate through each table to check if reserved_word exist
     # if so, rename it to another
     def replace_attribute(self, reserved_word):
-        for relation in self.get_relations():
+        for relation in self.relations:
             # schema is a list of string
             schema =  self.exe.get_schema(relation)
             # check if reserved_word is in schema

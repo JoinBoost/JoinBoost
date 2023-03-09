@@ -1,6 +1,6 @@
 import math
 from abc import ABC
-from .executor import SPJAData
+from .executor import SPJAData, PandasExecutor
 from .joingraph import JoinGraph
 from .semiring import *
 from .aggregator import Aggregator, Annotation, Message
@@ -75,9 +75,9 @@ class DecisionTree(DummyModel):
         self.create_sample()
         super().fit(jg)
 
-        exp = self.cjt.get_target_var() + "- (" + str(self.constant_) + ")"
+        exp = self.cjt.target_var + "- (" + str(self.constant_) + ")"
         if isinstance(self.cjt.exe , PandasExecutor):
-            exp = lambda row: row[self.cjt.get_target_var()] - self.constant_
+            exp = lambda row: row[self.cjt.target_var] - self.constant_
 
         self.cjt.lift(exp)
         self.semi_ring.set_semi_ring(0, self.count_)
@@ -130,13 +130,16 @@ class DecisionTree(DummyModel):
     def compute_rmse(self, test_table: str):
         # TODO: refactor
         view = self.cjt.exe.case_query(test_table, '+', 'prediction', str(self.constant_),
-                                       self.model_def, [self.cjt.get_target_var()])
+                                       self.model_def, [self.cjt.target_var])
         predict_agg = {'RMSE': 
-            (f'SQRT(AVG(POW({self.cjt.get_target_var()} - prediction, 2)))',
+            (f'SQRT(AVG(POW({self.cjt.target_var} - prediction, 2)))',
              Aggregator.IDENTITY)}
-        predict = self.cjt.exe.execute_spja_query(predict_agg, [view], mode=4)
-        return self.cjt.exe.execute_spja_query(from_tables=[predict], 
-                                               mode=3)[0]
+        prediction_query_data = SPJAData(aggregate_expressions=predict_agg,
+                                            from_tables=[view])
+
+        predict = self.cjt.exe.spja_query(prediction_query_data)
+        rmse_query_data = SPJAData(from_tables=[predict])
+        return self.cjt.exe.execute_spja_query(rmse_query_data)[0]
     
     # input_mode = 1 takes the full join's table name as input
     # input_mode = 2 takes the join graph as input (assume fact table)
@@ -153,7 +156,7 @@ class DecisionTree(DummyModel):
             assert(isinstance(data, str))
             view = self.cjt.exe.case_query(data, '+', 'prediction',
                                            str(self.constant_), self.model_def,
-                                           [self.cjt.get_target_var()])
+                                           [self.cjt.target_var])
 
         elif input_mode == 2:
             assert(isinstance(data, JoinGraph))
@@ -164,7 +167,7 @@ class DecisionTree(DummyModel):
             assert(isinstance(data, str))
             view = self.cjt.exe.case_query(self._full_join_sql, '+', 'prediction', 
                                            str(self.constant_), self.model_def,
-                                           [self.cjt.get_target_var()],
+                                           [self.cjt.target_var],
                                            order_by=f'{data}.rowid')
 
         preds = self.cjt.exe._execute_query(f"select prediction from {view};")
@@ -318,7 +321,7 @@ class DecisionTree(DummyModel):
                 spja_data = SPJAData(
                     aggregate_expressions=l2_agg_exp,
                     from_tables=[view_to_max],
-                    order_by="criteria DESC",
+                    order_by=[('criteria', 'DESC')],
                     limit=1,
                 )
                 results = self.cjt.exe.execute_spja_query(spja_data)
@@ -475,5 +478,3 @@ class RandomForest(DecisionTree):
 
         for _ in range(self.iteration):
             super().fit(jg)
-            
-            
