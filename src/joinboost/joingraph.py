@@ -42,7 +42,7 @@ class JoinGraph:
     def replace_relation_attribute(self, relation, before_attribute, after_attribute):
         if relation == self.target_relation:
             if self.target_var == before_attribute:
-                self.target_var = after_attribute
+                self._target_var = after_attribute
 
         if before_attribute in self.relation_schema[relation]:
             self.relation_schema[relation][after_attribute] = self.relation_schema[relation][before_attribute]

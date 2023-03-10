@@ -109,7 +109,7 @@ class CJT(JoinGraph):
                 self._send_message(currento_table, c_neighbor, m_type=m_type)
                 self._pre_dfs(c_neighbor, currento_table, m_type=m_type)
 
-    def absorption(self, table: str, group_by: list, mode=4):
+    def absorption(self, table: str, group_by: list, mode='nested_query'):
         from_table_attrs = self.get_relation_features(table)
         incoming_messages, join_conds = self._get_income_messages(table)
 
@@ -124,7 +124,7 @@ class CJT(JoinGraph):
                                            select_conds=join_conds + self.get_parsed_annotations(table),
                                            group_by=[table + '.' + attr for attr in group_by])
 
-        return self.exe.spja_query(spja_data)
+        return self.exe.execute_spja_query(spja_data, mode=mode)
 
     # get the incoming message from one table to another
     # key function for message passing, Sec 3.3 of CJT paper
@@ -201,11 +201,11 @@ class CJT(JoinGraph):
             select_conds = join_conds + self.get_parsed_annotations(from_table),
             group_by = [from_table + "." + attr for attr in l_join_keys],
         )
-        message_name = self.exe.spja_query_to_table(spja_data)
+        message_name = self.exe.execute_spja_query(spja_data, mode='write_to_table')
 
         self.joins[from_table][to_table].update({'message': message_name, 'message_type': m_type})
 
-    # by default, lift the target variale
+    # by default, lift the target variable
     def lift(self, var=None):
         if var is None:
             var = self.target_var
@@ -219,6 +219,6 @@ class CJT(JoinGraph):
         spja_data = SPJAData(
                 aggregate_expressions = lift_exp, from_tables = [self.target_relation]
             )
-        new_fact_name = self.exe.spja_query_to_table(spja_data)
+        new_fact_name = self.exe.execute_spja_query(spja_data, mode='write_to_table')
         self.replace(self.target_relation, new_fact_name)
 
