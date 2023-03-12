@@ -57,7 +57,7 @@ class TestModel(unittest.TestCase):
         x = ["htype", "locale", "locale_name", "transferred","f2","dcoilwtico","f3","transactions",
              "f5","city","state","stype","cluster","f4","family","class","perishable","f1"]
 
-        exe = DuckdbExecutor(con, debug=False)
+        exe = DuckdbExecutor(con, debug=True)
     
         dataset = JoinGraph(exe=exe)
         dataset.add_relation("sales", [], y = 'Y')
@@ -138,7 +138,7 @@ class TestModel(unittest.TestCase):
         x = ["A", "B", "D", "E", "F"]
         y = "H"
 
-        exe = DuckdbExecutor(con, debug=False)
+        exe = DuckdbExecutor(con, debug=True)
     
         dataset = JoinGraph(exe=exe)
         dataset.add_relation('R', ['B', 'D'], y = 'H')
