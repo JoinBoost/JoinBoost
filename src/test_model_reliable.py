@@ -5,19 +5,26 @@ from joinboost.joingraph import JoinGraph
 from joinboost.app import DecisionTree,GradientBoosting
 import unittest
 
-class TestApp(unittest.TestCase):    
+class TestApp(unittest.TestCase):
+
     # this test the case when s and c are already in the databases
     # semi-ring should choose a different name
-    def test_add_prefix_to_preserved_sc_columns(self):
+    def test_add_prefix_to_reserved_sc_columns(self):
         con = duckdb.connect(database=':memory:')
         con.execute("CREATE OR REPLACE TABLE holidays AS SELECT * FROM '../data/favorita/holidays.csv';")
-        con.execute("CREATE OR REPLACE TABLE holidays_renamed_sc_cols AS SELECT * FROM '../data/favorita/holidays_renamed_sc_cols.csv';")
+        con.execute("""CREATE OR REPLACE TABLE holidays_renamed_sc_cols AS 
+                    SELECT date, htype AS joinboost_reserved_s, locale AS c, locale_name, transferred, f2
+                    FROM holidays;
+                    """)
         con.execute("CREATE OR REPLACE TABLE oil AS SELECT * FROM '../data/favorita/oil.csv';")
         con.execute("CREATE OR REPLACE TABLE transactions AS SELECT * FROM '../data/favorita/transactions.csv';")
         con.execute("CREATE OR REPLACE TABLE stores AS SELECT * FROM '../data/favorita/stores.csv';")
         con.execute("CREATE OR REPLACE TABLE items AS SELECT * FROM '../data/favorita/items.csv';")
         con.execute("CREATE OR REPLACE TABLE sales AS SELECT * FROM '../data/favorita/sales_small.csv';")
-        con.execute("CREATE OR REPLACE TABLE sales_renamed_sc_cols AS SELECT * FROM '../data/favorita/sales_small_renamed_sc_cols.csv';")
+        con.execute("""CREATE OR REPLACE TABLE sales_renamed_sc_cols AS 
+                    SELECT item_nbr, unit_sales, onpromotion, tid, Y AS s
+                    FROM sales;
+                    """)
         con.execute("CREATE OR REPLACE TABLE train AS SELECT * FROM '../data/favorita/train_small.csv';")
         exe = DuckdbExecutor(con, debug=False)
         dataset1 = JoinGraph(exe=exe)
@@ -36,7 +43,7 @@ class TestApp(unittest.TestCase):
         dataset1.add_join("holidays", "oil", ["date"], ["date"])
         
         dataset2.add_relation("sales", [], y = 'Y')
-        dataset2.add_relation("holidays_renamed_sc_cols", ["joinboost_preserved_s", "c", "locale_name", "transferred","f2"])
+        dataset2.add_relation("holidays_renamed_sc_cols", ["joinboost_reserved_s", "c", "locale_name", "transferred","f2"])
         dataset2.add_relation("oil", ["dcoilwtico","f3"])
         dataset2.add_relation("transactions", ["transactions","f5"])
         dataset2.add_relation("stores", ["city","state","stype","cluster","f4"])
@@ -60,19 +67,28 @@ class TestApp(unittest.TestCase):
         print(rmse2)
         self.assertTrue(rmse1 == rmse2)
         # this test the case when s and c are already in the databases
-        
+ 
     def test_add_prefix_to_target_variable(self):
         con = duckdb.connect(database=':memory:')
         con.execute("CREATE OR REPLACE TABLE holidays AS SELECT * FROM '../data/favorita/holidays.csv';")
-        con.execute("CREATE OR REPLACE TABLE holidays_renamed_sc_cols AS SELECT * FROM '../data/favorita/holidays_renamed_sc_cols.csv';")
+        con.execute("""CREATE OR REPLACE TABLE holidays_renamed_sc_cols AS 
+                    SELECT date, htype AS joinboost_reserved_s, locale AS c, locale_name, transferred, f2
+                    FROM holidays;
+                    """)
         con.execute("CREATE OR REPLACE TABLE oil AS SELECT * FROM '../data/favorita/oil.csv';")
         con.execute("CREATE OR REPLACE TABLE transactions AS SELECT * FROM '../data/favorita/transactions.csv';")
         con.execute("CREATE OR REPLACE TABLE stores AS SELECT * FROM '../data/favorita/stores.csv';")
         con.execute("CREATE OR REPLACE TABLE items AS SELECT * FROM '../data/favorita/items.csv';")
         con.execute("CREATE OR REPLACE TABLE sales AS SELECT * FROM '../data/favorita/sales_small.csv';")
-        con.execute("CREATE OR REPLACE TABLE sales_renamed_sc_cols AS SELECT * FROM '../data/favorita/sales_small_renamed_sc_cols.csv';")
+        con.execute("""CREATE OR REPLACE TABLE sales_renamed_sc_cols AS 
+                    SELECT item_nbr, unit_sales, onpromotion, tid, Y AS s
+                    FROM sales;
+                    """)
         con.execute("CREATE OR REPLACE TABLE train AS SELECT * FROM '../data/favorita/train_small.csv';")
-        con.execute("CREATE OR REPLACE TABLE train_renamed AS SELECT * FROM '../data/favorita/train_small_renamed.csv';")
+        con.execute("""CREATE OR REPLACE TABLE train_renamed AS 
+                    SELECT Y AS s,onpromotion,htype AS joinboost_reserved_s,locale AS c,locale_name,transferred,f2,date,dcoilwtico,f3,tid,transactions,f5,store_nbr,city,state,stype,cluster,f4,item_nbr,family,class,perishable,f1,unit_sales
+                    FROM train;
+                    """)
         
         exe = DuckdbExecutor(con, debug=False)
         dataset1 = JoinGraph(exe=exe)
@@ -91,7 +107,7 @@ class TestApp(unittest.TestCase):
         dataset1.add_join("holidays", "oil", ["date"], ["date"])
         
         dataset2.add_relation("sales_renamed_sc_cols", [], y = 's')
-        dataset2.add_relation("holidays_renamed_sc_cols", ["joinboost_preserved_s", "c", "locale_name", "transferred","f2"])
+        dataset2.add_relation("holidays_renamed_sc_cols", ["joinboost_reserved_s", "c", "locale_name", "transferred","f2"])
         dataset2.add_relation("oil", ["dcoilwtico","f3"])
         dataset2.add_relation("transactions", ["transactions","f5"])
         dataset2.add_relation("stores", ["city","state","stype","cluster","f4"])
@@ -109,10 +125,6 @@ class TestApp(unittest.TestCase):
         reg2.fit(dataset2)
 
         rmse1 = reg1.compute_rmse('train')[0]
-        
-        # TODO: this is hard code. Remove it.
-        # keep track of the column updated because of the reserved words
-        dataset2.exe.rename('train_renamed', 's', 'joinboost_reserved_s')
         rmse2 = reg2.compute_rmse('train_renamed')[0]
 
         print()

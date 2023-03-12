@@ -26,7 +26,6 @@ class DummyModel(App):
            jg: JoinGraph):
         
         jg._preprocess()
-        self.semi_ring.init_columns_name(jg)
         
         # get the gradient and hessian
         # for rmse, g is the sum and h is the count
@@ -41,9 +40,6 @@ class DummyModel(App):
         # below currently only works for rmse
         self.count_ = h
         self.constant_ = prediction
-        
-        # store full join sql
-        self._full_join_sql = jg.get_full_join_sql()
 
     def predict(self, data: Union[str, JoinGraph], input_mode: int):
         return self.constant_
@@ -66,8 +62,12 @@ class DecisionTree(DummyModel):
         
     def fit(self,
            jg: JoinGraph):
-        # super().fit(jg)
+        # Create views for tables having conflicting column names with reserved words.
         self.semi_ring.init_columns_name(jg)
+
+        # # store full join sql
+        # self._full_join_sql = jg.get_full_join_sql()
+
         # shall we first sample then fit dummy model, or first fit dummy model then sample?
         # the current solution is to first sample than fit dummy model
         self.cjt = CJT(semi_ring=self.semi_ring, join_graph=jg)
@@ -128,11 +128,16 @@ class DecisionTree(DummyModel):
             self.model_def.append(cur_model_def)
         
     def compute_rmse(self, test_table: str):
+        if self.cjt.is_target_relation_a_view():
+            target = self.cjt.get_view2table()[self.cjt.get_target_relation()]["cols"][self.cjt.get_target_var()]
+        else:
+            target = self.cjt.get_target_var()
         # TODO: refactor
         view = self.cjt.exe.case_query(test_table, '+', 'prediction', str(self.constant_),
-                                       self.model_def, [self.cjt.get_target_var()])
+                                       self.model_def, [target])
+
         predict_agg = {'RMSE': 
-            (f'SQRT(AVG(POW({self.cjt.get_target_var()} - prediction, 2)))',
+            (f'SQRT(AVG(POW({target} - prediction, 2)))',
              Aggregator.IDENTITY)}
         predict = self.cjt.exe.execute_spja_query(predict_agg, [view], mode=4)
         return self.cjt.exe.execute_spja_query(from_tables=[predict], 
@@ -140,8 +145,8 @@ class DecisionTree(DummyModel):
     
     # input_mode = 1 takes the full join's table name as input
     # input_mode = 2 takes the join graph as input (assume fact table)
-    # input_mode = 3 takes the fact table's name as input (and automatically join it
-    # with dimensional tables used in training)
+    # TODO: DELETE input_mode = 3 takes the fact table's name as input (and automatically join it
+    # with dimensional tables used in training => user provided join graph)
     # TODO: support different outputs
     # output_mode = 1 returns a numpy array
     # output_mode = 2 stores the prediction in a table and returns table name
@@ -159,13 +164,6 @@ class DecisionTree(DummyModel):
             assert(isinstance(data, JoinGraph))
             # TODO
             pass
-
-        elif input_mode == 3:
-            assert(isinstance(data, str))
-            view = self.cjt.exe.case_query(self._full_join_sql, '+', 'prediction', 
-                                           str(self.constant_), self.model_def,
-                                           [self.cjt.get_target_var()],
-                                           order_by=f'{data}.rowid')
 
         preds = self.cjt.exe._execute_query(f"select prediction from {view};")
         return np.array(preds)[:, 0]
