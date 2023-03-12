@@ -331,6 +331,7 @@ class DuckdbExecutor(Executor):
 
 
 class PandasExecutor(DuckdbExecutor):
+    # Because Pandas is not a database, we use a dictionary to store table_name -> dataframe
     table_registry = {}
 
     def __init__(self, conn, debug=False):

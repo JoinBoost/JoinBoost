@@ -87,6 +87,7 @@ class DecisionTree(DummyModel):
         if self.subsample < 1:
             # TODO: Possible to sample 0 tuples.
             # Add check to make sure the sampled table has tuples
+            # For duckdb, mode 4 is only safe for single thread.
             new_fact_name = self.cjt.exe.execute_spja_query(from_tables=[self.cjt.target_relation], 
                                                             sample_rate=self.subsample,
                                                             mode = mode)
