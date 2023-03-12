@@ -7,9 +7,9 @@ import pytest
 from sklearn.metrics import mean_squared_error
 from sklearn.tree import DecisionTreeRegressor
 
-from src.joinboost.app import DecisionTree, GradientBoosting, RandomForest
-from src.joinboost.executor import PandasExecutor
-from src.joinboost.joingraph import JoinGraph
+from joinboost.app import DecisionTree, GradientBoosting, RandomForest
+from joinboost.executor import PandasExecutor
+from joinboost.joingraph import JoinGraph
 
 
 class TestExecutor(unittest.TestCase):
