@@ -19,15 +19,19 @@ class JoinGraph:
                 view2table = {}):
         
         self.exe = ExecutorFactory(exe)
+        
         # maps each from_relation => to_relation => {keys: (from_keys, to_keys)}
         self.joins = copy.deepcopy(joins)
-        # maps each relation => feature => feature_type
+        # maps each relation => {feature: feature_type}
         self.relation_schema = copy.deepcopy(relation_schema)
+        
         self.target_var = target_var
         self.target_relation = target_relation
         # some magic/random number used for jupyter notebook display
         self.session_id = int(time.time())
         self.rep_template = data = pkgutil.get_data(__name__, "d3graph.html").decode('utf-8')
+        
+        # TODO: move it to somewhere else.
         # store table to view mapping for tables with column names conflict with reserved words  
         self.view2table = copy.deepcopy(view2table)
         self._prefix = "joinboost_reserved_"
@@ -54,6 +58,61 @@ class JoinGraph:
                 index = left_join_key.index(before_attribute)
                 # Replace the old string with the new string
                 left_join_key[index] = after_attribute
+    
+    # TODO: move this to preprocessor
+    def replace_attribute(self, reserved_word):
+        """Replace columns that have a conflict with reserved_word.
+        
+        Iterate through each table's columns to check if reserved_word exist.
+        If so, rename it to avoid conflict.
+
+        """
+        
+        for relation in self.get_relations():
+            # schema is a list of column names
+            schema =  self.exe.get_schema(relation)
+            # check if reserved_word is in schema
+            if reserved_word in schema:
+                # TODO: Assume view_name is not in the schema for now.
+                view_name = self._prefix + relation
+                if view_name not in self.view2table:
+                    self.view2table[view_name] = {"relation_name": relation, "cols": dict()}
+
+                for col in schema:
+                    if col == reserved_word:
+                        new_word = self._prefix + reserved_word
+                        while new_word in schema:
+                            new_word = self._prefix + new_word
+                    elif col in self.view2table[view_name]["cols"]:
+                        # No changes needed
+                        continue
+                    else:
+                        new_word = col
+                    self.view2table[view_name]["cols"][new_word] = col
+    
+    # replace a table from table_prev to table_after
+    def replace(self, table_prev, table_after):
+        if table_prev not in self.relation_schema: 
+            raise JoinGraphException(table_prev + ' doesn\'t exit!')
+        if table_after in self.relation_schema: 
+            raise JoinGraphException(table_after + ' already exits!')
+        self.relation_schema[table_after] = self.relation_schema[table_prev]
+        del self.relation_schema[table_prev]
+
+        if self.target_relation == table_prev:
+            if self.is_target_relation_a_view():
+                self.view2table[table_after] = copy.deepcopy(self.view2table[table_prev])
+                del self.view2table[table_prev]            
+            self.target_relation = table_after
+            
+        for relation in self.joins:
+            if table_prev in self.joins[relation]:
+                self.joins[relation][table_after] = self.joins[relation][table_prev]
+                del self.joins[relation][table_prev]
+        
+        if table_prev in self.joins:
+            self.joins[table_after] = self.joins[table_prev]
+            del self.joins[table_prev]
 
     def is_target_relation_a_view(self):
         return self.target_relation in self.view2table
@@ -143,9 +202,8 @@ class JoinGraph:
             raise JoinGraphException('Attribute not in ' + relation)
         return list(self.relation_schema[relation].keys())
     
-    # get the join keys between two tables
-    # all get all the join keys of one table
-    # TODO: check if the join keys exist
+    # if t_table is not None, get the join keys between f_table and t_table
+    # if t_table is None, all get all the join keys of f_table
     def get_join_keys(self, f_table: str, t_table: str = None):
         if f_table not in self.joins:
             return []
@@ -181,9 +239,9 @@ class JoinGraph:
         self.joins[table_name_left][table_name_right] = {"keys": (left_keys, right_keys)}
         self.joins[table_name_right][table_name_left] = {"keys": (right_keys, left_keys)}
         
+    # Return the sql statement of full join
+    # This is mainly for debug
     def get_full_join_sql(self):
-        """Return the sql statement of full join."""
-
         sql = []
         seen = set()
 
@@ -210,29 +268,6 @@ class JoinGraph:
         sql = " AND ".join(f"{rel1}.{key1}={rel2}.{key2}" 
                            for key1,key2 in zip(keys1, keys2))
         return sql        
-        
-    def replace(self, table_prev, table_after):
-        if table_prev not in self.relation_schema: 
-            raise JoinGraphException(table_prev + ' doesn\'t exit!')
-        if table_after in self.relation_schema: 
-            raise JoinGraphException(table_after + ' already exits!')
-        self.relation_schema[table_after] = self.relation_schema[table_prev]
-        del self.relation_schema[table_prev]
-
-        if self.target_relation == table_prev:
-            if self.is_target_relation_a_view():
-                self.view2table[table_after] = copy.deepcopy(self.view2table[table_prev])
-                del self.view2table[table_prev]            
-            self.target_relation = table_after
-            
-        for relation in self.joins:
-            if table_prev in self.joins[relation]:
-                self.joins[relation][table_after] = self.joins[relation][table_prev]
-                del self.joins[relation][table_prev]
-        
-        if table_prev in self.joins:
-            self.joins[table_after] = self.joins[table_prev]
-            del self.joins[table_prev]
         
     def _preprocess(self):
         # self.check_all_features_exist()
@@ -288,63 +323,8 @@ class JoinGraph:
         return s
     
     
-    def replace_attribute(self, reserved_word):
-        """Replace columns that have a conflict with reserved_word.
-        
-        Iterate through each table's columns to check if reserved_word exist.
-        If so, rename it to avoid conflict.
 
-        """
-        
-        for relation in self.get_relations():
-            # schema is a list of column names
-            schema =  self.exe.get_schema(relation)
-            # check if reserved_word is in schema
-            if reserved_word in schema:
-                # TODO: Assume view_name is not in the schema for now.
-                view_name = self._prefix + relation
-                if view_name not in self.view2table:
-                    self.view2table[view_name] = {"relation_name": relation, "cols": dict()}
-
-                for col in schema:
-                    if col == reserved_word:
-                        new_word = self._prefix + reserved_word
-                        while new_word in schema:
-                            new_word = self._prefix + new_word
-                    elif col in self.view2table[view_name]["cols"]:
-                        # No changes needed
-                        continue
-                    else:
-                        new_word = col
-                    self.view2table[view_name]["cols"][new_word] = col
 
     def get_view2table(self):
         return self.view2table
     
-#     def decide_feature_type(self, table, attrs, attr_types, threshold, exe: Executor):
-#         self.relations.append(table)
-#         r_meta = {}
-#         for i, attr in enumerate(attrs):
-#             if attr_types[i] == 2:
-#                 r_meta[attr] = 'NUM'
-#             else:
-#                 r_meta[attr] = 'CAT'
-#                 view = exe.execute_spja_query(aggregate_expressions={attr: (attr, Aggregator.DISTINCT_COUNT)},
-#                                               f_table=table)
-#                 res = exe.select_all(view)
-#                 if res[0][0] <= threshold:
-#                     r_meta[attr] = 'LCAT'
-#         self.meta_data[table] = r_meta
-#         self.r_attrs[table] = list(r_meta.keys())
-
-# TODO: Check fact table and missing join keys
-# auto dictionary encoding
-# naming could conflict with semi-ring
-# for prediction, what if two attributes have the same name?
-# semi-join reduction for message to pass to
-# todo: remove s,c logic from app
-# infer executor from class
-# app -> models
-# support classification
-# support predict based on fact table
-# benchmark predict performance
