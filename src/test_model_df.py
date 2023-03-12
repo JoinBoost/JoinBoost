@@ -1,16 +1,12 @@
 import math
 import unittest
 
-import numpy as np
 import pandas as pd
 import duckdb
 import pytest
-from pandas import testing
-from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.metrics import mean_squared_error
 from sklearn.tree import DecisionTreeRegressor
 
-from src.joinboost.aggregator import Aggregator
 from src.joinboost.app import DecisionTree, GradientBoosting, RandomForest
 from src.joinboost.executor import PandasExecutor
 from src.joinboost.joingraph import JoinGraph
