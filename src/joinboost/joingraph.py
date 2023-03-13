@@ -35,9 +35,7 @@ class JoinGraph:
         self._target_relation = target_relation
         # some magic/random number used for jupyter notebook display
         self.session_id = int(time.time())
-        self.rep_template = data = pkgutil.get_data(__name__, "d3graph.html").decode(
-            "utf-8"
-        )
+        self.rep_template = data = pkgutil.get_data(__name__, "d3graph.html").decode('utf-8')
 
         # TODO: move it to somewhere else.
         # store table to view mapping for tables with column names conflict with reserved words
@@ -50,6 +48,7 @@ class JoinGraph:
 
     def get_target_rowid_colname(self):
         return self.target_rowid_colname
+
 
     @property
     def relation_schema(self):
@@ -82,10 +81,7 @@ class JoinGraph:
                 # TODO: Assume view_name is not in the schema for now.
                 view_name = self._prefix + relation
                 if view_name not in self.view2table:
-                    self.view2table[view_name] = {
-                        "relation_name": relation,
-                        "cols": dict(),
-                    }
+                    self.view2table[view_name] = {"relation_name": relation, "cols": dict()}
 
                 for col in schema:
                     if col == reserved_word:
@@ -106,13 +102,11 @@ class JoinGraph:
                 self._target_var = after_attribute
 
         if before_attribute in self.relation_schema[relation]:
-            self.relation_schema[relation][after_attribute] = self.relation_schema[
-                relation
-            ][before_attribute]
+            self.relation_schema[relation][after_attribute] = self.relation_schema[relation][before_attribute]
             del self.relation_schema[relation][before_attribute]
 
         for relation2 in self.joins[relation]:
-            left_join_key = self.joins[relation][relation2]["keys"][0]
+            left_join_key = self.joins[relation][relation2]['keys'][0]
             if before_attribute in left_join_key:
                 # Find the index of the before_attribute in the list
                 index = left_join_key.index(before_attribute)
@@ -122,17 +116,15 @@ class JoinGraph:
     # replace a table from table_prev to table_after
     def replace(self, table_prev, table_after):
         if table_prev not in self.relation_schema:
-            raise JoinGraphException(table_prev + " doesn't exit!")
+            raise JoinGraphException(table_prev + ' doesn\'t exit!')
         if table_after in self.relation_schema:
-            raise JoinGraphException(table_after + " already exits!")
+            raise JoinGraphException(table_after + ' already exits!')
         self.relation_schema[table_after] = self.relation_schema[table_prev]
         del self.relation_schema[table_prev]
 
         if self.target_relation == table_prev:
             if self.is_target_relation_a_view():
-                self.view2table[table_after] = copy.deepcopy(
-                    self.view2table[table_prev]
-                )
+                self.view2table[table_after] = copy.deepcopy(self.view2table[table_prev])
                 del self.view2table[table_prev]
             self._target_relation = table_after
 
@@ -172,11 +164,11 @@ class JoinGraph:
         # check acyclic
         if not dfs(list(self.joins.keys())[0]):
             raise JoinGraphException("The join graph is cyclic!")
-
+        
         # check not disjoint
         if len(seen) != len(self.joins):
             raise JoinGraphException("The join graph is disjoint!")
-
+    
     # add relation, features and target variable to join graph
     # current assumption: Y is in the fact table
     def add_relation(
@@ -194,10 +186,10 @@ class JoinGraph:
         self.exe.add_table(relation, relation_address)
         self.joins[relation] = dict()
         if relation not in self.relation_schema:
-            self.relation_schema[relation] = {}
-
+                self.relation_schema[relation] = {}
+        
         self.check_features_exist(relation, X + ([y] if y is not None else []))
-
+        
         for x in X:
             # by default, assume all features to be numerical
             self.relation_schema[relation][x] = "NUM"
@@ -211,6 +203,7 @@ class JoinGraph:
             self._target_var = y
             self._target_relation = relation
             # self.target_rowid_colname = self._get_target_rowid_colname(attributes)
+
 
     # Save for future use.
     # def _get_target_rowid_colname(self, attributes):
@@ -255,30 +248,21 @@ class JoinGraph:
             table
         )
         return list(set(useful_attributes))
+    
 
-    def add_join(
-        self,
-        table_name_left: str,
-        table_name_right: str,
-        left_keys: list,
-        right_keys: list,
-    ):
+    def add_join(self, table_name_left: str, table_name_right: str, left_keys: list, right_keys: list):
         if len(left_keys) != len(right_keys):
-            raise JoinGraphException("Join keys have different lengths!")
+            raise JoinGraphException('Join keys have different lengths!')
         if table_name_left not in self.relation_schema:
-            raise JoinGraphException(table_name_left + " doesn't exit!")
+            raise JoinGraphException(table_name_left + ' doesn\'t exit!')
         if table_name_right not in self.relation_schema:
-            raise JoinGraphException(table_name_right + " doesn't exit!")
+            raise JoinGraphException(table_name_right + ' doesn\'t exit!')
 
         left_keys = [attr for attr in left_keys]
         right_keys = [attr for attr in right_keys]
 
-        self.joins[table_name_left][table_name_right] = {
-            "keys": (left_keys, right_keys)
-        }
-        self.joins[table_name_right][table_name_left] = {
-            "keys": (right_keys, left_keys)
-        }
+        self.joins[table_name_left][table_name_right] = {"keys": (left_keys, right_keys)}
+        self.joins[table_name_right][table_name_left] = {"keys": (right_keys, left_keys)}
 
     # Return the sql statement of full join
     # This is mainly for debug
@@ -330,16 +314,14 @@ class JoinGraph:
         for table in self.relation_schema:
             features = self.relation_schema[table].keys()
             self.check_features_exist(table, features)
-
+        
     def check_features_exist(self, relation, features):
         """Check if all the features exist in the relation."""
 
         attributes = self.exe.get_schema(relation)
         if not set(features).issubset(set(attributes)):
-            raise JoinGraphException(
-                f"Key error in {features}."
-                + f" Attribute does not exist in table {relation} with schema {attributes}"
-            )
+            raise JoinGraphException(f"Key error in {features}." + \
+                f" Attribute does not exist in table {relation} with schema {attributes}")
 
     # output html that displays the join graph. Taken from JoinExplorer notebook
     def _repr_html_(self):
@@ -376,21 +358,22 @@ class JoinGraph:
         s = s.replace("{{links}}", str(links))
         return s
 
-    #     def decide_feature_type(self, table, attrs, attr_types, threshold, exe: Executor):
-    #         self.relations.append(table)
-    #         r_meta = {}
-    #         for i, attr in enumerate(attrs):
-    #             if attr_types[i] == 2:
-    #                 r_meta[attr] = 'NUM'
-    #             else:
-    #                 r_meta[attr] = 'CAT'
-    #                 view = exe.execute_spja_query(aggregate_expressions={attr: (attr, Aggregator.DISTINCT_COUNT)},
-    #                                               f_table=table)
-    #                 res = exe.select_all(view)
-    #                 if res[0][0] <= threshold:
-    #                     r_meta[attr] = 'LCAT'
-    #         self.meta_data[table] = r_meta
-    #         self.r_attrs[table] = list(r_meta.keys())
+#     def decide_feature_type(self, table, attrs, attr_types, threshold, exe: Executor):
+#         self.relations.append(table)
+#         r_meta = {}
+#         for i, attr in enumerate(attrs):
+#             if attr_types[i] == 2:
+#                 r_meta[attr] = 'NUM'
+#             else:
+#                 r_meta[attr] = 'CAT'
+#                 view = exe.execute_spja_query(aggregate_expressions={attr: (attr, Aggregator.DISTINCT_COUNT)},
+#                                               f_table=table)
+#                 res = exe.select_all(view)
+#                 if res[0][0] <= threshold:
+#                     r_meta[attr] = 'LCAT'
+#         self.meta_data[table] = r_meta
+#         self.r_attrs[table] = list(r_meta.keys())
 
     def get_view2table(self):
         return self.view2table
+
