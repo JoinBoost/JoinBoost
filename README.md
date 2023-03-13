@@ -4,6 +4,8 @@
 
 JoinBoost is a Python library to help you train tree-models (decision trees, gradient boosting, random forests). 
 
+Note that many functionalities of JoinBoost are still under development. If you are interested in using JoinBoost, we are happy to provide direct supports. You can contact us through issues, or email zh2408@columbia.edu
+
 ## Why JoinBoost?
 
 JoinBoost algorithms follow LightGBM. However, JoinBoost trains models

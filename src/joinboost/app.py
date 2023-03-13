@@ -66,9 +66,14 @@ class DecisionTree(DummyModel):
         self.subsample = subsample
         self.debug = debug
 
-    def fit(self, jg: JoinGraph):
-        # super().fit(jg)
+    def fit(self,
+           jg: JoinGraph):
+        # Create views for tables having conflicting column names with reserved words.
         self.semi_ring.init_columns_name(jg)
+
+        # # store full join sql
+        # self._full_join_sql = jg.get_full_join_sql()
+
         # shall we first sample then fit dummy model, or first fit dummy model then sample?
         # the current solution is to first sample than fit dummy model
         self.cjt = CJT(semi_ring=self.semi_ring, join_graph=jg)
@@ -130,11 +135,16 @@ class DecisionTree(DummyModel):
             self.model_def.append(cur_model_def)
         
     def compute_rmse(self, test_table: str):
+        if self.cjt.is_target_relation_a_view():
+            target = self.cjt.get_view2table()[self.cjt.get_target_relation()]["cols"][self.cjt.get_target_var()]
+        else:
+            target = self.cjt.get_target_var()
         # TODO: refactor
         view = self.cjt.exe.case_query(test_table, '+', 'prediction', str(self.constant_),
-                                       self.model_def, [self.cjt.target_var])
+                                       self.model_def, [target])
+
         predict_agg = {'RMSE': 
-            (f'SQRT(AVG(POW({self.cjt.target_var} - prediction, 2)))',
+            (f'SQRT(AVG(POW({target} - prediction, 2)))',
              Aggregator.IDENTITY)}
         prediction_query_data = SPJAData(aggregate_expressions=predict_agg,
                                             from_tables=[view])
@@ -145,6 +155,9 @@ class DecisionTree(DummyModel):
     
     # input_mode = 1 takes the full join's table name as input
     # input_mode = 2 takes the join graph as input (assume fact table)
+    # TODO: DELETE input_mode = 3 takes the fact table's name as input (and automatically join it
+    # with dimensional tables used in training => user provided join graph)
+    # TODO: support different outputs
     # input_mode = 3 takes the fact table's name as input (and automatically join it
     # with dimensional tables used in training)
     # TODO support different outputs
@@ -431,6 +444,7 @@ class DecisionTree(DummyModel):
         self.leaf_nodes = [self.nodes[ele[-1]] for ele in self.split_candidates.queue]
 
 
+        
 class GradientBoosting(DecisionTree):
     # TODO: add some checks. E.g., paramters have to be positive
     def __init__(
@@ -484,3 +498,5 @@ class RandomForest(DecisionTree):
 
         for _ in range(self.iteration):
             super().fit(jg)
+            
+            

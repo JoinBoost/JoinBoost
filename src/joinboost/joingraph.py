@@ -20,11 +20,13 @@ class JoinGraph:
         relation_schema=None,
         target_var=None,
         target_relation=None,
+        view2table={},
     ):
         joins = joins if joins else {}
         relation_schema = relation_schema if relation_schema else {}
 
         self.exe = ExecutorFactory(exe)
+
         # maps each from_relation => to_relation => {keys: (from_keys, to_keys)}
         self._joins = copy.deepcopy(joins)
         # maps each relation => feature => feature_type
@@ -33,6 +35,14 @@ class JoinGraph:
         self._target_relation = target_relation
         # some magic/random number used for jupyter notebook display
         self.session_id = int(time.time())
+        self.rep_template = data = pkgutil.get_data(__name__, "d3graph.html").decode('utf-8')
+
+        # TODO: move it to somewhere else.
+        # store table to view mapping for tables with column names conflict with reserved words
+        self.view2table = copy.deepcopy(view2table)
+        self._prefix = "joinboost_reserved_"
+
+    def get_relations(self): 
         self.rep_template = pkgutil.get_data(__name__, "d3graph.html").decode("utf-8")
 
     @property
@@ -76,6 +86,64 @@ class JoinGraph:
     def joins(self):
         return self._joins
 
+    # TODO: move this to preprocessor
+    def replace_attribute(self, reserved_word):
+        """Replace columns that have a conflict with reserved_word.
+
+        Iterate through each table's columns to check if reserved_word exist.
+        If so, rename it to avoid conflict.
+
+        """
+
+        for relation in self.get_relations():
+            # schema is a list of column names
+            schema =  self.exe.get_schema(relation)
+            # check if reserved_word is in schema
+            if reserved_word in schema:
+                # TODO: Assume view_name is not in the schema for now.
+                view_name = self._prefix + relation
+                if view_name not in self.view2table:
+                    self.view2table[view_name] = {"relation_name": relation, "cols": dict()}
+
+                for col in schema:
+                    if col == reserved_word:
+                        new_word = self._prefix + reserved_word
+                        while new_word in schema:
+                            new_word = self._prefix + new_word
+                    elif col in self.view2table[view_name]["cols"]:
+                        # No changes needed
+                        continue
+                    else:
+                        new_word = col
+                    self.view2table[view_name]["cols"][new_word] = col
+
+    # replace a table from table_prev to table_after
+    def replace(self, table_prev, table_after):
+        if table_prev not in self.relation_schema:
+            raise JoinGraphException(table_prev + ' doesn\'t exit!')
+        if table_after in self.relation_schema:
+            raise JoinGraphException(table_after + ' already exits!')
+        self.relation_schema[table_after] = self.relation_schema[table_prev]
+        del self.relation_schema[table_prev]
+
+        if self.target_relation == table_prev:
+            if self.is_target_relation_a_view():
+                self.view2table[table_after] = copy.deepcopy(self.view2table[table_prev])
+                del self.view2table[table_prev]
+            self.target_relation = table_after
+
+        for relation in self.joins:
+            if table_prev in self.joins[relation]:
+                self.joins[relation][table_after] = self.joins[relation][table_prev]
+                del self.joins[relation][table_prev]
+
+        if table_prev in self.joins:
+            self.joins[table_after] = self.joins[table_prev]
+            del self.joins[table_prev]
+
+    def is_target_relation_a_view(self):
+        return self.target_relation in self.view2table
+
     def get_type(self, relation, feature):
         return self.relation_schema[relation][feature]
 
@@ -100,11 +168,11 @@ class JoinGraph:
         # check acyclic
         if not dfs(list(self.joins.keys())[0]):
             raise JoinGraphException("The join graph is cyclic!")
-
+        
         # check not disjoint
         if len(seen) != len(self.joins):
             raise JoinGraphException("The join graph is disjoint!")
-
+    
     # add relation, features and target variable to join graph
     # current assumption: Y is in the fact table
     def add_relation(
@@ -124,7 +192,7 @@ class JoinGraph:
         if relation not in self.relation_schema:
                 self.relation_schema[relation] = {}
         
-        attributes = self.check_features_exist(relation, X + ([y] if y is not None else []))
+        self.check_features_exist(relation, X + ([y] if y is not None else []))
         
         for x in X:
             # by default, assume all features to be numerical
@@ -134,54 +202,26 @@ class JoinGraph:
             self.relation_schema[relation][x] = "LCAT"
 
         if y is not None:
-            if self.target_var is not None and self.target_var != y:
-                err_msg = f"Attempted to set target variable to {y}, but already set to {self.target_var}."
-                raise JoinGraphException(err_msg)
-            self._target_var = y
-            self._target_relation = relation
-            self.target_rowid_colname = self._get_target_rowid_colname(attributes)
+            if self.target_var is not None:
+                print("Warning: Y already exists and has been replaced")
+            self.target_var = y
+            self.target_relation = relation
+            # self.target_rowid_colname = self._get_target_rowid_colname(attributes)
 
-    def _get_target_rowid_colname(self, attributes):
-        """Get the temporary rowid column name(if exists) for the target relation."""
-        attr = set(attributes)
-        tmp = "rowid"
-        while tmp in attr:
-            tmp = "joinboost_tmp_" + tmp
-        return tmp if tmp != "rowid" else ""
 
-    def add_join(
-        self,
-        table_name_left: str,
-        table_name_right: str,
-        left_keys: list,
-        right_keys: list,
-    ):
-        # MATT: underscore variables
-        if len(left_keys) != len(right_keys):
-            raise JoinGraphException("Join keys have different lengths!")
-        if table_name_left not in self.relation_schema:
-            raise JoinGraphException(table_name_left + " doesn't exit!")
-        if table_name_right not in self.relation_schema:
-            raise JoinGraphException(table_name_right + " doesn't exit!")
+    # Save for future use.
+    # def _get_target_rowid_colname(self, attributes):
+    #     """Get the temporary rowid column name(if exists) for the target relation."""
+    #     attr = set(attributes)
+    #     tmp = "rowid"
+    #     while tmp in attr:
+    #         tmp = "joinboost_tmp_" + tmp
+    #     return tmp if tmp != "rowid" else ""
 
-        left_keys = [attr for attr in left_keys]
-        right_keys = [attr for attr in right_keys]
-
-        self.joins[table_name_left][table_name_right] = {
-            "keys": (left_keys, right_keys)
-        }
-        self.joins[table_name_right][table_name_left] = {
-            "keys": (right_keys, left_keys)
-        }
-        # MATT: Add check_acyclic?
+    # def get_target_rowid_colname(self):
+    #     return self.target_rowid_colname
 
     # get features for each table
-    def get_relation_features(self, relation):
-
-        if relation not in self.relation_schema:
-            raise JoinGraphException('Attribute not in ' + relation)
-        return list(self.relation_schema[relation].keys())
-    
     def get_relation_features(self, r_name):
         if r_name not in self.relation_schema:
             raise JoinGraphException("Attribute not in " + r_name)
@@ -190,6 +230,8 @@ class JoinGraph:
     # get the join keys between two tables
     # all get all the join keys of one table
     # TODO: check if the join keys exist
+    # if t_table is not None, get the join keys between f_table and t_table
+    # if t_table is None, all get all the join keys of f_table
     def get_join_keys(self, f_table: str, t_table: str = None):
         if f_table not in self.joins:
             return []
@@ -210,7 +252,24 @@ class JoinGraph:
             table
         )
         return list(set(useful_attributes))
+    
 
+    def add_join(self, table_name_left: str, table_name_right: str, left_keys: list, right_keys: list):
+        if len(left_keys) != len(right_keys):
+            raise JoinGraphException('Join keys have different lengths!')
+        if table_name_left not in self.relation_schema:
+            raise JoinGraphException(table_name_left + ' doesn\'t exit!')
+        if table_name_right not in self.relation_schema:
+            raise JoinGraphException(table_name_right + ' doesn\'t exit!')
+
+        left_keys = [attr for attr in left_keys]
+        right_keys = [attr for attr in right_keys]
+
+        self.joins[table_name_left][table_name_right] = {"keys": (left_keys, right_keys)}
+        self.joins[table_name_right][table_name_left] = {"keys": (right_keys, left_keys)}
+
+    # Return the sql statement of full join
+    # This is mainly for debug
     def get_full_join_sql(self):
         """Return the sql statement of full join."""
 
@@ -278,13 +337,12 @@ class JoinGraph:
         for table in self.relation_schema:
             features = self.relation_schema[table].keys()
             self.check_features_exist(table, features)
-
+        
     def check_features_exist(self, table, features):
         attributes = self.exe.get_schema(table)
         if not set(features).issubset(set(attributes)):
-            raise JoinGraphException('Key error in ' + str(features) + '. Attribute does not exist in table ' \
-                            + table + ' with schema ' + str(attributes))
-        return attributes
+            raise JoinGraphException(f"Key error in {features}." + \
+                f" Attribute does not exist in table {relation} with schema {attributes}")
 
     # output html that displays the join graph. Taken from JoinExplorer notebook
     def _repr_html_(self):
@@ -321,27 +379,6 @@ class JoinGraph:
         s = s.replace("{{links}}", str(links))
         return s
 
-    # replace the reserved_word, if it exists in any table
-    # iterate through each table to check if reserved_word exist
-    # if so, rename it to another
-    def replace_attribute(self, reserved_word):
-        for relation in self.relations:
-            # schema is a list of string
-            schema =  self.exe.get_schema(relation)
-            # check if reserved_word is in schema
-            if reserved_word in schema:
-                # if it is, keeping adding prefix to it, until the word is not in schema
-                prefix = "joinboost_reserved_"
-                new_word = prefix + reserved_word
-                while new_word in schema:
-                    new_word = prefix + new_word
-                # TODO: instead rename, create a view might be better to avoid modifying user table
-                self.exe.rename(relation, reserved_word, new_word)
-                self.replace_relation_attribute(relation, reserved_word, new_word)
-
-
-
-
 #     def decide_feature_type(self, table, attrs, attr_types, threshold, exe: Executor):
 #         self.relations.append(table)
 #         r_meta = {}
@@ -358,14 +395,6 @@ class JoinGraph:
 #         self.meta_data[table] = r_meta
 #         self.r_attrs[table] = list(r_meta.keys())
 
-# TODO: Check fact table and missing join keys
-# auto dictionary encoding
-# naming could conflict with semi-ring
-# for prediction, what if two attributes have the same name?
-# semi-join reduction for message to pass to
-# todo: remove s,c logic from app
-# infer executor from class
-# app -> models
-# support classification
-# support predict based on fact table
-# benchmark predict performance
+    def get_view2table(self):
+        return self.view2table
+

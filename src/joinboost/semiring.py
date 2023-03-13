@@ -55,6 +55,18 @@ class varSemiRing(GradientHessianSemiRing):
         reserved_words += [self.gradient_column_name, self.hessian_column_name]
         for reserved_word in reserved_words:
             jg.replace_attribute(reserved_word)
+        
+        for view in jg.view2table:
+            relation = jg.view2table[view]["relation_name"]
+            jg.replace(relation, view)
+            l = []
+            for new_word, old_word in jg.view2table[view]["cols"].items():
+                jg.replace_relation_attribute(view, old_word, new_word)
+                _sql = f"{old_word} AS {new_word}" if old_word != new_word else f"{old_word}"
+                l.append(_sql)
+            sql = f"CREATE OR REPLACE VIEW {view} AS \n" + \
+                  f"SELECT {','.join(l)} FROM {relation}"
+            jg.exe._execute_query(sql)
 
     def __add__(self, other):
         result = self.copy()

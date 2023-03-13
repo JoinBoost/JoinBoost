@@ -1,8 +1,5 @@
-import time
-import re
-from frozendict import frozendict
 import itertools
-
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Optional, Any
@@ -630,6 +627,13 @@ class PandasExecutor(DuckdbExecutor):
             table_address = pd.read_csv(table_address)
         self.table_registry[table] = table_address
 
+    def delete_table(self, table):
+        if self.debug:
+            print("deleting table: ", table)
+
+        if table in self.table_registry:
+            del self.table_registry[table]
+
     def get_schema(self, table):
         # unqualify the column names, this is required as duckdb returns unqualified column names
         return [col.split('.')[-1] for col in self.table_registry[table].columns]
@@ -653,11 +657,13 @@ class PandasExecutor(DuckdbExecutor):
 
         select_conds = self.convert_predicates(spja_data.select_conds)
 
-        # join_conds are of the form "table1.col1 IS NOT DISTINCT FROM table2.col2". extract the table1.col1 and table2.col2
-        join_conds = [re.findall(r'(\w+\.\w+)', cond) for cond in spja_data.join_conds]
+        # join_conds are of the form "table1.col1 IS NOT DISTINCT FROM table2.col2"p.
+        # extract the table1.col1 and table2.col2
+        join_conds = [re.findall(r'(\w+\.\w+)', cond) for cond in join_conds]
 
         # filter list of tables that don't have any join conditions
-        tables_to_join = [table for table in spja_data.from_tables if any([cond[0].startswith(table) or cond[1].startswith(table) for cond in join_conds])]
+        tables_to_join = [table for table in from_tables if
+                          any([cond[0].startswith(table) or cond[1].startswith(table) for cond in join_conds])]
 
         # subtract tables_to_join from from_tables to get the tables that don't have any join conditions
         tables_to_cross = list(set(spja_data.from_tables) - set(tables_to_join))
@@ -671,6 +677,16 @@ class PandasExecutor(DuckdbExecutor):
 
         # group by and aggregate
         df = self.apply_group_by_and_agg(agg_conditions, df, spja_data.group_by, spja_data.window_by)
+
+        should_drop_columns = True
+        for keys, values in aggregate_expressions.items():
+            if values[1] == Aggregator.IDENTITY and values[0] == '*':
+                should_drop_columns = False
+
+        if should_drop_columns:
+            # drop columns that don't appear in aggregate_expressions
+            final_cols = [col for col in aggregate_expressions.keys() if col is not None]
+            df = df[final_cols]
 
         # sort by each column in order_by
         if len(spja_data.order_by) > 0:
@@ -742,7 +758,7 @@ class PandasExecutor(DuckdbExecutor):
                 if len(window_by) > 0:
                     # apply cumulative sum on window_by columns in pandas dataframe
                     df = df.sort_values(window_by)
-                    # TODO: remove hack
+                    # TODO: remove hack, propogate g_col and h_col instead of hardcoding
                     df['s'] = df['s'].cumsum()
                     df['c'] = df['c'].cumsum()
                 else:
@@ -774,63 +790,90 @@ class PandasExecutor(DuckdbExecutor):
                 else:
                     df = df.merge(intermediates[table], how='cross',
                                   suffixes=('', '_drop')).filter(regex='^(?!.*_drop)')
-        # generate pairwise combination of tables to join
-        for table1, table2 in itertools.combinations(tables_to_join, 2):
-            # search join_conds for the join condition between table1 and table2
-            for cond in join_conds:
-                temp = None
-                if (cond[0] in intermediates[table1].columns and cond[1] in intermediates[table2].columns) or \
-                        (cond[1] in intermediates[table1].columns and cond[0] in intermediates[table2].columns):
-                    # join the two tables
 
-                    temp = intermediates[table1].merge(intermediates[table2],
-                                                       how=join_type.lower(), left_on=cond[0], right_on=cond[1],
-                                                       suffixes=('', '_drop')).filter(regex='^(?!.*_drop)')
+        # unqualify all join conditions
+        temp_join_conds = [[cond[0].split('.')[-1], cond[1].split('.')[-1]] for cond in join_conds]
+        # flatten temp_join_conds
+        temp_join_conds = [item for sublist in temp_join_conds for item in sublist]
 
-                    # check join conditions when unqualified column names are used
-                elif (cond[0].split('.')[1] in intermediates[table1].columns and cond[1].split('.')[1] in intermediates[
-                    table2].columns) or \
-                        (cond[1].split('.')[1] in intermediates[table1].columns and cond[0].split('.')[1] in
-                         intermediates[table2].columns):
-                    # join the two tables
-                    temp = intermediates[table1].merge(intermediates[table2],
-                                                       how=join_type.lower(), left_on=cond[0].split('.')[1],
-                                                       right_on=cond[1].split('.')[1],
-                                                       suffixes=('', '_drop')).filter(regex='^(?!.*_drop)')
-                    # check if one join condition is qualified and the other is not
-                elif (cond[0] in intermediates[table1].columns and cond[1].split('.')[1] in intermediates[
-                    table2].columns):
-                    # join the two tables
-                    temp = intermediates[table1].merge(intermediates[table2],
-                                                       how=join_type.lower(), left_on=cond[0],
-                                                       right_on=cond[1].split('.')[1],
-                                                       suffixes=('', '_drop')).filter(regex='^(?!.*_drop)')
-                elif (cond[1] in intermediates[table2].columns and cond[0].split('.')[1] in intermediates[
-                    table1].columns):
-                    # join the two tables
-                    temp = intermediates[table1].merge(intermediates[table2],
-                                                       how=join_type.lower(), left_on=cond[1],
-                                                       right_on=cond[0].split('.')[1],
-                                                       suffixes=('', '_drop')).filter(regex='^(?!.*_drop)')
+        # sort tables_to_join by the number of times their respective columns appear in join_conds.
+        # TODO: this is a hacky way to avoid duplicate joining between tables.
+        tables_to_join = sorted(tables_to_join,
+                                key=lambda x: len([col for col in intermediates[x].columns if col in temp_join_conds]),
+                                reverse=True)
 
+        for table in tables_to_join:
 
-                # unqualify all columns in temp. This is to avoid nested columns being qualified with the table name
-                if temp is not None:
-                    for col in temp.columns:
-                        temp = temp.rename(columns={col: col.split('.')[-1]})
+            if df is None:
+                df = intermediates[table]
+                if df is not None:
+                    for col in df.columns:
+                        df = df.rename(columns={col: col.split('.')[-1]})
                     # if there are duplicate columns, drop them
-                    temp = temp.loc[:, ~temp.columns.duplicated()]
+                    df = df.loc[:, ~df.columns.duplicated()]
+                continue
 
+            # search join_conds for the join conditions corresponding to table
+            for cond in join_conds:
+                df = self.universal_merge(cond, df, intermediates, join_type, table)
 
-
-            if temp is not None:
-                if df is None:
-                    df = temp
-                else:
-                    df = df.merge(temp, how='cross', suffixes=('', '_drop')).filter(regex='^(?!.*_drop)')
-                break
+            if df is not None:
+                for col in df.columns:
+                    df = df.rename(columns={col: col.split('.')[-1]})
+                # if there are duplicate columns, drop them
+                df = df.loc[:, ~df.columns.duplicated()]
 
         # final removal of all qualification of columns
+        if df is not None:
+            for col in df.columns:
+                df = df.rename(columns={col: col.split('.')[-1]})
+            # if there are duplicate columns, drop them
+            df = df.loc[:, ~df.columns.duplicated()]
+        return df
+
+    # Merges tables based on join conditions regardless of whether the join condition is on the left or right table
+    # or whether the join condition is qualified or not. 'universal' here indicates its versatility.
+    def universal_merge(self, cond, df, intermediates, join_type, table):
+        # search join_conds for the join condition between table1 and table2
+        if cond[0] in df.columns and cond[1] in intermediates[table].columns:
+            # join the two tables
+            df = df.merge(intermediates[table], how=join_type.lower(), left_on=cond[0], right_on=cond[1],
+                          suffixes=('', '_drop')).filter(regex='^(?!.*_drop)')
+        elif cond[1] in df.columns and cond[0] in intermediates[table].columns:
+            # join the two tables
+            df = df.merge(intermediates[table], how=join_type.lower(), left_on=cond[1], right_on=cond[0],
+                          suffixes=('', '_drop')).filter(regex='^(?!.*_drop)')
+        elif cond[0].split('.')[-1] in df.columns and cond[1].split('.')[-1] in intermediates[table].columns:
+            # join the two tables
+            df = df.merge(intermediates[table], how=join_type.lower(), left_on=cond[0].split('.')[-1],
+                          right_on=cond[1].split('.')[-1],
+                          suffixes=('', '_drop')).filter(regex='^(?!.*_drop)')
+        elif cond[1].split('.')[-1] in df.columns and cond[0].split('.')[-1] in intermediates[table].columns:
+            # join the two tables
+            df = df.merge(intermediates[table], how=join_type.lower(), left_on=cond[1].split('.')[-1],
+                          right_on=cond[0].split('.')[-1],
+                          suffixes=('', '_drop')).filter(regex='^(?!.*_drop)')
+        # check if one join condition is qualified and the other is not
+
+        elif cond[0].split('.')[-1] in df.columns and cond[1] in intermediates[table].columns:
+            # join the two tables
+            df = df.merge(intermediates[table], how=join_type.lower(), left_on=cond[0].split('.')[-1],
+                          right_on=cond[1],
+                          suffixes=('', '_drop')).filter(regex='^(?!.*_drop)')
+        elif cond[1].split('.')[-1] in df.columns and cond[0] in intermediates[table].columns:
+            df = df.merge(intermediates[table], how=join_type.lower(), left_on=cond[1].split('.')[-1],
+                          right_on=cond[0],
+                          suffixes=('', '_drop')).filter(regex='^(?!.*_drop)')
+        elif cond[0] in df.columns and cond[1].split('.')[-1] in intermediates[table].columns:
+            # join the two tables
+            df = df.merge(intermediates[table], how=join_type.lower(), left_on=cond[0],
+                          right_on=cond[1].split('.')[-1],
+                          suffixes=('', '_drop')).filter(regex='^(?!.*_drop)')
+        elif cond[1] in df.columns and cond[0].split('.')[-1] in intermediates[table].columns:
+            # join the two tables
+            df = df.merge(intermediates[table], how=join_type.lower(), left_on=cond[1],
+                          right_on=cond[0].split('.')[-1],
+                          suffixes=('', '_drop')).filter(regex='^(?!.*_drop)')
         if df is not None:
             for col in df.columns:
                 df = df.rename(columns={col: col.split('.')[-1]})
@@ -850,7 +893,8 @@ class PandasExecutor(DuckdbExecutor):
             select_conds[i] = '.'.join(cond.split('.')[1:])
 
         # wrap each operand (of the form identifier.identifier or identifier) with backticks, ignore any multi-digit numeric values
-        select_conds = [re.sub(r'\b([a-zA-Z_0-9]+\.[a-zA-Z_]+|[a-zA-Z_]+)\b', r'`\g<1>`', cond) for cond in select_conds]
+        select_conds = [re.sub(r'\b([a-zA-Z_0-9]+\.[a-zA-Z_]+|[a-zA-Z_]+)\b', r'`\g<1>`', cond) for cond in
+                        select_conds]
 
         # wrap each select condition with parentheses
         select_conds = ['(' + cond + ')' for cond in select_conds]
