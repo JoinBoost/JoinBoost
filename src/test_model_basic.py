@@ -13,7 +13,44 @@ from joinboost.joingraph import JoinGraph
 from joinboost.app import DecisionTree,GradientBoosting,RandomForest
 
 class TestModel(unittest.TestCase):
-        
+
+    def test_demo(self):
+        con = duckdb.connect(database=':memory:')
+        con.execute("CREATE TABLE customer AS SELECT * FROM '../data/demo/customer.csv'")
+        con.execute("CREATE TABLE lineorder AS SELECT * FROM '../data/demo/lineorder.csv'")
+        con.execute("CREATE TABLE date AS SELECT * FROM '../data/demo/date.csv'")
+        con.execute("CREATE TABLE part AS SELECT * FROM '../data/demo/part.csv'")
+        con.execute("CREATE TABLE supplier AS SELECT * FROM '../data/demo/supplier.csv'")
+        # x = ["NAME", "ADDRESS", "CITY", "NAME", "MFGR", "CATEGORY", "BRAND1", "DATE", "DAYOFWEEK",
+        #      "MONTH", "YEAR", "YEARMONTH", "YEARMONTHNUM", "DAYNUMINWEEK", "NAME", "ADDRESS", "CITY", "NATION"]
+        # y = "REVENUE"
+
+        exe = DuckdbExecutor(con, debug=True)
+
+        dataset = JoinGraph(exe=exe)
+        dataset.add_relation('lineorder', [], y='REVENUE')
+        dataset.add_relation('customer', ['NAME', 'ADDRESS', 'CITY'])
+        dataset.add_relation('part', ['NAME', 'MFGR', 'CATEGORY', 'BRAND1'])
+        dataset.add_relation('date', ['DATE', 'DAYOFWEEK', 'MONTH', 'YEAR', 'YEARMONTH', 'YEARMONTHNUM', 'DAYNUMINWEEK'])
+        dataset.add_relation('supplier', ['NAME', 'ADDRESS', 'CITY', 'NATION'])
+        dataset.add_join("customer", "lineorder", ["CUSTKEY"], ["CUSTKEY"])
+        dataset.add_join("part", "lineorder", ["PARTKEY"], ["PARTKEY"])
+        dataset.add_join("date", "lineorder", ["DATEKEY"], ["ORDERDATE"])
+        dataset.add_join("supplier", "lineorder", ["SUPPKEY"], ["SUPPKEY"])
+
+        depth = 3
+        gb = DecisionTree(learning_rate=1, max_leaves=2 ** depth, max_depth=depth)
+
+        gb.fit(dataset)
+
+        for line in gb.model_def:
+            for subline in line:
+                print(subline)
+        # clf = DecisionTreeRegressor(max_depth=depth)
+        # clf = clf.fit(join[x], join[y])
+        # mse = mean_squared_error(join[y], clf.predict(join[x]))
+        # self.assertTrue(abs(gb.compute_rmse('test')[0] - math.sqrt(mse)) < 1e-3)
+
     def test_synthetic(self):
         join = pd.read_csv("../data/synthetic/RST.csv")
         con = duckdb.connect(database=':memory:')
