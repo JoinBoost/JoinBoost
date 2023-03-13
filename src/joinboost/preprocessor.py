@@ -1,5 +1,6 @@
 from joingraph import JoinGraph
 
+
 class Preprocess:
     def __init__(self, join_graph: JoinGraph):
         self.join_graph = join_graph
@@ -13,7 +14,7 @@ class Preprocess:
 
     def rename(self, join_graph: JoinGraph):
         pass
-    
+
     def reapply_preprocessing(self):
         # reapply the preprocess steps according to the history
         pass
