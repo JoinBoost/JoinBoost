@@ -42,33 +42,13 @@ class JoinGraph:
         self.view2table = copy.deepcopy(view2table)
         self._prefix = "joinboost_reserved_"
 
-    def get_relations(self): 
-        self.rep_template = pkgutil.get_data(__name__, "d3graph.html").decode("utf-8")
-
     @property
     def relations(self):
         return list(self.relation_schema.keys())
 
-    def replace_relation_attribute(self, relation, before_attribute, after_attribute):
-        if relation == self.target_relation:
-            if self.target_var == before_attribute:
-                self._target_var = after_attribute
-
-        if before_attribute in self.relation_schema[relation]:
-            self.relation_schema[relation][after_attribute] = self.relation_schema[relation][before_attribute]
-            del self.relation_schema[relation][before_attribute]
-
-        for relation2 in self.joins[relation]:
-            left_join_key = self.joins[relation][relation2]['keys'][0]
-            if before_attribute in left_join_key:
-                # Find the index of the before_attribute in the list
-                index = left_join_key.index(before_attribute)
-                # Replace the old string with the new string
-                left_join_key[index] = after_attribute
-
-
     def get_target_rowid_colname(self):
         return self.target_rowid_colname
+
 
     @property
     def relation_schema(self):
@@ -86,7 +66,6 @@ class JoinGraph:
     def joins(self):
         return self._joins
 
-    # TODO: move this to preprocessor
     def replace_attribute(self, reserved_word):
         """Replace columns that have a conflict with reserved_word.
 
@@ -95,7 +74,7 @@ class JoinGraph:
 
         """
 
-        for relation in self.get_relations():
+        for relation in self.relations:
             # schema is a list of column names
             schema =  self.exe.get_schema(relation)
             # check if reserved_word is in schema
@@ -117,6 +96,24 @@ class JoinGraph:
                         new_word = col
                     self.view2table[view_name]["cols"][new_word] = col
 
+    # TODO: move this to preprocessor
+    def replace_relation_attribute(self, relation, before_attribute, after_attribute):
+        if relation == self.target_relation:
+            if self.target_var == before_attribute:
+                self._target_var = after_attribute
+
+        if before_attribute in self.relation_schema[relation]:
+            self.relation_schema[relation][after_attribute] = self.relation_schema[relation][before_attribute]
+            del self.relation_schema[relation][before_attribute]
+
+        for relation2 in self.joins[relation]:
+            left_join_key = self.joins[relation][relation2]['keys'][0]
+            if before_attribute in left_join_key:
+                # Find the index of the before_attribute in the list
+                index = left_join_key.index(before_attribute)
+                # Replace the old string with the new string
+                left_join_key[index] = after_attribute
+
     # replace a table from table_prev to table_after
     def replace(self, table_prev, table_after):
         if table_prev not in self.relation_schema:
@@ -130,7 +127,7 @@ class JoinGraph:
             if self.is_target_relation_a_view():
                 self.view2table[table_after] = copy.deepcopy(self.view2table[table_prev])
                 del self.view2table[table_prev]
-            self.target_relation = table_after
+            self._target_relation = table_after
 
         for relation in self.joins:
             if table_prev in self.joins[relation]:
@@ -204,8 +201,8 @@ class JoinGraph:
         if y is not None:
             if self.target_var is not None:
                 print("Warning: Y already exists and has been replaced")
-            self.target_var = y
-            self.target_relation = relation
+            self._target_var = y
+            self._target_relation = relation
             # self.target_rowid_colname = self._get_target_rowid_colname(attributes)
 
 
@@ -300,25 +297,6 @@ class JoinGraph:
             f"{rel1}.{key1}={rel2}.{key2}" for key1, key2 in zip(keys1, keys2)
         )
         return sql
-
-    def replace(self, table_prev, table_after):
-        if table_prev not in self.relation_schema:
-            raise JoinGraphException(table_prev + " doesn't exit!")
-        if table_after in self.relation_schema:
-            raise JoinGraphException(table_after + " already exits!")
-        self.relation_schema[table_after] = self.relation_schema[table_prev]
-        del self.relation_schema[table_prev]
-        if self.target_relation == table_prev:
-            self._target_relation = table_after
-
-        for relation in self.joins:
-            if table_prev in self.joins[relation]:
-                self.joins[relation][table_after] = self.joins[relation][table_prev]
-                del self.joins[relation][table_prev]
-
-        if table_prev in self.joins:
-            self.joins[table_after] = self.joins[table_prev]
-            del self.joins[table_prev]
 
     def _preprocess(self):
         # self.check_all_features_exist()

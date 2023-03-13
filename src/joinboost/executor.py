@@ -3,6 +3,7 @@ import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Optional, Any
+import time
 
 import pandas as pd
 
@@ -26,7 +27,7 @@ class SPJAData:
 
     Attributes
     ----------
-    aggregate_expressions : frozendict
+    aggregate_expressions : doict
         A dictionary mapping column names to tuples containing the aggregation expression and the aggregator object.
     from_tables : list
         A list of table names to select from. By default, an empty list.
@@ -50,9 +51,7 @@ class SPJAData:
         The type of join to use for the query. By default, "INNER".
     """
 
-    aggregate_expressions: frozendict = frozendict(
-        {None: ("*", aggregator.Aggregator.IDENTITY)}
-    )
+    aggregate_expressions: dict = field(default_factory= lambda : {None: ("*", aggregator.Aggregator.IDENTITY)})
     from_tables: list[str] = field(default_factory=list)
     select_conds: list[str] = field(default_factory=list)
     join_conds: list[str] = field(default_factory=list)
