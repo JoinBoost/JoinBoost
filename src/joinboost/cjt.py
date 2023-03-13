@@ -1,7 +1,7 @@
 import copy
 from .semiring import SemiRing
 from .joingraph import JoinGraph
-from .executor import Executor, PandasExecutor, SPJAData
+from .executor import Executor, PandasExecutor, SPJAData, ExecuteMode
 from .aggregator import *
 
 
@@ -123,7 +123,7 @@ class CJT(JoinGraph):
                 self._send_message(currento_table, c_neighbor, m_type=m_type)
                 self._pre_dfs(c_neighbor, currento_table, m_type=m_type)
 
-    def absorption(self, table: str, group_by: list, mode="nested_query"):
+    def absorption(self, table: str, group_by: list, mode=ExecuteMode.NESTED_QUERY):
         from_table_attrs = self.get_relation_features(table)
         incoming_messages, join_conds = self._get_income_messages(table)
 
@@ -240,7 +240,7 @@ class CJT(JoinGraph):
             select_conds=join_conds + self.get_parsed_annotations(from_table),
             group_by=[from_table + "." + attr for attr in l_join_keys],
         )
-        message_name = self.exe.execute_spja_query(spja_data, mode="write_to_table")
+        message_name = self.exe.execute_spja_query(spja_data, mode=ExecuteMode.WRITE_TO_TABLE)
 
         self.joins[from_table][to_table].update(
             {"message": message_name, "message_type": m_type}
@@ -260,5 +260,5 @@ class CJT(JoinGraph):
         spja_data = SPJAData(
             aggregate_expressions=lift_exp, from_tables=[self.target_relation]
         )
-        new_fact_name = self.exe.execute_spja_query(spja_data, mode="write_to_table")
+        new_fact_name = self.exe.execute_spja_query(spja_data, mode=ExecuteMode.WRITE_TO_TABLE)
         self.replace(self.target_relation, new_fact_name)

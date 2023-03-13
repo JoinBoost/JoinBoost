@@ -1,24 +1,20 @@
-import itertools
 import re
+import time
 from abc import ABC, abstractmethod
+from enum import Enum
 from dataclasses import dataclass, field
 from typing import Optional, Any
-import time
 
 import pandas as pd
 
 from joinboost import aggregator
-
-
 from .aggregator import Aggregator
 
 
-EXECUTE_QUERY_MODES = ("write_to_table", "create_view", "execute", "nested_query")
-
+ExecuteMode = Enum("ExecuteMode", ["WRITE_TO_TABLE", "CREATE_VIEW", "EXECUTE", "NESTED_QUERY"])
 
 class ExecutorException(Exception):
     pass
-
 
 @dataclass(frozen=True)
 class SPJAData:
@@ -160,15 +156,27 @@ class Executor(ABC):
     def execute_spja_query(
         self,
         spja_data: SPJAData,
-        mode: str = "nested_query",
+        mode: ExecuteMode = ExecuteMode.NESTED_QUERY,
     ) -> Any:
         pass
 
-    def _check_mode(self, mode):
-        """Check that valid mode parameter was passed in"""
+    def _check_mode(self, mode: ExecuteMode):
+        """
+        Check if the given mode is supported by the executor.
 
-        if mode not in EXECUTE_QUERY_MODES:
-            raise ValueError(f"Invalid mode: {mode}. Options are {EXECUTE_QUERY_MODES}")
+        Parameters
+        ----------
+        mode: ExecuteMode
+            The mode to check.
+
+        Raises
+        -------
+        ValueError
+            If the mode is not supported.
+
+        """
+        if not isinstance(mode, ExecuteMode):
+            raise ValueError(f"mode parameter {mode} must be an instance of ExecuteMode.")
 
 
 class DuckdbExecutor(Executor):
@@ -411,7 +419,7 @@ class DuckdbExecutor(Executor):
         self._execute_query(sql)
 
     def execute_spja_query(
-        self, spja_data: SPJAData, mode: str = "nested_query"
+        self, spja_data: SPJAData, mode: ExecuteMode = ExecuteMode.NESTED_QUERY
     ) -> Any:
         """
         Executes an SPJA query using the current object's database connection.
@@ -420,8 +428,8 @@ class DuckdbExecutor(Executor):
         ----------
         spja_data : SPJAData
             The SPJAData object containing the query parameters.
-        mode: str, optional
-            The mode in which the query is executed. Default is 'nested_query'.
+        mode: ExecuteMode, optional
+            The mode in which the query is executed. Default is ExecuteMode.NESTED_QUERY.
             # TODO: Add mode descriptions once doc style is defined
 
         Returns
@@ -429,17 +437,19 @@ class DuckdbExecutor(Executor):
         Any
             The result of the query.
         """
+
         self._check_mode(mode)
 
-        if mode == "write_to_table":
+        if mode == ExecuteMode.WRITE_TO_TABLE:
             return self._spja_query_to_table(spja_data)
-        elif mode == "create_view":
+        elif mode == ExecuteMode.CREATE_VIEW:
             return self._spja_query_as_view(spja_data)
-        elif mode == "execute":
+        elif mode == ExecuteMode.EXECUTE:
             spja = self.spja_query(spja_data, parenthesize=False)
             return self._execute_query(spja)
-        elif mode == "nested_query":
+        elif mode == ExecuteMode.NESTED_QUERY:
             return self.spja_query(spja_data)
+
 
     def _spja_query_to_table(self, spja_data: SPJAData) -> str:
         """
@@ -662,9 +672,10 @@ class PandasExecutor(DuckdbExecutor):
     # mode 2: same as mode 1
     # mode 3: execute the query and return the result
     # mode 4: same as mode 1 (for now)
-    def execute_spja_query(self, spja_data: SPJAData, mode: str = "nested_query"):
+    def execute_spja_query(self, spja_data: SPJAData, mode: ExecuteMode = ExecuteMode.NESTED_QUERY):
 
         self._check_mode(mode)
+
         intermediates = {}
         for table in spja_data.from_tables:
             intermediates[table] = self.table_registry[table]
@@ -675,12 +686,12 @@ class PandasExecutor(DuckdbExecutor):
 
         # join_conds are of the form "table1.col1 IS NOT DISTINCT FROM table2.col2"p.
         # extract the table1.col1 and table2.col2
-        join_conds = [re.findall(r"(\w+\.\w+)", cond) for cond in join_conds]
+        join_conds = [re.findall(r"(\w+\.\w+)", cond) for cond in spja_data.join_conds]
 
         # filter list of tables that don't have any join conditions
         tables_to_join = [
             table
-            for table in from_tables
+            for table in spja_data.from_tables
             if any(
                 [
                     cond[0].startswith(table) or cond[1].startswith(table)
@@ -711,14 +722,14 @@ class PandasExecutor(DuckdbExecutor):
         )
 
         should_drop_columns = True
-        for keys, values in aggregate_expressions.items():
+        for keys, values in spja_data.aggregate_expressions.items():
             if values[1] == Aggregator.IDENTITY and values[0] == "*":
                 should_drop_columns = False
 
         if should_drop_columns:
             # drop columns that don't appear in aggregate_expressions
             final_cols = [
-                col for col in aggregate_expressions.keys() if col is not None
+                col for col in spja_data.aggregate_expressions.keys() if col is not None
             ]
             df = df[final_cols]
 
@@ -734,7 +745,7 @@ class PandasExecutor(DuckdbExecutor):
         df = self.reorder_columns(spja_data.aggregate_expressions, df)
 
         # TODO: clean up mode implementation
-        if mode in ("write_to_table", "create_view", "nested_query"):
+        if mode in (ExecuteMode.WRITE_TO_TABLE, ExecuteMode.NESTED_QUERY, ExecuteMode.CREATE_VIEW):
             name_ = self.get_next_name()
             # always qualify intermediate tables as future aggregations for these tables will come qualified
             for col in df.columns:
@@ -747,14 +758,12 @@ class PandasExecutor(DuckdbExecutor):
             df.name = name_
             self.table_registry[name_] = df
             return name_
-        elif mode == "execute":
+        elif mode == ExecuteMode.EXECUTE:
             if self.debug:
                 print("returning result")
                 print(df.head())
 
         return df.values.tolist()
-        # else:
-        #     raise ExecutorException('Unsupported mode for query execution!')
 
     def reorder_columns(self, aggregate_expressions, df):
         # reorder the columns according to the order of aggregate_expressions

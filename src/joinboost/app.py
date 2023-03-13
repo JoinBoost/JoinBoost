@@ -1,6 +1,6 @@
 import math
 from abc import ABC
-from .executor import SPJAData, PandasExecutor
+from .executor import SPJAData, PandasExecutor, ExecuteMode
 from .joingraph import JoinGraph
 from .semiring import *
 from .aggregator import Aggregator, Annotation, Message
@@ -31,7 +31,7 @@ class DummyModel(App):
         spja_data = SPJAData(
             aggregate_expressions=agg_exp, from_tables=[jg.target_relation]
         )
-        g, h = jg.exe.execute_spja_query(spja_data, mode="execute")[0]
+        g, h = jg.exe.execute_spja_query(spja_data, mode=ExecuteMode.EXECUTE)[0]
 
         prediction = g / h
         self.semi_ring.set_semi_ring(g, h)
@@ -84,7 +84,7 @@ class DecisionTree(DummyModel):
 
         self.train_one()
 
-    def create_sample(self, mode="write_to_table"):
+    def create_sample(self, mode=ExecuteMode.WRITE_TO_TABLE):
         if self.subsample < 1:
             # TODO: Possible to sample 0 tuples.
             # Add check to make sure the sampled table has tuples
@@ -148,10 +148,10 @@ class DecisionTree(DummyModel):
         )
 
         predict = self.cjt.exe.execute_spja_query(
-            prediction_query_data, mode="nested_query"
+            prediction_query_data, mode=ExecuteMode.NESTED_QUERY
         )
         rmse_query_data = SPJAData(from_tables=[predict])
-        return self.cjt.exe.execute_spja_query(rmse_query_data, mode="execute")[0]
+        return self.cjt.exe.execute_spja_query(rmse_query_data, mode=ExecuteMode.EXECUTE)[0]
 
     # input_mode = 1 takes the full join's table name as input
     # input_mode = 2 takes the join graph as input (assume fact table)
@@ -224,7 +224,7 @@ class DecisionTree(DummyModel):
             spja_data = SPJAData(
                 aggregate_expressions=agg_exp, from_tables=[absoprtion_view]
             )
-            obj_view = self.cjt.exe.execute_spja_query(spja_data, mode="nested_query")
+            obj_view = self.cjt.exe.execute_spja_query(spja_data, mode=ExecuteMode.NESTED_QUERY)
             view_ord_by_obj = self.cjt.exe.window_query(
                 obj_view, [attr], "object", [g_col, h_col]
             )
@@ -234,12 +234,12 @@ class DecisionTree(DummyModel):
                 select_conds=[f"{g_col}/{h_col} <=" + str(obj)],
             )
             attr_view = self.cjt.exe.execute_spja_query(
-                attr_spja_data, mode="nested_query"
+                attr_spja_data, mode=ExecuteMode.NESTED_QUERY
             )
             attrs = [
                 str(x[0])
                 for x in self.cjt.exe.execute_spja_query(
-                    SPJAData(from_tables=[attr_view]), mode="execute"
+                    SPJAData(from_tables=[attr_view]), mode=ExecuteMode.EXECUTE
                 )
             ]
             agg_exp = {
@@ -252,7 +252,7 @@ class DecisionTree(DummyModel):
                 aggregate_expressions=agg_exp, from_tables=[absoprtion_view]
             )
             obj_view = self.cjt.exe.execute_spja_query(
-                obj_spja_data, mode="nested_query"
+                obj_spja_data, mode=ExecuteMode.NESTED_QUERY
             )
             view_ord_by_obj = self.cjt.exe.window_query(
                 obj_view, [attr], "object", [g_col, h_col]
@@ -263,13 +263,13 @@ class DecisionTree(DummyModel):
                 select_conds=[f"{g_col}/{h_col} <=" + str(obj)],
             )
             attr_view = self.cjt.exe.execute_spja_query(
-                attr_view_data, mode="nested_query"
+                attr_view_data, mode=ExecuteMode.NESTED_QUERY
             )
 
             attrs = [
                 str(x[0])
                 for x in self.cjt.exe.execute_spja_query(
-                    SPJAData(from_tables=[attr_view]), mode="execute"
+                    SPJAData(from_tables=[attr_view]), mode=ExecuteMode.EXECUTE
                 )
             ]
             l_annotation = (attr, Annotation.IN, attrs)
@@ -323,7 +323,7 @@ class DecisionTree(DummyModel):
                         window_by=[attr],
                     )
                     view_to_max = self.cjt.exe.execute_spja_query(
-                        spja_data, mode="nested_query"
+                        spja_data, mode=ExecuteMode.NESTED_QUERY
                     )
 
                 elif attr_type == "LCAT":
@@ -339,7 +339,7 @@ class DecisionTree(DummyModel):
                         aggregate_expressions=agg_exp, from_tables=[absoprtion_view]
                     )
                     obj_view = self.cjt.exe.execute_spja_query(
-                        spja_data, mode="nested_query"
+                        spja_data, mode=ExecuteMode.NESTED_QUERY
                     )
                     agg_exp = cur_semi_ring.col_sum((g_col, h_col))
                     agg_exp[attr] = (attr, Aggregator.IDENTITY)
@@ -350,7 +350,7 @@ class DecisionTree(DummyModel):
                         window_by=["object"],
                     )
                     view_to_max = self.cjt.exe.execute_spja_query(
-                        spja_data, mode="nested_query"
+                        spja_data, mode=ExecuteMode.NESTED_QUERY
                     )
                 elif attr_type == "CAT":
                     view_to_max = absoprtion_view
@@ -390,7 +390,7 @@ class DecisionTree(DummyModel):
                     order_by=[("criteria", "DESC")],
                     limit=1,
                 )
-                results = self.cjt.exe.execute_spja_query(spja_data, mode="execute")
+                results = self.cjt.exe.execute_spja_query(spja_data, mode=ExecuteMode.EXECUTE)
                 if not results:
                     continue
                 cur_value, cur_criteria, left_g, left_h = results[0]
