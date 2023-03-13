@@ -40,9 +40,6 @@ class DummyModel(App):
         self.count_ = h
         self.constant_ = prediction
 
-        # store full join sql
-        self._full_join_sql = jg.get_full_join_sql()
-
     def predict(self, data: Union[str, JoinGraph], input_mode: int):
         return self.constant_
 
