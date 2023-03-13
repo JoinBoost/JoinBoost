@@ -22,11 +22,10 @@ class DummyModel(App):
         self.prefix = "joinboost_tmp_"
         self.model_def = []
 
-    def fit(self, jg: JoinGraph):
-
+    def fit(self,
+            jg: JoinGraph):
         jg._preprocess()
-        self.semi_ring.init_columns_name(jg)
-        
+
         # get the gradient and hessian
         # for rmse, g is the sum and h is the count
         agg_exp = self.semi_ring.col_sum((jg.target_var, "1"))
@@ -78,6 +77,7 @@ class DecisionTree(DummyModel):
         # the current solution is to first sample than fit dummy model
         self.cjt = CJT(semi_ring=self.semi_ring, join_graph=jg)
         self.create_sample()
+
         super().fit(jg)
 
         exp = self.cjt.target_var + "- (" + str(self.constant_) + ")"
@@ -136,7 +136,7 @@ class DecisionTree(DummyModel):
         
     def compute_rmse(self, test_table: str):
         if self.cjt.is_target_relation_a_view():
-            target = self.cjt.get_view2table()[self.cjt.get_target_relation()]["cols"][self.cjt.target_var]
+            target = self.cjt.get_view2table()[self.cjt.target_relation]["cols"][self.cjt.target_var]
         else:
             target = self.cjt.target_var
         # TODO: refactor

@@ -71,12 +71,11 @@ class JoinGraph:
 
         Iterate through each table's columns to check if reserved_word exist.
         If so, rename it to avoid conflict.
-
         """
 
         for relation in self.relations:
             # schema is a list of column names
-            schema =  self.exe.get_schema(relation)
+            schema = self.exe.get_schema(relation)
             # check if reserved_word is in schema
             if reserved_word in schema:
                 # TODO: Assume view_name is not in the schema for now.
@@ -316,8 +315,10 @@ class JoinGraph:
             features = self.relation_schema[table].keys()
             self.check_features_exist(table, features)
         
-    def check_features_exist(self, table, features):
-        attributes = self.exe.get_schema(table)
+    def check_features_exist(self, relation, features):
+        """Check if all the features exist in the relation."""
+
+        attributes = self.exe.get_schema(relation)
         if not set(features).issubset(set(attributes)):
             raise JoinGraphException(f"Key error in {features}." + \
                 f" Attribute does not exist in table {relation} with schema {attributes}")
