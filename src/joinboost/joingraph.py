@@ -67,7 +67,7 @@ class JoinGraph:
     def joins(self):
         return self._joins
 
-    def replace_attribute(self, reserved_word):
+    def replace_attribute(self, reserved_words):
         """Replace columns that have a conflict with reserved_word.
 
         Iterate through each table's columns to check if reserved_word exist.
@@ -78,7 +78,7 @@ class JoinGraph:
             # schema is a list of column names
             schema = self.exe.get_schema(relation)
             # check if reserved_word is in schema
-            if reserved_word in schema:
+            if any(word in schema for word in reserved_words):
                 # TODO: Assume view_name is not in the schema for now.
                 view_name = self._prefix + relation
                 if view_name not in self.view2table:
@@ -88,8 +88,8 @@ class JoinGraph:
                     }
 
                 for col in schema:
-                    if col == reserved_word:
-                        new_word = self._prefix + reserved_word
+                    if col in reserved_words:
+                        new_word = self._prefix + col
                         while new_word in schema:
                             new_word = self._prefix + new_word
                     elif col in self.view2table[view_name]["cols"]:

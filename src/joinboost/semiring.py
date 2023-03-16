@@ -58,8 +58,7 @@ class varSemiRing(GradientHessianSemiRing):
     # TODO: "rowid" is DuckDB specific. maybe executor has some reserved words
     def init_columns_name(self, jg, reserved_words=["rowid"]):
         reserved_words += [self.gradient_column_name, self.hessian_column_name]
-        for reserved_word in reserved_words:
-            jg.replace_attribute(reserved_word)
+        jg.replace_attribute(reserved_words)
 
         for view in jg.view2table:
             relation = jg.view2table[view]["relation_name"]
