@@ -53,12 +53,14 @@ class Preprocessor:
         
     def _prepare_view2table(self, reserved_words):
         view2table = dict()
-
+        
+        # for each relation in the join graph
         for relation in self.jg.relations:
-            # schema is a list of column names
+            # get its schema as a list of column names
             schema = self.jg.exe.get_schema(relation)
             # check if reserved_word is in schema
             if any(word in schema for word in reserved_words):
+                # first decide a new view name
                 view_name = self._prefix + relation
                 while view_name in self.jg.relations:
                     view_name = self._prefix + view_name
@@ -68,7 +70,7 @@ class Preprocessor:
                         "relation_name": relation,
                         "cols": dict(),
                     }
-
+                # then decide a new colulmn name
                 for col in schema:
                     if col in reserved_words:
                         new_word = self._prefix + col
@@ -82,29 +84,32 @@ class Preprocessor:
                     view2table[view_name]["cols"][new_word] = col
 
         return view2table
-        
+    
+    # build a reverse mapping from table to view
     def _prepare_table2view(self, view2table):
-        table2view = dict()
-        for view in view2table:
-            table = view2table[view]["relation_name"]
-            table2view[table] = {
-                "view_name": view,
-                "cols": dict(),
-            }
-            for col in view2table[view]["cols"]:
-                original_col = view2table[view]["cols"][col]
-                table2view[table]["cols"][original_col] = col
-        return table2view
+        pass
+#         table2view = dict()
+#         for view in view2table:
+#             table = view2table[view]["relation_name"]
+#             table2view[table] = {
+#                 "view_name": view,
+#                 "cols": dict(),
+#             }
+#             for col in view2table[view]["cols"]:
+#                 original_col = view2table[view]["cols"][col]
+#                 table2view[table]["cols"][original_col] = col
+#         return table2view
     
     def _prepare_history(self, table2view):
-        """Store the changed tables and columns in history."""
-        history = dict()
-        for table in table2view:
-            history[table] = dict()
-            for col in table2view[table]["cols"]:
-                if col != table2view[table]["cols"][col]:
-                    history[table][col] = table2view[table]["cols"][col]
-        return history
+        pass
+#         """Store the changed tables and columns in history."""
+#         history = dict()
+#         for table in table2view:
+#             history[table] = dict()
+#             for col in table2view[table]["cols"]:
+#                 if col != table2view[table]["cols"][col]:
+#                     history[table][col] = table2view[table]["cols"][col]
+#         return history
 
     def replace_relation_attribute(self, relation, before_attribute, after_attribute):
         if relation == self.jg.target_relation:
@@ -133,17 +138,18 @@ class Preprocessor:
         # records the history of preprocess
         return json.dumps(self.history, indent=4)
     
-    def get_view2table(self):
-        return self.view2table
+#     def get_view2table(self):
+#         return self.view2table
         
-    def get_table2view(self):
-        return self.table2view
+#     def get_table2view(self):
+#         return self.table2view
     
     def get_join_graph(self):
         return self.jg
     
-    def is_target_relation_a_view(self):
-        return self.jg.target_relation in self.view2table
-
     def get_original_target_name(self):
         return self._original_target_var
+    
+#     def is_target_relation_a_view(self):
+#         return self.jg.target_relation in self.view2table
+

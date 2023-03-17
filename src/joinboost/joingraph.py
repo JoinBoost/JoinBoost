@@ -251,8 +251,7 @@ class JoinGraph:
         # self.check_all_features_exist()
         self.check_acyclic()
 
-    # MATT: get rid of this?
-
+    # Below maybe move to preprocess
     def check_target_exist(self):
         if self.target_var is None:
             raise JoinGraphException("Target variable doesn't exist!")
