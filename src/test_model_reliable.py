@@ -183,6 +183,7 @@ class TestApp(unittest.TestCase):
         print()
         print(rmse1)
         print(rmse2)
+        print(reg2.preprocessor.get_history())
         self.assertTrue(rmse1 == rmse2)
 
 
