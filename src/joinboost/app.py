@@ -1,5 +1,7 @@
 import math
 from abc import ABC
+
+from joinboost.preprocessor import Preprocessor
 from .executor import SPJAData, PandasExecutor, ExecuteMode
 from .joingraph import JoinGraph
 from .semiring import *
@@ -60,12 +62,15 @@ class DecisionTree(DummyModel):
         self.max_depth = max_depth
         self.subsample = subsample
         self.debug = debug
+        self.preprocessor = Preprocessor()
 
     def fit(self, jg: JoinGraph):
         # Create views for tables having conflicting column names with reserved words.
-        self.semi_ring.init_columns_name(jg)
+        g, h = self.semi_ring.get_columns_name()
+        self.preprocessor.run_preprocessing(jg, reserved_words=[g, h, "rowid"])
+        jg = self.preprocessor.get_join_graph()
 
-        # # store full join sql
+        # # store full join sql # TODO: leave for future use
         # self._full_join_sql = jg.get_full_join_sql()
 
         # shall we first sample then fit dummy model, or first fit dummy model then sample?
@@ -129,12 +134,8 @@ class DecisionTree(DummyModel):
             self.model_def.append(cur_model_def)
 
     def compute_rmse(self, test_table: str):
-        if self.cjt.is_target_relation_a_view():
-            target = self.cjt.get_view2table()[self.cjt.target_relation]["cols"][
-                self.cjt.target_var
-            ]
-        else:
-            target = self.cjt.target_var
+        target = self.preprocessor.get_original_target_name()
+
         # TODO: refactor
         view = self.cjt.exe.case_query(
             test_table, "+", "prediction", str(self.constant_), self.model_def, [target]

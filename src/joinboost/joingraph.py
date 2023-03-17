@@ -20,7 +20,6 @@ class JoinGraph:
         relation_schema=None,
         target_var=None,
         target_relation=None,
-        view2table={},
     ):
         joins = joins if joins else {}
         relation_schema = relation_schema if relation_schema else {}
@@ -38,11 +37,6 @@ class JoinGraph:
         self.rep_template = data = pkgutil.get_data(__name__, "d3graph.html").decode(
             "utf-8"
         )
-
-        # TODO: move it to somewhere else.
-        # store table to view mapping for tables with column names conflict with reserved words
-        self.view2table = copy.deepcopy(view2table)
-        self._prefix = "joinboost_reserved_"
 
     @property
     def relations(self):
@@ -67,58 +61,6 @@ class JoinGraph:
     def joins(self):
         return self._joins
 
-    def replace_attribute(self, reserved_words):
-        """Replace columns that have a conflict with reserved_word.
-
-        Iterate through each table's columns to check if reserved_word exist.
-        If so, rename it to avoid conflict.
-        """
-
-        for relation in self.relations:
-            # schema is a list of column names
-            schema = self.exe.get_schema(relation)
-            # check if reserved_word is in schema
-            if any(word in schema for word in reserved_words):
-                # TODO: Assume view_name is not in the schema for now.
-                view_name = self._prefix + relation
-                if view_name not in self.view2table:
-                    self.view2table[view_name] = {
-                        "relation_name": relation,
-                        "cols": dict(),
-                    }
-
-                for col in schema:
-                    if col in reserved_words:
-                        new_word = self._prefix + col
-                        while new_word in schema:
-                            new_word = self._prefix + new_word
-                    elif col in self.view2table[view_name]["cols"]:
-                        # No changes needed
-                        continue
-                    else:
-                        new_word = col
-                    self.view2table[view_name]["cols"][new_word] = col
-
-    # TODO: move this to preprocessor
-    def replace_relation_attribute(self, relation, before_attribute, after_attribute):
-        if relation == self.target_relation:
-            if self.target_var == before_attribute:
-                self._target_var = after_attribute
-
-        if before_attribute in self.relation_schema[relation]:
-            self.relation_schema[relation][after_attribute] = self.relation_schema[
-                relation
-            ][before_attribute]
-            del self.relation_schema[relation][before_attribute]
-
-        for relation2 in self.joins[relation]:
-            left_join_key = self.joins[relation][relation2]["keys"][0]
-            if before_attribute in left_join_key:
-                # Find the index of the before_attribute in the list
-                index = left_join_key.index(before_attribute)
-                # Replace the old string with the new string
-                left_join_key[index] = after_attribute
-
     # replace a table from table_prev to table_after
     def replace(self, table_prev, table_after):
         if table_prev not in self.relation_schema:
@@ -129,11 +71,6 @@ class JoinGraph:
         del self.relation_schema[table_prev]
 
         if self.target_relation == table_prev:
-            if self.is_target_relation_a_view():
-                self.view2table[table_after] = copy.deepcopy(
-                    self.view2table[table_prev]
-                )
-                del self.view2table[table_prev]
             self._target_relation = table_after
 
         for relation in self.joins:
@@ -144,9 +81,6 @@ class JoinGraph:
         if table_prev in self.joins:
             self.joins[table_after] = self.joins[table_prev]
             del self.joins[table_prev]
-
-    def is_target_relation_a_view(self):
-        return self.target_relation in self.view2table
 
     def get_type(self, relation, feature):
         return self.relation_schema[relation][feature]
@@ -391,6 +325,3 @@ class JoinGraph:
     #                     r_meta[attr] = 'LCAT'
     #         self.meta_data[table] = r_meta
     #         self.r_attrs[table] = list(r_meta.keys())
-
-    def get_view2table(self):
-        return self.view2table
