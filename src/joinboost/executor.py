@@ -3,7 +3,7 @@ import time
 from abc import ABC, abstractmethod
 from enum import Enum
 from dataclasses import dataclass, field
-from typing import Optional, Any
+from typing import Optional, Any, List
 
 import pandas as pd
 
@@ -50,12 +50,12 @@ class SPJAData:
     aggregate_expressions: dict = field(
         default_factory=lambda: {None: ("*", aggregator.Aggregator.IDENTITY)}
     )
-    from_tables: list[str] = field(default_factory=list)
-    select_conds: list[str] = field(default_factory=list)
-    join_conds: list[str] = field(default_factory=list)
-    group_by: list[str] = field(default_factory=list)
-    window_by: list[str] = field(default_factory=list)
-    order_by: list[str] = field(default_factory=list)
+    from_tables: List[str] = field(default_factory=list)
+    select_conds: List[str] = field(default_factory=list)
+    join_conds: List[str] = field(default_factory=list)
+    group_by: List[str] = field(default_factory=list)
+    window_by: List[str] = field(default_factory=list)
+    order_by: List[str] = field(default_factory=list)
     limit: Optional[int] = None
     sample_rate: Optional[float] = None
     replace: bool = True
