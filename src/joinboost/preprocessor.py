@@ -6,8 +6,6 @@ import json
 # Preprocess the join graph and store modifications.
 class Preprocessor:
     def __init__(self):
-        self.view2table = {} # keeps track of rename changes
-        self.table2view = {}
         self.jg = None
         self.history = None #table: old col: new col
         self._prefix = "joinboost_reserved_"
@@ -20,12 +18,18 @@ class Preprocessor:
 
     def rename(self, reserved_words: List[str]):
         self.prepare_rename_mapping(reserved_words)
-
-        for view in self.view2table:
-            relation = self.view2table[view]["relation_name"]
+        _names = set(self.jg.relations)
+        
+        # Create Views for tables containing reserved words columns.
+        for relation, cols in self.history.items():
+            # decide a new view name
+            view = self._prefix + relation
+            while view in _names:
+                view = self._prefix + view
+            _names.add(view)
             self.jg.replace(relation, view)
             l = []
-            for new_word, old_word in self.view2table[view]["cols"].items():
+            for old_word, new_word in cols.items():
                 self.replace_relation_attribute(view, old_word, new_word)
                 _sql = (
                     f"{old_word} AS {new_word}"
@@ -47,12 +51,7 @@ class Preprocessor:
         mappings.
         """
 
-        self.view2table = self._prepare_view2table(reserved_words)
-        self.table2view = self._prepare_table2view(self.view2table)
-        self.history = self._prepare_history(self.table2view)
-        
-    def _prepare_view2table(self, reserved_words):
-        view2table = dict()
+        self.history = dict()
         
         # for each relation in the join graph
         for relation in self.jg.relations:
@@ -60,56 +59,20 @@ class Preprocessor:
             schema = self.jg.exe.get_schema(relation)
             # check if reserved_word is in schema
             if any(word in schema for word in reserved_words):
-                # first decide a new view name
-                view_name = self._prefix + relation
-                while view_name in self.jg.relations:
-                    view_name = self._prefix + view_name
-
-                if view_name not in view2table:
-                    view2table[view_name] = {
-                        "relation_name": relation,
-                        "cols": dict(),
-                    }
-                # then decide a new colulmn name
+                if relation not in self.history:
+                    self.history[relation] = {}
+                # decide a new column name if reserved
                 for col in schema:
                     if col in reserved_words:
                         new_word = self._prefix + col
                         while new_word in schema:
                             new_word = self._prefix + new_word
-                    elif col in view2table[view_name]["cols"]:
+                    elif col in self.history[relation]:
                         # No changes needed
                         continue
                     else:
                         new_word = col
-                    view2table[view_name]["cols"][new_word] = col
-
-        return view2table
-    
-    # build a reverse mapping from table to view
-    def _prepare_table2view(self, view2table):
-        pass
-#         table2view = dict()
-#         for view in view2table:
-#             table = view2table[view]["relation_name"]
-#             table2view[table] = {
-#                 "view_name": view,
-#                 "cols": dict(),
-#             }
-#             for col in view2table[view]["cols"]:
-#                 original_col = view2table[view]["cols"][col]
-#                 table2view[table]["cols"][original_col] = col
-#         return table2view
-    
-    def _prepare_history(self, table2view):
-        pass
-#         """Store the changed tables and columns in history."""
-#         history = dict()
-#         for table in table2view:
-#             history[table] = dict()
-#             for col in table2view[table]["cols"]:
-#                 if col != table2view[table]["cols"][col]:
-#                     history[table][col] = table2view[table]["cols"][col]
-#         return history
+                    self.history[relation][col] = new_word
 
     def replace_relation_attribute(self, relation, before_attribute, after_attribute):
         if relation == self.jg.target_relation:
