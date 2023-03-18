@@ -82,6 +82,26 @@ class JoinGraph:
             self.joins[table_after] = self.joins[table_prev]
             del self.joins[table_prev]
 
+    # replace a table's attrbute from before_attribute to after_attribute
+    def replace_relation_attribute(self, relation, before_attribute, after_attribute):
+        if relation == self.target_relation:
+            if self.target_var == before_attribute:
+                self._target_var = after_attribute
+
+        if before_attribute in self.relation_schema[relation]:
+            self.relation_schema[relation][after_attribute] = self.relation_schema[
+                relation
+            ][before_attribute]
+            del self.relation_schema[relation][before_attribute]
+
+        for relation2 in self.joins[relation]:
+            left_join_key = self.joins[relation][relation2]["keys"][0]
+            if before_attribute in left_join_key:
+                # Find the index of the before_attribute in the list
+                index = left_join_key.index(before_attribute)
+                # Replace the old string with the new string
+                left_join_key[index] = after_attribute        
+    
     def get_type(self, relation, feature):
         return self.relation_schema[relation][feature]
 

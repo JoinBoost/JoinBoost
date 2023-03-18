@@ -1,7 +1,7 @@
 import math
 from abc import ABC
 
-from joinboost.preprocessor import Preprocessor
+from .preprocessor import Preprocessor, RenameStep
 from .executor import SPJAData, PandasExecutor, ExecuteMode
 from .joingraph import JoinGraph
 from .semiring import *
@@ -67,7 +67,10 @@ class DecisionTree(DummyModel):
     def fit(self, jg: JoinGraph):
         # Create views for tables having conflicting column names with reserved words.
         g, h = self.semi_ring.get_columns_name()
-        self.preprocessor.run_preprocessing(jg, reserved_words=[g, h, "rowid"])
+        
+        self.preprocessor.add_step(RenameStep(reserved_words=[g, h, "rowid"]))
+        
+        self.preprocessor.run_preprocessing(jg)
         jg = self.preprocessor.get_join_graph()
 
         # # store full join sql # TODO: leave for future use

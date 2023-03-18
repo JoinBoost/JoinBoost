@@ -8,7 +8,6 @@ from typing import Optional, Any, List
 import pandas as pd
 
 from joinboost import aggregator
-from .aggregator import Aggregator
 
 
 ExecuteMode = Enum("ExecuteMode", ["WRITE_TO_TABLE", "CREATE_VIEW", "EXECUTE", "NESTED_QUERY"])
@@ -114,6 +113,7 @@ class Executor(ABC):
 
     def __init__(self):
         self.view_id = 0
+        # tables or views of this prefix is not safe and may be rewritten
         self.prefix = "joinboost_tmp_"
 
     def get_next_name(self):
@@ -195,6 +195,7 @@ class DuckdbExecutor(Executor):
         super().__init__()
         self.conn = conn
         self.debug = debug
+        self.replace = True
 
     def get_schema(self, table: str) -> list:
         """
