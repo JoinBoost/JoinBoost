@@ -161,7 +161,6 @@ class DecisionTree(DummyModel):
     # input_mode = 2 takes the join graph as input (assume fact table)
     # TODO: DELETE input_mode = 3 takes the fact table's name as input (and automatically join it
     # with dimensional tables used in training => user provided join graph)
-    # TODO: support different outputs
     # input_mode = 3 takes the fact table's name as input (and automatically join it
     # with dimensional tables used in training)
     # TODO support different outputs
@@ -173,6 +172,10 @@ class DecisionTree(DummyModel):
         input_mode: int = 1,
         output_mode: int = 1,
     ):
+        if not isinstance(input_mode, int) or input_mode > 2 or input_mode < 1:
+            raise Exception("Unsupported input_mode")
+        if not isinstance(output_mode, int) or output_mode > 2 or output_mode < 1:
+            raise Exception("Unsupported output_mode")
 
         if input_mode == 1:
             assert isinstance(data, str)
@@ -184,26 +187,16 @@ class DecisionTree(DummyModel):
                 self.model_def,
                 [self.cjt.target_var],
             )
-
         elif input_mode == 2:
             assert isinstance(data, JoinGraph)
             # TODO
             pass
 
-        elif input_mode == 3:
-            assert isinstance(data, str)
-            view = self.cjt.exe.case_query(
-                self._full_join_sql,
-                "+",
-                "prediction",
-                str(self.constant_),
-                self.model_def,
-                [self.cjt.target_var],
-                order_by=f"{data}.rowid",
-            )
-
-        preds = self.cjt.exe._execute_query(f"select prediction from {view};")
-        return np.array(preds)[:, 0]
+        if output_mode == 1:
+            preds = self.cjt.exe._execute_query(f"select prediction from {view};")
+            return np.array(preds)[:, 0]
+        elif output_mode == 2:
+            return view
 
     def _clean_messages(self):
         for cjt in self.nodes.values():
