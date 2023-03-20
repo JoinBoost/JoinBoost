@@ -73,9 +73,6 @@ class DecisionTree(DummyModel):
         self.preprocessor.run_preprocessing(jg)
         jg = self.preprocessor.get_join_graph()
 
-        # # store full join sql # TODO: leave for future use
-        # self._full_join_sql = jg.get_full_join_sql()
-
         # shall we first sample then fit dummy model, or first fit dummy model then sample?
         # the current solution is to first sample than fit dummy model
         self.cjt = CJT(semi_ring=self.semi_ring, join_graph=jg)
@@ -158,13 +155,7 @@ class DecisionTree(DummyModel):
         return self.cjt.exe.execute_spja_query(rmse_query_data, mode=ExecuteMode.EXECUTE)[0]
 
     # input_mode = 1 takes the full join's table name as input
-    # input_mode = 2 takes the join graph as input (assume fact table)
-    # TODO: DELETE input_mode = 3 takes the fact table's name as input (and automatically join it
-    # with dimensional tables used in training => user provided join graph)
-    # TODO: support different outputs
-    # input_mode = 3 takes the fact table's name as input (and automatically join it
-    # with dimensional tables used in training)
-    # TODO support different outputs
+    # input_mode = 2 takes the join graph as input (assume fact table is joined)
     # output_mode = 1 returns a numpy array
     # output_mode = 2 stores the prediction in a table and returns table name
     def predict(
@@ -173,6 +164,10 @@ class DecisionTree(DummyModel):
         input_mode: int = 1,
         output_mode: int = 1,
     ):
+        if not isinstance(input_mode, int) or input_mode > 2 or input_mode < 1:
+            raise Exception("Unsupported input_mode")
+        if not isinstance(output_mode, int) or output_mode > 2 or output_mode < 1:
+            raise Exception("Unsupported output_mode")
 
         if input_mode == 1:
             assert isinstance(data, str)
@@ -184,26 +179,40 @@ class DecisionTree(DummyModel):
                 self.model_def,
                 [self.cjt.target_var],
             )
-
         elif input_mode == 2:
             assert isinstance(data, JoinGraph)
-            # TODO
-            pass
-
-        elif input_mode == 3:
-            assert isinstance(data, str)
+            # VIEW does not support sort by rowid, so we ALTER the table and resume it back for ordering purposes. 
+            self._update_fact_table_column_name(jg=data, check_rowid_col = True)
+            full_join = data.get_full_join_sql()
             view = self.cjt.exe.case_query(
-                self._full_join_sql,
+                full_join,
                 "+",
                 "prediction",
                 str(self.constant_),
                 self.model_def,
                 [self.cjt.target_var],
-                order_by=f"{data}.rowid",
+                order_by=f"{data.target_relation}.rowid",
             )
+            self._update_fact_table_column_name(jg=data, resume_rowid_col = True)
 
-        preds = self.cjt.exe._execute_query(f"select prediction from {view};")
-        return np.array(preds)[:, 0]
+        if output_mode == 1:
+            preds = self.cjt.exe._execute_query(f"select prediction from {view};")
+            return np.array(preds)[:, 0]
+        elif output_mode == 2:
+            return view
+        
+    def _update_fact_table_column_name(self, jg, check_rowid_col=False, resume_rowid_col=False):
+        """Rename/resume fact table's rowid column(if exists)."""
+
+        if jg.check_target_relation_contains_rowid_col():
+            if check_rowid_col:
+                old_name, new_name = "rowid", jg.target_rowid_colname
+
+            if resume_rowid_col:
+                old_name, new_name = jg.target_rowid_colname, "rowid"
+
+            sql = f"ALTER TABLE {jg.target_relation} RENAME COLUMN {old_name} TO {new_name};"
+            self.cjt.exe._execute_query(sql)
 
     def _clean_messages(self):
         for cjt in self.nodes.values():
