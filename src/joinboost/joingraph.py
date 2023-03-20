@@ -38,7 +38,10 @@ class JoinGraph:
             "utf-8"
         )
         self._target_rowid_colname = ""
-
+        
+    def copy(self):
+        return JoinGraph(self.exe, self.joins, self.relation_schema, self.target_var, self.target_relation)
+    
     @property
     def relations(self):
         return list(self.relation_schema.keys())
@@ -63,6 +66,9 @@ class JoinGraph:
     def joins(self):
         return self._joins
 
+    def set_target_relation(self, target_relation):
+        self._target_relation = target_relation
+        
     # replace a table from table_prev to table_after
     def replace(self, table_prev, table_after):
         if table_prev not in self.relation_schema:
@@ -166,7 +172,7 @@ class JoinGraph:
             if self.target_var is not None:
                 print("Warning: Y already exists and has been replaced")
             self._target_var = y
-            self._target_relation = relation
+            self.set_target_relation(relation)  
             self._target_rowid_colname = self._get_target_rowid_colname(attributes)
 
     def _get_target_rowid_colname(self, attributes):

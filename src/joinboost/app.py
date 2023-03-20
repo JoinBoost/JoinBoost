@@ -153,52 +153,61 @@ class DecisionTree(DummyModel):
         )
         rmse_query_data = SPJAData(from_tables=[predict])
         return self.cjt.exe.execute_spja_query(rmse_query_data, mode=ExecuteMode.EXECUTE)[0]
-
-    # input_mode = 1 takes the full join's table name as input
-    # input_mode = 2 takes the join graph as input (assume fact table is joined)
-    # output_mode = 1 returns a numpy array
-    # output_mode = 2 stores the prediction in a table and returns table name
+    
+    # input_mode = "FULL_JOIN_JG" takes the join graph as input, with the full join specified by JG._target_relation
+    # input_mode = "FULL_JOIN_DF" takes the dataframe of full join's table name as input
+    # input_mode = "JOIN_GRAPH" takes the join graph as input (assume the same schema as training data)
+    # output_mode = "NUMPY" returns a numpy array
+    # output_mode = "WRITE_TO_TABLE" stores the prediction in a table and returns table name
     def predict(
         self,
-        data: Union[str, JoinGraph],
-        input_mode: int = 1,
-        output_mode: int = 1,
-    ):
-        if not isinstance(input_mode, int) or input_mode > 2 or input_mode < 1:
+        joingraph: JoinGraph,
+        input_mode: str = "FULL_JOIN_JG",
+        output_mode: str = "NUMPY",
+    ):  
+        input_modes = ["FULL_JOIN_JG","FULL_JOIN_DF", "JOIN_GRAPH"]
+        output_modes = ["NUMPY","WRITE_TO_TABLE"]
+        if input_mode not in input_modes:
             raise Exception("Unsupported input_mode")
-        if not isinstance(output_mode, int) or output_mode > 2 or output_mode < 1:
+        if output_mode not in output_modes:
             raise Exception("Unsupported output_mode")
 
-        if input_mode == 1:
-            assert isinstance(data, str)
-            view = self.cjt.exe.case_query(
-                data,
+        if input_mode == "FULL_JOIN_JG":
+            # TODO: one concern of full join is that, there would be ambiguity for features with the same name but from table
+            # E.g., R(A,B), S(A,B). They join on A, and B is a feature name shared by both. 
+            # The full will have ambiguous naming, and may be renamed to (A, R.B, S.B)
+            # To avoid this, requires a rename mapping from users. By default, we consider renaming mapping which prefixes the feature with relation name.
+            view = joingraph.exe.case_query(
+                joingraph.target_relation,
                 "+",
                 "prediction",
                 str(self.constant_),
                 self.model_def,
                 [self.cjt.target_var],
             )
-        elif input_mode == 2:
-            assert isinstance(data, JoinGraph)
-            # VIEW does not support sort by rowid, so we ALTER the table and resume it back for ordering purposes. 
-            self._update_fact_table_column_name(jg=data, check_rowid_col = True)
-            full_join = data.get_full_join_sql()
-            view = self.cjt.exe.case_query(
+        if input_mode == "JOIN_GRAPH":
+            # TODO: reapply all the preprocessing steps
+            self._update_fact_table_column_name(jg=joingraph, check_rowid_col = True)
+            
+            full_join = joingraph.get_full_join_sql()
+            # the reason why we order by rowid is because of the set semantics of the relational models
+            # e.g., for duckdb, join result has its row order shuffled, making it hard to decide the corresponding prediction
+            # we therefore sort by rowid to enforce the correct ordering
+            view = joingraph.exe.case_query(
                 full_join,
                 "+",
                 "prediction",
                 str(self.constant_),
                 self.model_def,
                 [self.cjt.target_var],
-                order_by=f"{data.target_relation}.rowid",
+                order_by=f"{joingraph.target_relation}.rowid",
             )
-            self._update_fact_table_column_name(jg=data, resume_rowid_col = True)
+            self._update_fact_table_column_name(jg=joingraph, resume_rowid_col = True)
 
-        if output_mode == 1:
-            preds = self.cjt.exe._execute_query(f"select prediction from {view};")
+        if output_mode == "NUMPY":
+            preds = joingraph.exe._execute_query(f"select prediction from {view};")
             return np.array(preds)[:, 0]
-        elif output_mode == 2:
+        elif output_mode == "WRITE_TO_TABLE":
             return view
         
     def _update_fact_table_column_name(self, jg, check_rowid_col=False, resume_rowid_col=False):

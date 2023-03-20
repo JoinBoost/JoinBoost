@@ -83,7 +83,10 @@ class TestApp(unittest.TestCase):
         )
 
         reg.fit(dataset)
-        reg_prediction = reg.predict(data="train", input_mode=1)
+        
+        
+        dataset.set_target_relation("train")
+        reg_prediction = reg.predict(joingraph=dataset, input_mode="FULL_JOIN_JG")
 
         data = pd.read_csv("../data/favorita/train_small.csv")
         clf = GradientBoostingRegressor(
@@ -142,7 +145,7 @@ class TestApp(unittest.TestCase):
         reg = GradientBoosting(learning_rate=1, max_leaves=2 ** depth, max_depth=depth, iteration=iteration)
 
         reg.fit(dataset)
-        reg_prediction = reg.predict(dataset2, input_mode=2)
+        reg_prediction = reg.predict(joingraph=dataset2, input_mode="JOIN_GRAPH")
 
         data = pd.read_csv('../data/favorita/train_small.csv')
         clf = GradientBoostingRegressor(max_depth=depth,learning_rate=1, n_estimators=iteration)
@@ -201,7 +204,7 @@ class TestApp(unittest.TestCase):
         reg = GradientBoosting(learning_rate=1, max_leaves=2 ** depth, max_depth=depth, iteration=iteration)
 
         reg.fit(dataset)
-        reg_prediction = reg.predict(dataset2, input_mode=2)
+        reg_prediction = reg.predict(dataset2, input_mode="JOIN_GRAPH")
 
         data = pd.read_csv('../data/favorita/train_small.csv')
         clf = GradientBoostingRegressor(max_depth=depth,learning_rate=1, n_estimators=iteration)
