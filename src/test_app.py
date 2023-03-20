@@ -97,94 +97,119 @@ class TestApp(unittest.TestCase):
         self.assertTrue(abs(_reg_rmse - math.sqrt(mse)) < 1e-3)
         self.assertTrue(np.sum(np.abs(reg_prediction - clf_prediction)) < 1e-3)
 
-    # input_mode = 3 is removed. Save following tests for future use.
-    # def test_predict_api_fact_table(self):
-    #     con = duckdb.connect(database=':memory:')
-    #     con.execute("CREATE OR REPLACE TABLE holidays AS SELECT * FROM '../data/favorita/holidays.csv';")
-    #     con.execute("CREATE OR REPLACE TABLE oil AS SELECT * FROM '../data/favorita/oil.csv';")
-    #     con.execute("CREATE OR REPLACE TABLE transactions AS SELECT * FROM '../data/favorita/transactions.csv';")
-    #     con.execute("CREATE OR REPLACE TABLE stores AS SELECT * FROM '../data/favorita/stores.csv';")
-    #     con.execute("CREATE OR REPLACE TABLE items AS SELECT * FROM '../data/favorita/items.csv';")
-    #     con.execute("CREATE OR REPLACE TABLE sales AS SELECT * FROM '../data/favorita/sales_small.csv';")
+    def test_predict_api_joingraph(self):
+        con = duckdb.connect(database=':memory:')
+        con.execute("CREATE OR REPLACE TABLE holidays AS SELECT * FROM '../data/favorita/holidays.csv';")
+        con.execute("CREATE OR REPLACE TABLE oil AS SELECT * FROM '../data/favorita/oil.csv';")
+        con.execute("CREATE OR REPLACE TABLE transactions AS SELECT * FROM '../data/favorita/transactions.csv';")
+        con.execute("CREATE OR REPLACE TABLE stores AS SELECT * FROM '../data/favorita/stores.csv';")
+        con.execute("CREATE OR REPLACE TABLE items AS SELECT * FROM '../data/favorita/items.csv';")
+        con.execute("CREATE OR REPLACE TABLE sales AS SELECT * FROM '../data/favorita/sales_small.csv';")
 
-    #     y = "Y"
-    #     x = ["htype", "locale", "locale_name", "transferred","f2","dcoilwtico","f3","transactions",
-    #          "f5","city","state","stype","cluster","f4","family","class","perishable","f1"]
+        y = "Y"
+        x = ["htype", "locale", "locale_name", "transferred","f2","dcoilwtico","f3","transactions",
+             "f5","city","state","stype","cluster","f4","family","class","perishable","f1"]
 
-    #     exe = DuckdbExecutor(con, debug=False)
-    #     depth = 3
-    #     iteration = 3
-    #     dataset = JoinGraph(exe=exe)
-    #     dataset.add_relation("sales", [], y = 'Y')
-    #     dataset.add_relation("holidays", ["htype", "locale", "locale_name", "transferred","f2"])
-    #     dataset.add_relation("oil", ["dcoilwtico","f3"])
-    #     dataset.add_relation("transactions", ["transactions","f5"])
-    #     dataset.add_relation("stores", ["city","state","stype","cluster","f4"])
-    #     dataset.add_relation("items", ["family","class","perishable","f1"])
-    #     dataset.add_join("sales", "items", ["item_nbr"], ["item_nbr"])
-    #     dataset.add_join("sales", "transactions", ["tid"], ["tid"])
-    #     dataset.add_join("transactions", "stores", ["store_nbr"], ["store_nbr"])
-    #     dataset.add_join("transactions", "holidays", ["date"], ["date"])
-    #     dataset.add_join("holidays", "oil", ["date"], ["date"])
+        exe = DuckdbExecutor(con, debug=False)
+        depth = 3
+        iteration = 3
+        dataset = JoinGraph(exe=exe)
+        dataset.add_relation("sales", [], y = 'Y')
+        dataset.add_relation("holidays", ["htype", "locale", "locale_name", "transferred","f2"])
+        dataset.add_relation("oil", ["dcoilwtico","f3"])
+        dataset.add_relation("transactions", ["transactions","f5"])
+        dataset.add_relation("stores", ["city","state","stype","cluster","f4"])
+        dataset.add_relation("items", ["family","class","perishable","f1"])
+        dataset.add_join("sales", "items", ["item_nbr"], ["item_nbr"])
+        dataset.add_join("sales", "transactions", ["tid"], ["tid"])
+        dataset.add_join("transactions", "stores", ["store_nbr"], ["store_nbr"])
+        dataset.add_join("transactions", "holidays", ["date"], ["date"])
+        dataset.add_join("holidays", "oil", ["date"], ["date"])
+        
+        dataset2 = JoinGraph(exe=exe)
+        dataset2.add_relation("sales", [], y = 'Y')
+        dataset2.add_relation("holidays", ["htype", "locale", "locale_name", "transferred","f2"])
+        dataset2.add_relation("oil", ["dcoilwtico","f3"])
+        dataset2.add_relation("transactions", ["transactions","f5"])
+        dataset2.add_relation("stores", ["city","state","stype","cluster","f4"])
+        dataset2.add_relation("items", ["family","class","perishable","f1"])
+        dataset2.add_join("sales", "items", ["item_nbr"], ["item_nbr"])
+        dataset2.add_join("sales", "transactions", ["tid"], ["tid"])
+        dataset2.add_join("transactions", "stores", ["store_nbr"], ["store_nbr"])
+        dataset2.add_join("transactions", "holidays", ["date"], ["date"])
+        dataset2.add_join("holidays", "oil", ["date"], ["date"])
 
-    #     reg = GradientBoosting(learning_rate=1, max_leaves=2 ** depth, max_depth=depth, iteration=iteration)
+        reg = GradientBoosting(learning_rate=1, max_leaves=2 ** depth, max_depth=depth, iteration=iteration)
 
-    #     reg.fit(dataset)
-    #     reg_prediction = reg.predict(data='sales', input_mode=3)
+        reg.fit(dataset)
+        reg_prediction = reg.predict(dataset2, input_mode=2)
 
-    #     data = pd.read_csv('../data/favorita/train_small.csv')
-    #     clf = GradientBoostingRegressor(max_depth=depth,learning_rate=1, n_estimators=iteration)
-    #     clf = clf.fit(data[x], data[y])
-    #     clf_prediction = clf.predict(data[x])
+        data = pd.read_csv('../data/favorita/train_small.csv')
+        clf = GradientBoostingRegressor(max_depth=depth,learning_rate=1, n_estimators=iteration)
+        clf = clf.fit(data[x], data[y])
+        clf_prediction = clf.predict(data[x])
 
-    #     print(np.sum(np.abs(reg_prediction - clf_prediction)))
-    #     self.assertTrue(np.sum(np.abs(reg_prediction - clf_prediction)) < 1e-3)
+        print(np.sum(np.abs(reg_prediction - clf_prediction)))
+        self.assertTrue(np.sum(np.abs(reg_prediction - clf_prediction)) < 1e-3)
 
-    # def test_predict_api_fact_table_rowid_column(self):
-    #     con = duckdb.connect(database=':memory:')
-    #     con.execute("CREATE OR REPLACE TABLE holidays AS SELECT * FROM '../data/favorita/holidays.csv';")
-    #     con.execute("CREATE OR REPLACE TABLE oil AS SELECT * FROM '../data/favorita/oil.csv';")
-    #     con.execute("CREATE OR REPLACE TABLE transactions AS SELECT * FROM '../data/favorita/transactions.csv';")
-    #     con.execute("CREATE OR REPLACE TABLE stores AS SELECT * FROM '../data/favorita/stores.csv';")
-    #     con.execute("CREATE OR REPLACE TABLE items AS SELECT * FROM '../data/favorita/items.csv';")
-    #     con.execute("CREATE OR REPLACE TABLE sales_original AS SELECT * FROM '../data/favorita/sales_small.csv';")
-    #     con.execute("""CREATE OR REPLACE TABLE sales AS
-    #                 SELECT item_nbr,unit_sales,onpromotion AS rowid,tid,Y
-    #                 FROM sales_original;
-    #                 """)
+    def test_predict_api_joingraph_rowid_column(self):
+        con = duckdb.connect(database=':memory:')
+        con.execute("CREATE OR REPLACE TABLE holidays AS SELECT * FROM '../data/favorita/holidays.csv';")
+        con.execute("CREATE OR REPLACE TABLE oil AS SELECT * FROM '../data/favorita/oil.csv';")
+        con.execute("CREATE OR REPLACE TABLE transactions AS SELECT * FROM '../data/favorita/transactions.csv';")
+        con.execute("CREATE OR REPLACE TABLE stores AS SELECT * FROM '../data/favorita/stores.csv';")
+        con.execute("CREATE OR REPLACE TABLE items AS SELECT * FROM '../data/favorita/items.csv';")
+        con.execute("CREATE OR REPLACE TABLE sales_original AS SELECT * FROM '../data/favorita/sales_small.csv';")
+        con.execute("""CREATE OR REPLACE TABLE sales AS
+                    SELECT item_nbr,unit_sales,onpromotion AS rowid,tid,Y
+                    FROM sales_original;
+                    """)
 
-    #     y = "Y"
-    #     x = ["htype", "locale", "locale_name", "transferred","f2","dcoilwtico","f3","transactions",
-    #          "f5","city","state","stype","cluster","f4","family","class","perishable","f1"]
+        y = "Y"
+        x = ["htype", "locale", "locale_name", "transferred","f2","dcoilwtico","f3","transactions",
+             "f5","city","state","stype","cluster","f4","family","class","perishable","f1"]
 
-    #     exe = DuckdbExecutor(con, debug=False)
-    #     depth = 3
-    #     iteration = 3
-    #     dataset = JoinGraph(exe=exe)
-    #     dataset.add_relation("sales", [], y = 'Y')
-    #     dataset.add_relation("holidays", ["htype", "locale", "locale_name", "transferred","f2"])
-    #     dataset.add_relation("oil", ["dcoilwtico","f3"])
-    #     dataset.add_relation("transactions", ["transactions","f5"])
-    #     dataset.add_relation("stores", ["city","state","stype","cluster","f4"])
-    #     dataset.add_relation("items", ["family","class","perishable","f1"])
-    #     dataset.add_join("sales", "items", ["item_nbr"], ["item_nbr"])
-    #     dataset.add_join("sales", "transactions", ["tid"], ["tid"])
-    #     dataset.add_join("transactions", "stores", ["store_nbr"], ["store_nbr"])
-    #     dataset.add_join("transactions", "holidays", ["date"], ["date"])
-    #     dataset.add_join("holidays", "oil", ["date"], ["date"])
+        exe = DuckdbExecutor(con, debug=False)
+        depth = 3
+        iteration = 3
+        dataset = JoinGraph(exe=exe)
+        dataset.add_relation("sales", [], y = 'Y')
+        dataset.add_relation("holidays", ["htype", "locale", "locale_name", "transferred","f2"])
+        dataset.add_relation("oil", ["dcoilwtico","f3"])
+        dataset.add_relation("transactions", ["transactions","f5"])
+        dataset.add_relation("stores", ["city","state","stype","cluster","f4"])
+        dataset.add_relation("items", ["family","class","perishable","f1"])
+        dataset.add_join("sales", "items", ["item_nbr"], ["item_nbr"])
+        dataset.add_join("sales", "transactions", ["tid"], ["tid"])
+        dataset.add_join("transactions", "stores", ["store_nbr"], ["store_nbr"])
+        dataset.add_join("transactions", "holidays", ["date"], ["date"])
+        dataset.add_join("holidays", "oil", ["date"], ["date"])
+        
+        dataset2 = JoinGraph(exe=exe)
+        dataset2.add_relation("sales", [], y = 'Y')
+        dataset2.add_relation("holidays", ["htype", "locale", "locale_name", "transferred","f2"])
+        dataset2.add_relation("oil", ["dcoilwtico","f3"])
+        dataset2.add_relation("transactions", ["transactions","f5"])
+        dataset2.add_relation("stores", ["city","state","stype","cluster","f4"])
+        dataset2.add_relation("items", ["family","class","perishable","f1"])
+        dataset2.add_join("sales", "items", ["item_nbr"], ["item_nbr"])
+        dataset2.add_join("sales", "transactions", ["tid"], ["tid"])
+        dataset2.add_join("transactions", "stores", ["store_nbr"], ["store_nbr"])
+        dataset2.add_join("transactions", "holidays", ["date"], ["date"])
+        dataset2.add_join("holidays", "oil", ["date"], ["date"])
 
-    #     reg = GradientBoosting(learning_rate=1, max_leaves=2 ** depth, max_depth=depth, iteration=iteration)
+        reg = GradientBoosting(learning_rate=1, max_leaves=2 ** depth, max_depth=depth, iteration=iteration)
 
-    #     reg.fit(dataset)
-    #     reg_prediction = reg.predict(data='sales', input_mode=3)
+        reg.fit(dataset)
+        reg_prediction = reg.predict(dataset2, input_mode=2)
 
-    #     data = pd.read_csv('../data/favorita/train_small.csv')
-    #     clf = GradientBoostingRegressor(max_depth=depth,learning_rate=1, n_estimators=iteration)
-    #     clf = clf.fit(data[x], data[y])
-    #     clf_prediction = clf.predict(data[x])
+        data = pd.read_csv('../data/favorita/train_small.csv')
+        clf = GradientBoostingRegressor(max_depth=depth,learning_rate=1, n_estimators=iteration)
+        clf = clf.fit(data[x], data[y])
+        clf_prediction = clf.predict(data[x])
 
-    #     print(np.sum(np.abs(reg_prediction - clf_prediction)))
-    #     self.assertTrue(np.sum(np.abs(reg_prediction - clf_prediction)) < 1e-3)
+        print(np.sum(np.abs(reg_prediction - clf_prediction)))
+        self.assertTrue(np.sum(np.abs(reg_prediction - clf_prediction)) < 1e-3)
 
 
 if __name__ == "__main__":
