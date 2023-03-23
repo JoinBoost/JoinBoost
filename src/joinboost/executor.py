@@ -26,7 +26,7 @@ class SPJAData:
 
     Attributes
     ----------
-    aggregate_expressions : doict
+    aggregate_expressions : dict
         A dictionary mapping column names to tuples containing the aggregation expression and the aggregator object.
     from_tables : list
         A list of table names to select from. By default, an empty list.
