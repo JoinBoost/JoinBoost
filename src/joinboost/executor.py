@@ -10,10 +10,14 @@ import pandas as pd
 from joinboost import aggregator
 
 
-ExecuteMode = Enum("ExecuteMode", ["WRITE_TO_TABLE", "CREATE_VIEW", "EXECUTE", "NESTED_QUERY"])
+ExecuteMode = Enum(
+    "ExecuteMode", ["WRITE_TO_TABLE", "CREATE_VIEW", "EXECUTE", "NESTED_QUERY"]
+)
+
 
 class ExecutorException(Exception):
     pass
+
 
 @dataclass(frozen=True)
 class SPJAData:
@@ -22,7 +26,7 @@ class SPJAData:
 
     Attributes
     ----------
-    aggregate_expressions : doict
+    aggregate_expressions : dict
         A dictionary mapping column names to tuples containing the aggregation expression and the aggregator object.
     from_tables : list
         A list of table names to select from. By default, an empty list.
@@ -103,7 +107,7 @@ class Executor(ABC):
     """
     Base executor object- defines a template for special executor objects.
 
-    Attributes
+    Parameters
     ----------
     view_id : int
         The id of the next view to be created.
@@ -117,86 +121,12 @@ class Executor(ABC):
         self.prefix = "joinboost_tmp_"
 
     def get_next_name(self):
+        """Get a unique name of the next view to be created."""
         name = self.prefix + str(self.view_id)
         self.view_id += 1
         return name
 
     @abstractmethod
-    def get_schema(self, table: str):
-        pass
-
-    @abstractmethod
-    def add_table(self, table: str, table_address):
-        pass
-
-    @abstractmethod
-    def delete_table(self, table: str):
-        pass
-
-    @abstractmethod
-    def case_query(
-        self,
-        from_table: str,
-        operator: str,
-        cond_attr: str,
-        base_val: str,
-        case_definitions: list,
-        select_attrs: list = [],
-        table_name: str = None,
-    ):
-        pass
-
-    @abstractmethod
-    def window_query(
-        self, view: str, select_attrs: list, base_attr: str, cumulative_attrs: list
-    ):
-        pass
-
-    @abstractmethod
-    def execute_spja_query(
-        self,
-        spja_data: SPJAData,
-        mode: ExecuteMode = ExecuteMode.NESTED_QUERY,
-    ) -> Any:
-        pass
-
-    def _check_mode(self, mode: ExecuteMode):
-        """
-        Check if the given mode is supported by the executor.
-
-        Parameters
-        ----------
-        mode: ExecuteMode
-            The mode to check.
-
-        Raises
-        -------
-        ValueError
-            If the mode is not supported.
-
-        """
-        if not isinstance(mode, ExecuteMode):
-            raise ValueError(f"mode parameter {mode} must be an instance of ExecuteMode.")
-
-
-class DuckdbExecutor(Executor):
-    """
-    Executor object providing methods for executing queries on a DuckDB database.
-
-    Attributes
-    ----------
-    conn : Connection
-        A DuckDB connection object.
-    debug : bool
-        A flag to enable/disable debug mode.
-    """
-
-    def __init__(self, conn, debug=False):
-        super().__init__()
-        self.conn = conn
-        self.debug = debug
-        self.replace = True
-
     def get_schema(self, table: str) -> list:
         """
         Get a list of column names in a table.
@@ -211,26 +141,21 @@ class DuckdbExecutor(Executor):
         list
             A list of column names in the table.
         """
-        # duckdb stores table info in [cid, name, type, notnull, dflt_value, pk]
-        table_info = self._execute_query("PRAGMA table_info(" + table + ")")
-        return [x[1] for x in table_info]
 
-    def _gen_sql_case(self, leaf_conds: list):
-        conds = []
-        for leaf_cond in leaf_conds:
-            cond = "CASE\n"
-            for (pred, annotations) in leaf_cond:
-                cond += (
-                    " WHEN "
-                    + " AND ".join(annotations)
-                    + " THEN CAST("
-                    + str(pred)
-                    + " AS DOUBLE)\n"
-                )
-            cond += "ELSE 0 END\n"
-            conds.append(cond)
-        return conds
+    @abstractmethod
+    def add_table(self, table: str, table_address):
+        """
+        Add a new table to the database.
 
+        Parameters
+        ----------
+        table : str
+            The name of the table to add.
+        table_address : str
+            The address of the table to add.
+        """
+
+    @abstractmethod
     def delete_table(self, table: str):
         """
         Delete a table.
@@ -240,11 +165,48 @@ class DuckdbExecutor(Executor):
         table : str
             The name of the table.
         """
-        self.check_table(table)
-        sql = "DROP TABLE IF EXISTS " + table + ";\n"
-        self._execute_query(sql)
 
-    # TODO: remove it
+    @abstractmethod
+    def case_query(
+        self,
+        from_table: str,
+        operator: str,
+        cond_attr: str,
+        base_val: str,
+        case_definitions: list,
+        select_attrs: list = [],
+        table_name: str = None,
+    ):
+        """
+        Executes a SQL query with a CASE statement to perform tree-model prediction.
+        Each CASE represents a tree and each WHEN within a CASE represents a leaf.
+
+        Parameters
+        -----------
+        from_table : str
+            Name of the source table
+        operator : str
+            The operator used to combine predictions
+        cond_attr : str
+            Name of the column used in the conditions of the case statement
+        base_val : int
+            Base value for the entire tree-model
+        case_definitions : list
+            A list of lists containing the (leaf prediction, leaf predicates) for each tree.
+        select_attrs : list, optional (default=[])
+            List of attributes to be selected
+        table_name : str, optional (default=None)
+            Name of the new table
+        order_by : str, optional (default=None)
+            Name of the table to be ordered by rowid
+
+        Returns
+        --------
+        str
+            Name of the new table
+        """
+
+    @abstractmethod
     def window_query(
         self, view: str, select_attrs: list, base_attr: str, cumulative_attrs: list
     ):
@@ -267,6 +229,109 @@ class DuckdbExecutor(Executor):
         str
             The view name.
         """
+
+    @abstractmethod
+    def execute_spja_query(
+        self,
+        spja_data: SPJAData,
+        mode: ExecuteMode = ExecuteMode.NESTED_QUERY,
+    ) -> Any:
+        """
+        Executes an SPJA query using the current object's database connection.
+
+        Parameters
+        ----------
+        spja_data : SPJAData
+            The SPJAData object containing the query parameters.
+        mode: ExecuteMode, optional
+            The mode in which the query is executed. Default is ExecuteMode.NESTED_QUERY.
+            if ExecuteMode.WRITE_TO_TABLE
+                The query is executed and the results are stored in a new table.
+                The table name is returned.
+            if ExecuteMode.CREATE_VIEW
+                The query is executed and the results are stored in a new view.
+                The table name is returned.
+            if ExecuteMode.EXECUTE
+                The query is executed and the results are returned.
+            if ExecuteMode.NESTED_QUERY
+                Creates a parenthesized query and returns it as a string.
+
+        Returns
+        -------
+        Any
+            The result of the query. Determined by `mode`.
+
+        """
+
+    def _check_mode(self, mode: ExecuteMode):
+        """
+        Check if the given mode is supported by the executor.
+
+        Parameters
+        ----------
+        mode: ExecuteMode
+            The mode to check.
+
+        Raises
+        -------
+        ValueError
+            If the mode is not supported.
+
+        """
+        if not isinstance(mode, ExecuteMode):
+            raise ValueError(
+                f"mode parameter {mode} must be an instance of ExecuteMode."
+            )
+
+
+class DuckdbExecutor(Executor):
+    """
+    Executor object providing methods for executing queries on a DuckDB database.
+
+    Attributes
+    ----------
+    conn : Connection
+        A DuckDB connection object.
+    debug : bool
+        A flag to enable/disable debug mode.
+    """
+
+    def __init__(self, conn, debug=False):
+        super().__init__()
+        self.conn = conn
+        self.debug = debug
+        self.replace = True
+
+    def get_schema(self, table: str) -> list:
+        # duckdb stores table info in [cid, name, type, notnull, dflt_value, pk]
+        table_info = self._execute_query("PRAGMA table_info(" + table + ")")
+        return [x[1] for x in table_info]
+
+    def _gen_sql_case(self, leaf_conds: list):
+        conds = []
+        for leaf_cond in leaf_conds:
+            cond = "CASE\n"
+            for (pred, annotations) in leaf_cond:
+                cond += (
+                    " WHEN "
+                    + " AND ".join(annotations)
+                    + " THEN CAST("
+                    + str(pred)
+                    + " AS DOUBLE)\n"
+                )
+            cond += "ELSE 0 END\n"
+            conds.append(cond)
+        return conds
+
+    def delete_table(self, table: str):
+        self.check_table(table)
+        sql = "DROP TABLE IF EXISTS " + table + ";\n"
+        self._execute_query(sql)
+
+    # TODO: remove it
+    def window_query(
+        self, view: str, select_attrs: list, base_attr: str, cumulative_attrs: list
+    ):
         view_name = self.get_next_name()
         sql = "CREATE OR REPLACE VIEW " + view_name + " AS SELECT * FROM\n"
         sql += "(\nSELECT " + ",".join(select_attrs)
@@ -289,20 +354,6 @@ class DuckdbExecutor(Executor):
         table_name: str = None,
         order_by: str = None,
     ):
-        """
-        Executes a SQL query with a CASE statement to perform tree-model prediction.
-        Each CASE represents a tree and each WHEN within a CASE represents a leaf.
-
-        :param from_table: str, name of the source table
-        :param operator: str, the operator used to combine predictions
-        :param cond_attr: str, name of the column used in the conditions of the case statement
-        :param base_val: int, base value for the entire tree-model
-        :param case_definitions: list, a list of lists containing the (leaf prediction, leaf predicates) for each tree.
-        :param select_attrs: list, list of attributes to be selected, defaults to empty
-        :param table_name: str, name of the new table, defaults to None
-        :param order_by: str, name of the table to be ordered by rowid, defaults to None
-        :return: str, name of the new table
-        """
 
         # If no select attributes are provided, retrieve all columns
         # except the one used in the conditions of the case statement
@@ -388,7 +439,7 @@ class DuckdbExecutor(Executor):
         if not table.startswith(self.prefix):
             raise Exception("Don't modify user tables!")
 
-    def add_table(self, table: str, table_address):
+    def add_table(self, table: str, table_address: str) -> None:
         ...
 
     def update_query(self, update_expression, table, select_conds: list = []):
@@ -422,22 +473,6 @@ class DuckdbExecutor(Executor):
     def execute_spja_query(
         self, spja_data: SPJAData, mode: ExecuteMode = ExecuteMode.NESTED_QUERY
     ) -> Any:
-        """
-        Executes an SPJA query using the current object's database connection.
-
-        Parameters
-        ----------
-        spja_data : SPJAData
-            The SPJAData object containing the query parameters.
-        mode: ExecuteMode, optional
-            The mode in which the query is executed. Default is ExecuteMode.NESTED_QUERY.
-            # TODO: Add mode descriptions once doc style is defined
-
-        Returns
-        -------
-        Any
-            The result of the query.
-        """
 
         self._check_mode(mode)
 
@@ -450,7 +485,6 @@ class DuckdbExecutor(Executor):
             return self._execute_query(spja)
         elif mode == ExecuteMode.NESTED_QUERY:
             return self.spja_query(spja_data)
-
 
     def _spja_query_to_table(self, spja_data: SPJAData) -> str:
         """
@@ -673,7 +707,9 @@ class PandasExecutor(DuckdbExecutor):
     # mode 2: same as mode 1
     # mode 3: execute the query and return the result
     # mode 4: same as mode 1 (for now)
-    def execute_spja_query(self, spja_data: SPJAData, mode: ExecuteMode = ExecuteMode.NESTED_QUERY):
+    def execute_spja_query(
+        self, spja_data: SPJAData, mode: ExecuteMode = ExecuteMode.NESTED_QUERY
+    ):
 
         self._check_mode(mode)
 
@@ -746,7 +782,11 @@ class PandasExecutor(DuckdbExecutor):
         df = self.reorder_columns(spja_data.aggregate_expressions, df)
 
         # TODO: clean up mode implementation
-        if mode in (ExecuteMode.WRITE_TO_TABLE, ExecuteMode.NESTED_QUERY, ExecuteMode.CREATE_VIEW):
+        if mode in (
+            ExecuteMode.WRITE_TO_TABLE,
+            ExecuteMode.NESTED_QUERY,
+            ExecuteMode.CREATE_VIEW,
+        ):
             name_ = self.get_next_name()
             # always qualify intermediate tables as future aggregations for these tables will come qualified
             for col in df.columns:
