@@ -67,9 +67,9 @@ class DecisionTree(DummyModel):
     def fit(self, jg: JoinGraph):
         # Create views for tables having conflicting column names with reserved words.
         g, h = self.semi_ring.get_columns_name()
-        
+
         self.preprocessor.add_step(RenameStep(reserved_words=[g, h, "rowid"]))
-        
+
         self.preprocessor.run_preprocessing(jg)
         jg = self.preprocessor.get_join_graph()
 
@@ -152,8 +152,10 @@ class DecisionTree(DummyModel):
             prediction_query_data, mode=ExecuteMode.NESTED_QUERY
         )
         rmse_query_data = SPJAData(from_tables=[predict])
-        return self.cjt.exe.execute_spja_query(rmse_query_data, mode=ExecuteMode.EXECUTE)[0]
-    
+        return self.cjt.exe.execute_spja_query(
+            rmse_query_data, mode=ExecuteMode.EXECUTE
+        )[0]
+
     # input_mode = "FULL_JOIN_JG" takes the join graph as input, with the full join specified by JG._target_relation
     # input_mode = "FULL_JOIN_DF" takes the dataframe of full join's table name as input
     # input_mode = "JOIN_GRAPH" takes the join graph as input (assume the same schema as training data)
@@ -164,9 +166,9 @@ class DecisionTree(DummyModel):
         joingraph: JoinGraph,
         input_mode: str = "FULL_JOIN_JG",
         output_mode: str = "NUMPY",
-    ):  
-        input_modes = ["FULL_JOIN_JG","FULL_JOIN_DF", "JOIN_GRAPH"]
-        output_modes = ["NUMPY","WRITE_TO_TABLE"]
+    ):
+        input_modes = ["FULL_JOIN_JG", "FULL_JOIN_DF", "JOIN_GRAPH"]
+        output_modes = ["NUMPY", "WRITE_TO_TABLE"]
         if input_mode not in input_modes:
             raise Exception("Unsupported input_mode")
         if output_mode not in output_modes:
@@ -174,7 +176,7 @@ class DecisionTree(DummyModel):
 
         if input_mode == "FULL_JOIN_JG":
             # TODO: one concern of full join is that, there would be ambiguity for features with the same name but from table
-            # E.g., R(A,B), S(A,B). They join on A, and B is a feature name shared by both. 
+            # E.g., R(A,B), S(A,B). They join on A, and B is a feature name shared by both.
             # The full will have ambiguous naming, and may be renamed to (A, R.B, S.B)
             # To avoid this, requires a rename mapping from users. By default, we consider renaming mapping which prefixes the feature with relation name.
             view = joingraph.exe.case_query(
@@ -187,8 +189,8 @@ class DecisionTree(DummyModel):
             )
         if input_mode == "JOIN_GRAPH":
             # TODO: reapply all the preprocessing steps
-            self._update_fact_table_column_name(jg=joingraph, check_rowid_col = True)
-            
+            self._update_fact_table_column_name(jg=joingraph, check_rowid_col=True)
+
             full_join = joingraph.get_full_join_sql()
             # the reason why we order by rowid is because of the set semantics of the relational models
             # e.g., for duckdb, join result has its row order shuffled, making it hard to decide the corresponding prediction
@@ -202,15 +204,17 @@ class DecisionTree(DummyModel):
                 [self.cjt.target_var],
                 order_by=f"{joingraph.target_relation}.rowid",
             )
-            self._update_fact_table_column_name(jg=joingraph, resume_rowid_col = True)
+            self._update_fact_table_column_name(jg=joingraph, resume_rowid_col=True)
 
         if output_mode == "NUMPY":
             preds = joingraph.exe._execute_query(f"select prediction from {view};")
             return np.array(preds)[:, 0]
         elif output_mode == "WRITE_TO_TABLE":
             return view
-        
-    def _update_fact_table_column_name(self, jg, check_rowid_col=False, resume_rowid_col=False):
+
+    def _update_fact_table_column_name(
+        self, jg, check_rowid_col=False, resume_rowid_col=False
+    ):
         """Rename/resume fact table's rowid column(if exists)."""
 
         if jg.check_target_relation_contains_rowid_col():
@@ -246,7 +250,9 @@ class DecisionTree(DummyModel):
             spja_data = SPJAData(
                 aggregate_expressions=agg_exp, from_tables=[absoprtion_view]
             )
-            obj_view = self.cjt.exe.execute_spja_query(spja_data, mode=ExecuteMode.NESTED_QUERY)
+            obj_view = self.cjt.exe.execute_spja_query(
+                spja_data, mode=ExecuteMode.NESTED_QUERY
+            )
             view_ord_by_obj = self.cjt.exe.window_query(
                 obj_view, [attr], "object", [g_col, h_col]
             )
@@ -412,7 +418,9 @@ class DecisionTree(DummyModel):
                     order_by=[("criteria", "DESC")],
                     limit=1,
                 )
-                results = self.cjt.exe.execute_spja_query(spja_data, mode=ExecuteMode.EXECUTE)
+                results = self.cjt.exe.execute_spja_query(
+                    spja_data, mode=ExecuteMode.EXECUTE
+                )
                 if not results:
                     continue
                 cur_value, cur_criteria, left_g, left_h = results[0]

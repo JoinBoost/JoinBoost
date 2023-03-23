@@ -38,10 +38,16 @@ class JoinGraph:
             "utf-8"
         )
         self._target_rowid_colname = ""
-        
+
     def copy(self):
-        return JoinGraph(self.exe, self.joins, self.relation_schema, self.target_var, self.target_relation)
-    
+        return JoinGraph(
+            self.exe,
+            self.joins,
+            self.relation_schema,
+            self.target_var,
+            self.target_relation,
+        )
+
     @property
     def relations(self):
         return list(self.relation_schema.keys())
@@ -68,7 +74,7 @@ class JoinGraph:
 
     def set_target_relation(self, target_relation):
         self._target_relation = target_relation
-        
+
     # replace a table from table_prev to table_after
     def replace(self, table_prev, table_after):
         if table_prev not in self.relation_schema:
@@ -108,8 +114,8 @@ class JoinGraph:
                 # Find the index of the before_attribute in the list
                 index = left_join_key.index(before_attribute)
                 # Replace the old string with the new string
-                left_join_key[index] = after_attribute        
-    
+                left_join_key[index] = after_attribute
+
     def get_type(self, relation, feature):
         return self.relation_schema[relation][feature]
 
@@ -158,8 +164,9 @@ class JoinGraph:
         if relation not in self.relation_schema:
             self.relation_schema[relation] = {}
 
-        attributes = self.check_features_exist(relation, 
-                                               X + ([y] if y is not None else []))
+        attributes = self.check_features_exist(
+            relation, X + ([y] if y is not None else [])
+        )
 
         for x in X:
             # by default, assume all features to be numerical
@@ -172,7 +179,7 @@ class JoinGraph:
             if self.target_var is not None:
                 print("Warning: Y already exists and has been replaced")
             self._target_var = y
-            self.set_target_relation(relation)  
+            self.set_target_relation(relation)
             self._target_rowid_colname = self._get_target_rowid_colname(attributes)
 
     def _get_target_rowid_colname(self, attributes):
@@ -265,7 +272,7 @@ class JoinGraph:
 
         dfs(list(self.joins.keys())[0])
         return "".join(sql)
-    
+
     def check_target_relation_contains_rowid_col(self):
         return len(self.target_rowid_colname) != 0
 

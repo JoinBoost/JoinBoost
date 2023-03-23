@@ -239,7 +239,9 @@ class CJT(JoinGraph):
             select_conds=join_conds + self.get_parsed_annotations(from_table),
             group_by=[from_table + "." + attr for attr in l_join_keys],
         )
-        message_name = self.exe.execute_spja_query(spja_data, mode=ExecuteMode.WRITE_TO_TABLE)
+        message_name = self.exe.execute_spja_query(
+            spja_data, mode=ExecuteMode.WRITE_TO_TABLE
+        )
 
         self.joins[from_table][to_table].update(
             {"message": message_name, "message_type": m_type}
@@ -259,5 +261,7 @@ class CJT(JoinGraph):
         spja_data = SPJAData(
             aggregate_expressions=lift_exp, from_tables=[self.target_relation]
         )
-        new_fact_name = self.exe.execute_spja_query(spja_data, mode=ExecuteMode.WRITE_TO_TABLE)
+        new_fact_name = self.exe.execute_spja_query(
+            spja_data, mode=ExecuteMode.WRITE_TO_TABLE
+        )
         self.replace(self.target_relation, new_fact_name)

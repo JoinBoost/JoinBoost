@@ -10,10 +10,14 @@ import pandas as pd
 from joinboost import aggregator
 
 
-ExecuteMode = Enum("ExecuteMode", ["WRITE_TO_TABLE", "CREATE_VIEW", "EXECUTE", "NESTED_QUERY"])
+ExecuteMode = Enum(
+    "ExecuteMode", ["WRITE_TO_TABLE", "CREATE_VIEW", "EXECUTE", "NESTED_QUERY"]
+)
+
 
 class ExecutorException(Exception):
     pass
+
 
 @dataclass(frozen=True)
 class SPJAData:
@@ -176,7 +180,9 @@ class Executor(ABC):
 
         """
         if not isinstance(mode, ExecuteMode):
-            raise ValueError(f"mode parameter {mode} must be an instance of ExecuteMode.")
+            raise ValueError(
+                f"mode parameter {mode} must be an instance of ExecuteMode."
+            )
 
 
 class DuckdbExecutor(Executor):
@@ -451,7 +457,6 @@ class DuckdbExecutor(Executor):
         elif mode == ExecuteMode.NESTED_QUERY:
             return self.spja_query(spja_data)
 
-
     def _spja_query_to_table(self, spja_data: SPJAData) -> str:
         """
         Executes an SPJA query and stores the results in a new table.
@@ -673,7 +678,9 @@ class PandasExecutor(DuckdbExecutor):
     # mode 2: same as mode 1
     # mode 3: execute the query and return the result
     # mode 4: same as mode 1 (for now)
-    def execute_spja_query(self, spja_data: SPJAData, mode: ExecuteMode = ExecuteMode.NESTED_QUERY):
+    def execute_spja_query(
+        self, spja_data: SPJAData, mode: ExecuteMode = ExecuteMode.NESTED_QUERY
+    ):
 
         self._check_mode(mode)
 
@@ -746,7 +753,11 @@ class PandasExecutor(DuckdbExecutor):
         df = self.reorder_columns(spja_data.aggregate_expressions, df)
 
         # TODO: clean up mode implementation
-        if mode in (ExecuteMode.WRITE_TO_TABLE, ExecuteMode.NESTED_QUERY, ExecuteMode.CREATE_VIEW):
+        if mode in (
+            ExecuteMode.WRITE_TO_TABLE,
+            ExecuteMode.NESTED_QUERY,
+            ExecuteMode.CREATE_VIEW,
+        ):
             name_ = self.get_next_name()
             # always qualify intermediate tables as future aggregations for these tables will come qualified
             for col in df.columns:
