@@ -10,8 +10,13 @@ Welcome to JoinBoost's documentation!
    :maxdepth: 2
    :caption: Contents:
 
-   joinboost.rst
-
+   aggregator.rst
+   app.rst
+   cjt.rst
+   executor.rst
+   joingraph.rst
+   preprocessor.rst
+   semiring.rst
 
 Indices and tables
 ==================

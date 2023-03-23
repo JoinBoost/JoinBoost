@@ -107,7 +107,7 @@ class Executor(ABC):
     """
     Base executor object- defines a template for special executor objects.
 
-    Attributes
+    Parameters
     ----------
     view_id : int
         The id of the next view to be created.
@@ -121,21 +121,50 @@ class Executor(ABC):
         self.prefix = "joinboost_tmp_"
 
     def get_next_name(self):
+        """Get a unique name of the next view to be created."""
         name = self.prefix + str(self.view_id)
         self.view_id += 1
         return name
 
     @abstractmethod
-    def get_schema(self, table: str):
-        pass
+    def get_schema(self, table: str) -> list:
+        """
+        Get a list of column names in a table.
+
+        Parameters
+        ----------
+        table : str
+            The name of the table.
+
+        Returns
+        -------
+        list
+            A list of column names in the table.
+        """
 
     @abstractmethod
     def add_table(self, table: str, table_address):
-        pass
+        """
+        Add a new table to the database.
+
+        Parameters
+        ----------
+        table : str
+            The name of the table to add.
+        table_address : str
+            The address of the table to add.
+        """
 
     @abstractmethod
     def delete_table(self, table: str):
-        pass
+        """
+        Delete a table.
+
+        Parameters
+        ----------
+        table : str
+            The name of the table.
+        """
 
     @abstractmethod
     def case_query(
@@ -148,13 +177,58 @@ class Executor(ABC):
         select_attrs: list = [],
         table_name: str = None,
     ):
-        pass
+        """
+        Executes a SQL query with a CASE statement to perform tree-model prediction.
+        Each CASE represents a tree and each WHEN within a CASE represents a leaf.
+
+        Parameters
+        -----------
+        from_table : str
+            Name of the source table
+        operator : str
+            The operator used to combine predictions
+        cond_attr : str
+            Name of the column used in the conditions of the case statement
+        base_val : int
+            Base value for the entire tree-model
+        case_definitions : list
+            A list of lists containing the (leaf prediction, leaf predicates) for each tree.
+        select_attrs : list, optional (default=[])
+            List of attributes to be selected
+        table_name : str, optional (default=None)
+            Name of the new table
+        order_by : str, optional (default=None)
+            Name of the table to be ordered by rowid
+
+        Returns
+        --------
+        str
+            Name of the new table
+        """
 
     @abstractmethod
     def window_query(
         self, view: str, select_attrs: list, base_attr: str, cumulative_attrs: list
     ):
-        pass
+        """
+        A function to create a window query. TODO: Remove this function.
+
+        Parameters
+        ----------
+        view : str
+            The view name.
+        select_attrs : list
+            A list of attributes to select.
+        base_attr : str
+            The base attribute.
+        cumulative_attrs : list
+            A list of cumulative attributes.
+
+        Returns
+        -------
+        str
+            The view name.
+        """
 
     @abstractmethod
     def execute_spja_query(
@@ -162,7 +236,32 @@ class Executor(ABC):
         spja_data: SPJAData,
         mode: ExecuteMode = ExecuteMode.NESTED_QUERY,
     ) -> Any:
-        pass
+        """
+        Executes an SPJA query using the current object's database connection.
+
+        Parameters
+        ----------
+        spja_data : SPJAData
+            The SPJAData object containing the query parameters.
+        mode: ExecuteMode, optional
+            The mode in which the query is executed. Default is ExecuteMode.NESTED_QUERY.
+            if ExecuteMode.WRITE_TO_TABLE
+                The query is executed and the results are stored in a new table.
+                The table name is returned.
+            if ExecuteMode.CREATE_VIEW
+                The query is executed and the results are stored in a new view.
+                The table name is returned.
+            if ExecuteMode.EXECUTE
+                The query is executed and the results are returned.
+            if ExecuteMode.NESTED_QUERY
+                Creates a parenthesized query and returns it as a string.
+
+        Returns
+        -------
+        Any
+            The result of the query. Determined by `mode`.
+
+        """
 
     def _check_mode(self, mode: ExecuteMode):
         """
@@ -204,19 +303,6 @@ class DuckdbExecutor(Executor):
         self.replace = True
 
     def get_schema(self, table: str) -> list:
-        """
-        Get a list of column names in a table.
-
-        Parameters
-        ----------
-        table : str
-            The name of the table.
-
-        Returns
-        -------
-        list
-            A list of column names in the table.
-        """
         # duckdb stores table info in [cid, name, type, notnull, dflt_value, pk]
         table_info = self._execute_query("PRAGMA table_info(" + table + ")")
         return [x[1] for x in table_info]
@@ -238,14 +324,6 @@ class DuckdbExecutor(Executor):
         return conds
 
     def delete_table(self, table: str):
-        """
-        Delete a table.
-
-        Parameters
-        ----------
-        table : str
-            The name of the table.
-        """
         self.check_table(table)
         sql = "DROP TABLE IF EXISTS " + table + ";\n"
         self._execute_query(sql)
@@ -254,25 +332,6 @@ class DuckdbExecutor(Executor):
     def window_query(
         self, view: str, select_attrs: list, base_attr: str, cumulative_attrs: list
     ):
-        """
-        A function to create a window query. TODO: Remove this function.
-
-        Parameters
-        ----------
-        view : str
-            The view name.
-        select_attrs : list
-            A list of attributes to select.
-        base_attr : str
-            The base attribute.
-        cumulative_attrs : list
-            A list of cumulative attributes.
-
-        Returns
-        -------
-        str
-            The view name.
-        """
         view_name = self.get_next_name()
         sql = "CREATE OR REPLACE VIEW " + view_name + " AS SELECT * FROM\n"
         sql += "(\nSELECT " + ",".join(select_attrs)
@@ -295,20 +354,6 @@ class DuckdbExecutor(Executor):
         table_name: str = None,
         order_by: str = None,
     ):
-        """
-        Executes a SQL query with a CASE statement to perform tree-model prediction.
-        Each CASE represents a tree and each WHEN within a CASE represents a leaf.
-
-        :param from_table: str, name of the source table
-        :param operator: str, the operator used to combine predictions
-        :param cond_attr: str, name of the column used in the conditions of the case statement
-        :param base_val: int, base value for the entire tree-model
-        :param case_definitions: list, a list of lists containing the (leaf prediction, leaf predicates) for each tree.
-        :param select_attrs: list, list of attributes to be selected, defaults to empty
-        :param table_name: str, name of the new table, defaults to None
-        :param order_by: str, name of the table to be ordered by rowid, defaults to None
-        :return: str, name of the new table
-        """
 
         # If no select attributes are provided, retrieve all columns
         # except the one used in the conditions of the case statement
@@ -394,7 +439,7 @@ class DuckdbExecutor(Executor):
         if not table.startswith(self.prefix):
             raise Exception("Don't modify user tables!")
 
-    def add_table(self, table: str, table_address):
+    def add_table(self, table: str, table_address: str) -> None:
         ...
 
     def update_query(self, update_expression, table, select_conds: list = []):
@@ -428,22 +473,6 @@ class DuckdbExecutor(Executor):
     def execute_spja_query(
         self, spja_data: SPJAData, mode: ExecuteMode = ExecuteMode.NESTED_QUERY
     ) -> Any:
-        """
-        Executes an SPJA query using the current object's database connection.
-
-        Parameters
-        ----------
-        spja_data : SPJAData
-            The SPJAData object containing the query parameters.
-        mode: ExecuteMode, optional
-            The mode in which the query is executed. Default is ExecuteMode.NESTED_QUERY.
-            # TODO: Add mode descriptions once doc style is defined
-
-        Returns
-        -------
-        Any
-            The result of the query.
-        """
 
         self._check_mode(mode)
 
