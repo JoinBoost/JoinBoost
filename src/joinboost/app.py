@@ -1,6 +1,8 @@
 import math
 from abc import ABC
-from .executor import SPJAData, PandasExecutor
+
+from .preprocessor import Preprocessor, RenameStep
+from .executor import SPJAData, PandasExecutor, ExecuteMode
 from .joingraph import JoinGraph
 from .semiring import *
 from .aggregator import Aggregator, Annotation, Message
@@ -23,17 +25,15 @@ class DummyModel(App):
         self.model_def = []
 
     def fit(self, jg: JoinGraph):
-
         jg._preprocess()
-        self.semi_ring.init_columns_name(jg)
-        
+
         # get the gradient and hessian
         # for rmse, g is the sum and h is the count
         agg_exp = self.semi_ring.col_sum((jg.target_var, "1"))
         spja_data = SPJAData(
             aggregate_expressions=agg_exp, from_tables=[jg.target_relation]
         )
-        g, h = jg.exe.execute_spja_query(spja_data, mode='execute')[0]
+        g, h = jg.exe.execute_spja_query(spja_data, mode=ExecuteMode.EXECUTE)[0]
 
         prediction = g / h
         self.semi_ring.set_semi_ring(g, h)
@@ -41,9 +41,6 @@ class DummyModel(App):
         # below currently only works for rmse
         self.count_ = h
         self.constant_ = prediction
-
-        # store full join sql
-        self._full_join_sql = jg.get_full_join_sql()
 
     def predict(self, data: Union[str, JoinGraph], input_mode: int):
         return self.constant_
@@ -65,31 +62,34 @@ class DecisionTree(DummyModel):
         self.max_depth = max_depth
         self.subsample = subsample
         self.debug = debug
+        self.preprocessor = Preprocessor()
 
-    def fit(self,
-           jg: JoinGraph):
+    def fit(self, jg: JoinGraph):
         # Create views for tables having conflicting column names with reserved words.
-        self.semi_ring.init_columns_name(jg)
+        g, h = self.semi_ring.get_columns_name()
 
-        # # store full join sql
-        # self._full_join_sql = jg.get_full_join_sql()
+        self.preprocessor.add_step(RenameStep(reserved_words=[g, h, "rowid"]))
+
+        self.preprocessor.run_preprocessing(jg)
+        jg = self.preprocessor.get_join_graph()
 
         # shall we first sample then fit dummy model, or first fit dummy model then sample?
         # the current solution is to first sample than fit dummy model
         self.cjt = CJT(semi_ring=self.semi_ring, join_graph=jg)
         self.create_sample()
+
         super().fit(jg)
 
         exp = self.cjt.target_var + "- (" + str(self.constant_) + ")"
-        if isinstance(self.cjt.exe , PandasExecutor):
+        if isinstance(self.cjt.exe, PandasExecutor):
             exp = lambda row: row[self.cjt.target_var] - self.constant_
 
         self.cjt.lift(exp)
         self.semi_ring.set_semi_ring(0, self.count_)
 
         self.train_one()
-    
-    def create_sample(self, mode='write_to_table'):
+
+    def create_sample(self, mode=ExecuteMode.WRITE_TO_TABLE):
         if self.subsample < 1:
             # TODO: Possible to sample 0 tuples.
             # Add check to make sure the sampled table has tuples
@@ -99,98 +99,133 @@ class DecisionTree(DummyModel):
             )
             new_fact_name = self.cjt.exe.execute_spja_query(spja_data, mode=mode)
             self.cjt.replace(self.cjt.target_relation, new_fact_name)
-        
-    
-    def train_one(self, last = True):
+
+    def train_one(self, last=True):
         # store (node_id) -> cjt
         self.nodes = {}
         self.nodes[0] = self.cjt
-        
+
         # store a pq of split_candidates, sorted on the criteria
         # this one is a bit complex. TODO: simplify or make it a class
         self.split_candidates = PriorityQueue()
-        
+
         # leaf_nodes is used to compute the final models
         self.leaf_nodes = []
-        
+
         self._build_tree()
         if last:
             self._update_error()
-            
+
         self._build_model()
         # TODO: should clean all temp tables, not just messages
         if not self.debug:
             self._clean_messages()
-        
+
     def _build_model(self):
         cur_model_def = []
         for cur_cjt in self.leaf_nodes:
             annotations = cur_cjt.get_all_parsed_annotations()
             g, h = cur_cjt.get_semi_ring().get_value()
-            
-            pred = float(g / h)* self.learning_rate
+
+            pred = float(g / h) * self.learning_rate
             if annotations:
                 cur_model_def.append((pred, annotations))
         if cur_model_def:
             self.model_def.append(cur_model_def)
-        
+
     def compute_rmse(self, test_table: str):
-        if self.cjt.is_target_relation_a_view():
-            target = self.cjt.get_view2table()[self.cjt.get_target_relation()]["cols"][self.cjt.get_target_var()]
-        else:
-            target = self.cjt.get_target_var()
+        target = self.preprocessor.get_original_target_name()
+
         # TODO: refactor
-        view = self.cjt.exe.case_query(test_table, '+', 'prediction', str(self.constant_),
-                                       self.model_def, [target])
+        view = self.cjt.exe.case_query(
+            test_table, "+", "prediction", str(self.constant_), self.model_def, [target]
+        )
 
-        predict_agg = {'RMSE': 
-            (f'SQRT(AVG(POW({target} - prediction, 2)))',
-             Aggregator.IDENTITY)}
-        prediction_query_data = SPJAData(aggregate_expressions=predict_agg,
-                                            from_tables=[view])
+        predict_agg = {
+            "RMSE": (f"SQRT(AVG(POW({target} - prediction, 2)))", Aggregator.IDENTITY)
+        }
+        prediction_query_data = SPJAData(
+            aggregate_expressions=predict_agg, from_tables=[view]
+        )
 
-        predict = self.cjt.exe.execute_spja_query(prediction_query_data, mode='nested_query')
+        predict = self.cjt.exe.execute_spja_query(
+            prediction_query_data, mode=ExecuteMode.NESTED_QUERY
+        )
         rmse_query_data = SPJAData(from_tables=[predict])
-        return self.cjt.exe.execute_spja_query(rmse_query_data, mode='execute')[0]
-    
-    # input_mode = 1 takes the full join's table name as input
-    # input_mode = 2 takes the join graph as input (assume fact table)
-    # TODO: DELETE input_mode = 3 takes the fact table's name as input (and automatically join it
-    # with dimensional tables used in training => user provided join graph)
-    # TODO: support different outputs
-    # input_mode = 3 takes the fact table's name as input (and automatically join it
-    # with dimensional tables used in training)
-    # TODO support different outputs
-    # output_mode = 1 returns a numpy array
-    # output_mode = 2 stores the prediction in a table and returns table name
-    def predict(self, data: Union[str, JoinGraph], 
-                input_mode: int = 1,
-                output_mode: int = 1,):
-        
-        if input_mode == 1:
-            assert(isinstance(data, str))
-            view = self.cjt.exe.case_query(data, '+', 'prediction',
-                                           str(self.constant_), self.model_def,
-                                           [self.cjt.target_var])
+        return self.cjt.exe.execute_spja_query(
+            rmse_query_data, mode=ExecuteMode.EXECUTE
+        )[0]
 
-        elif input_mode == 2:
-            assert(isinstance(data, JoinGraph))
-            # TODO
-            pass
+    # input_mode = "FULL_JOIN_JG" takes the join graph as input, with the full join specified by JG._target_relation
+    # input_mode = "FULL_JOIN_DF" takes the dataframe of full join's table name as input
+    # input_mode = "JOIN_GRAPH" takes the join graph as input (assume the same schema as training data)
+    # output_mode = "NUMPY" returns a numpy array
+    # output_mode = "WRITE_TO_TABLE" stores the prediction in a table and returns table name
+    def predict(
+        self,
+        joingraph: JoinGraph,
+        input_mode: str = "FULL_JOIN_JG",
+        output_mode: str = "NUMPY",
+    ):
+        input_modes = ["FULL_JOIN_JG", "FULL_JOIN_DF", "JOIN_GRAPH"]
+        output_modes = ["NUMPY", "WRITE_TO_TABLE"]
+        if input_mode not in input_modes:
+            raise Exception("Unsupported input_mode")
+        if output_mode not in output_modes:
+            raise Exception("Unsupported output_mode")
 
-        elif input_mode == 3:
-            assert(isinstance(data, str))
-            view = self.cjt.exe.case_query(self._full_join_sql, '+', 'prediction', 
-                                           str(self.constant_), self.model_def,
-                                           [self.cjt.target_var],
-                                           order_by=f'{data}.rowid')
+        if input_mode == "FULL_JOIN_JG":
+            # TODO: one concern of full join is that, there would be ambiguity for features with the same name but from table
+            # E.g., R(A,B), S(A,B). They join on A, and B is a feature name shared by both.
+            # The full will have ambiguous naming, and may be renamed to (A, R.B, S.B)
+            # To avoid this, requires a rename mapping from users. By default, we consider renaming mapping which prefixes the feature with relation name.
+            view = joingraph.exe.case_query(
+                joingraph.target_relation,
+                "+",
+                "prediction",
+                str(self.constant_),
+                self.model_def,
+                [self.cjt.target_var],
+            )
+        if input_mode == "JOIN_GRAPH":
+            # TODO: reapply all the preprocessing steps
+            self._update_fact_table_column_name(jg=joingraph, check_rowid_col=True)
 
-        preds = self.cjt.exe._execute_query(f"select prediction from {view};")
-        return np.array(preds)[:, 0]
+            full_join = joingraph.get_full_join_sql()
+            # the reason why we order by rowid is because of the set semantics of the relational models
+            # e.g., for duckdb, join result has its row order shuffled, making it hard to decide the corresponding prediction
+            # we therefore sort by rowid to enforce the correct ordering
+            view = joingraph.exe.case_query(
+                full_join,
+                "+",
+                "prediction",
+                str(self.constant_),
+                self.model_def,
+                [self.cjt.target_var],
+                order_by=f"{joingraph.target_relation}.rowid",
+            )
+            self._update_fact_table_column_name(jg=joingraph, resume_rowid_col=True)
 
+        if output_mode == "NUMPY":
+            preds = joingraph.exe._execute_query(f"select prediction from {view};")
+            return np.array(preds)[:, 0]
+        elif output_mode == "WRITE_TO_TABLE":
+            return view
 
+    def _update_fact_table_column_name(
+        self, jg, check_rowid_col=False, resume_rowid_col=False
+    ):
+        """Rename/resume fact table's rowid column(if exists)."""
 
+        if jg.check_target_relation_contains_rowid_col():
+            if check_rowid_col:
+                old_name, new_name = "rowid", jg.target_rowid_colname
 
+            if resume_rowid_col:
+                old_name, new_name = jg.target_rowid_colname, "rowid"
+
+            sql = f"ALTER TABLE {jg.target_relation} RENAME COLUMN {old_name} TO {new_name};"
+            self.cjt.exe._execute_query(sql)
 
     def _clean_messages(self):
         for cjt in self.nodes.values():
@@ -215,7 +250,9 @@ class DecisionTree(DummyModel):
             spja_data = SPJAData(
                 aggregate_expressions=agg_exp, from_tables=[absoprtion_view]
             )
-            obj_view = self.cjt.exe.execute_spja_query(spja_data, mode="nested_query")
+            obj_view = self.cjt.exe.execute_spja_query(
+                spja_data, mode=ExecuteMode.NESTED_QUERY
+            )
             view_ord_by_obj = self.cjt.exe.window_query(
                 obj_view, [attr], "object", [g_col, h_col]
             )
@@ -224,40 +261,58 @@ class DecisionTree(DummyModel):
                 from_tables=[view_ord_by_obj],
                 select_conds=[f"{g_col}/{h_col} <=" + str(obj)],
             )
-            attr_view = self.cjt.exe.execute_spja_query(attr_spja_data, mode="nested_query")
+            attr_view = self.cjt.exe.execute_spja_query(
+                attr_spja_data, mode=ExecuteMode.NESTED_QUERY
+            )
             attrs = [
                 str(x[0])
                 for x in self.cjt.exe.execute_spja_query(
-                    SPJAData(from_tables=[attr_view]), mode='execute'
+                    SPJAData(from_tables=[attr_view]), mode=ExecuteMode.EXECUTE
                 )
             ]
-            agg_exp = {attr: (attr, Aggregator.IDENTITY),
-                       'object': ((g_col, h_col), Aggregator.DIV),
-                       g_col: (g_col, Aggregator.IDENTITY),
-                       h_col: (h_col, Aggregator.IDENTITY)}
-            obj_spja_data = SPJAData(aggregate_expressions=agg_exp, from_tables=[absoprtion_view])
-            obj_view = self.cjt.exe.execute_spja_query(obj_spja_data, mode='nested_query')
-            view_ord_by_obj = self.cjt.exe.window_query(obj_view, [attr], 'object', [g_col, h_col])
-            attr_view_data = SPJAData(aggregate_expressions={attr: (attr, Aggregator.IDENTITY)},
-                                        from_tables=[view_ord_by_obj],
-                                        select_conds=[f'{g_col}/{h_col} <=' + str(obj)])
-            attr_view = self.cjt.exe.execute_spja_query(attr_view_data, mode='nested_query')
+            agg_exp = {
+                attr: (attr, Aggregator.IDENTITY),
+                "object": ((g_col, h_col), Aggregator.DIV),
+                g_col: (g_col, Aggregator.IDENTITY),
+                h_col: (h_col, Aggregator.IDENTITY),
+            }
+            obj_spja_data = SPJAData(
+                aggregate_expressions=agg_exp, from_tables=[absoprtion_view]
+            )
+            obj_view = self.cjt.exe.execute_spja_query(
+                obj_spja_data, mode=ExecuteMode.NESTED_QUERY
+            )
+            view_ord_by_obj = self.cjt.exe.window_query(
+                obj_view, [attr], "object", [g_col, h_col]
+            )
+            attr_view_data = SPJAData(
+                aggregate_expressions={attr: (attr, Aggregator.IDENTITY)},
+                from_tables=[view_ord_by_obj],
+                select_conds=[f"{g_col}/{h_col} <=" + str(obj)],
+            )
+            attr_view = self.cjt.exe.execute_spja_query(
+                attr_view_data, mode=ExecuteMode.NESTED_QUERY
+            )
 
-            attrs = [str(x[0]) for x in self.cjt.exe.execute_spja_query(
-                SPJAData(from_tables=[attr_view]), mode='execute')]
+            attrs = [
+                str(x[0])
+                for x in self.cjt.exe.execute_spja_query(
+                    SPJAData(from_tables=[attr_view]), mode=ExecuteMode.EXECUTE
+                )
+            ]
             l_annotation = (attr, Annotation.IN, attrs)
             r_annotation = (attr, Annotation.NOT_IN, attrs)
         elif cur_value == "NULL":
             l_annotation = (attr, Annotation.NULL, Annotation.NULL)
             r_annotation = (attr, Annotation.NOT_NULL, Annotation.NOT_NULL)
-        elif attr_type == 'NUM':
+        elif attr_type == "NUM":
             l_annotation = (attr, Annotation.NOT_GREATER, cur_value)
             r_annotation = (attr, Annotation.GREATER, cur_value)
-        elif attr_type == 'CAT':
+        elif attr_type == "CAT":
             l_annotation = (attr, Annotation.NOT_DISTINCT, cur_value)
             r_annotation = (attr, Annotation.DISTINCT, cur_value)
         else:
-            raise Exception('Unsupported Split')
+            raise Exception("Unsupported Split")
         return l_annotation, r_annotation
 
     # get best split of current cjt
@@ -295,7 +350,9 @@ class DecisionTree(DummyModel):
                         from_tables=[absoprtion_view],
                         window_by=[attr],
                     )
-                    view_to_max = self.cjt.exe.execute_spja_query(spja_data, mode="nested_query")
+                    view_to_max = self.cjt.exe.execute_spja_query(
+                        spja_data, mode=ExecuteMode.NESTED_QUERY
+                    )
 
                 elif attr_type == "LCAT":
                     # TODO: further optimization. We don't need to keep the attr.
@@ -309,7 +366,9 @@ class DecisionTree(DummyModel):
                     spja_data = SPJAData(
                         aggregate_expressions=agg_exp, from_tables=[absoprtion_view]
                     )
-                    obj_view = self.cjt.exe.execute_spja_query(spja_data, mode="nested_query")
+                    obj_view = self.cjt.exe.execute_spja_query(
+                        spja_data, mode=ExecuteMode.NESTED_QUERY
+                    )
                     agg_exp = cur_semi_ring.col_sum((g_col, h_col))
                     agg_exp[attr] = (attr, Aggregator.IDENTITY)
                     agg_exp["object"] = ("object", Aggregator.IDENTITY)
@@ -318,32 +377,50 @@ class DecisionTree(DummyModel):
                         from_tables=[obj_view],
                         window_by=["object"],
                     )
-                    view_to_max = self.cjt.exe.execute_spja_query(spja_data, mode="nested_query")
+                    view_to_max = self.cjt.exe.execute_spja_query(
+                        spja_data, mode=ExecuteMode.NESTED_QUERY
+                    )
                 elif attr_type == "CAT":
                     view_to_max = absoprtion_view
-
 
                 # check if executor is of type PandasExecutor or DuckdbExecutor
                 # TODO: move this logic somewhere else
                 if isinstance(self.cjt.exe, PandasExecutor):
-                    func = lambda row:  (row[f'{g_col}']/row[f'{h_col}'])*row[f'{g_col}'] + ((g-row['s'])/(h-row['c']))*(g-row['s']) if h > row['c'] else 0
+                    func = (
+                        lambda row: (row[f"{g_col}"] / row[f"{h_col}"])
+                        * row[f"{g_col}"]
+                        + ((g - row["s"]) / (h - row["c"])) * (g - row["s"])
+                        if h > row["c"]
+                        else 0
+                    )
                 else:
-                    func = 'CASE WHEN ' + str(h) + f' > {h_col} THEN (({g_col}/{h_col})*{g_col} + (' + str(g) + f'-{g_col})/(' + str(h) + f'-{h_col})*(' + str(g) + f'-{g_col})) ELSE 0 END'
+                    func = (
+                        "CASE WHEN "
+                        + str(h)
+                        + f" > {h_col} THEN (({g_col}/{h_col})*{g_col} + ("
+                        + str(g)
+                        + f"-{g_col})/("
+                        + str(h)
+                        + f"-{h_col})*("
+                        + str(g)
+                        + f"-{g_col})) ELSE 0 END"
+                    )
 
                 l2_agg_exp = {
                     attr: (attr, Aggregator.IDENTITY),
-                    'criteria': (func, Aggregator.IDENTITY_LAMBDA),
-                    
+                    "criteria": (func, Aggregator.IDENTITY_LAMBDA),
                     g_col: (g_col, Aggregator.IDENTITY),
                     h_col: (h_col, Aggregator.IDENTITY),
                 }
                 spja_data = SPJAData(
                     aggregate_expressions=l2_agg_exp,
                     from_tables=[view_to_max],
-                    order_by=[('criteria', 'DESC')],
+                    order_by=[("criteria", "DESC")],
                     limit=1,
                 )
-                results = self.cjt.exe.execute_spja_query(spja_data, mode='execute')
+                results = self.cjt.exe.execute_spja_query(
+                    spja_data, mode=ExecuteMode.EXECUTE
+                )
                 if not results:
                     continue
                 cur_value, cur_criteria, left_g, left_h = results[0]
@@ -444,7 +521,6 @@ class DecisionTree(DummyModel):
         self.leaf_nodes = [self.nodes[ele[-1]] for ele in self.split_candidates.queue]
 
 
-        
 class GradientBoosting(DecisionTree):
     # TODO: add some checks. E.g., paramters have to be positive
     def __init__(
@@ -498,5 +574,3 @@ class RandomForest(DecisionTree):
 
         for _ in range(self.iteration):
             super().fit(jg)
-            
-            
