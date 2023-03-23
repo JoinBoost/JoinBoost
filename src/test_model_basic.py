@@ -89,7 +89,7 @@ class TestModel(unittest.TestCase):
             "f1",
         ]
 
-        exe = DuckdbExecutor(con, debug=True)
+        exe = DuckdbExecutor(con, debug=False)
 
         dataset = JoinGraph(exe=exe)
         dataset.add_relation("sales", [], y="Y")
@@ -186,7 +186,9 @@ class TestModel(unittest.TestCase):
         )
 
         reg.fit(dataset)
-        reg_prediction = reg.predict(data="train", input_mode=1)
+        
+        dataset.set_target_relation("train")
+        reg_prediction = reg.predict(joingraph=dataset, input_mode="FULL_JOIN_JG")
 
         data = pd.read_csv("../data/favorita/train_small.csv")
         clf = GradientBoostingRegressor(
@@ -210,7 +212,7 @@ class TestModel(unittest.TestCase):
         x = ["A", "B", "D", "E", "F"]
         y = "H"
 
-        exe = DuckdbExecutor(con, debug=True)
+        exe = DuckdbExecutor(con, debug=False)
 
         dataset = JoinGraph(exe=exe)
         dataset.add_relation("R", ["B", "D"], y="H")

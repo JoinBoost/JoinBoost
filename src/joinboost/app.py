@@ -1,5 +1,7 @@
 import math
 from abc import ABC
+
+from .preprocessor import Preprocessor, RenameStep
 from .executor import SPJAData, PandasExecutor, ExecuteMode
 from .joingraph import JoinGraph
 from .semiring import *
@@ -60,13 +62,16 @@ class DecisionTree(DummyModel):
         self.max_depth = max_depth
         self.subsample = subsample
         self.debug = debug
+        self.preprocessor = Preprocessor()
 
     def fit(self, jg: JoinGraph):
         # Create views for tables having conflicting column names with reserved words.
-        self.semi_ring.init_columns_name(jg)
-
-        # # store full join sql
-        # self._full_join_sql = jg.get_full_join_sql()
+        g, h = self.semi_ring.get_columns_name()
+        
+        self.preprocessor.add_step(RenameStep(reserved_words=[g, h, "rowid"]))
+        
+        self.preprocessor.run_preprocessing(jg)
+        jg = self.preprocessor.get_join_graph()
 
         # shall we first sample then fit dummy model, or first fit dummy model then sample?
         # the current solution is to first sample than fit dummy model
@@ -129,12 +134,8 @@ class DecisionTree(DummyModel):
             self.model_def.append(cur_model_def)
 
     def compute_rmse(self, test_table: str):
-        if self.cjt.is_target_relation_a_view():
-            target = self.cjt.get_view2table()[self.cjt.target_relation]["cols"][
-                self.cjt.target_var
-            ]
-        else:
-            target = self.cjt.target_var
+        target = self.preprocessor.get_original_target_name()
+
         # TODO: refactor
         view = self.cjt.exe.case_query(
             test_table, "+", "prediction", str(self.constant_), self.model_def, [target]
@@ -152,54 +153,75 @@ class DecisionTree(DummyModel):
         )
         rmse_query_data = SPJAData(from_tables=[predict])
         return self.cjt.exe.execute_spja_query(rmse_query_data, mode=ExecuteMode.EXECUTE)[0]
-
-    # input_mode = 1 takes the full join's table name as input
-    # input_mode = 2 takes the join graph as input (assume fact table)
-    # TODO: DELETE input_mode = 3 takes the fact table's name as input (and automatically join it
-    # with dimensional tables used in training => user provided join graph)
-    # TODO: support different outputs
-    # input_mode = 3 takes the fact table's name as input (and automatically join it
-    # with dimensional tables used in training)
-    # TODO support different outputs
-    # output_mode = 1 returns a numpy array
-    # output_mode = 2 stores the prediction in a table and returns table name
+    
+    # input_mode = "FULL_JOIN_JG" takes the join graph as input, with the full join specified by JG._target_relation
+    # input_mode = "FULL_JOIN_DF" takes the dataframe of full join's table name as input
+    # input_mode = "JOIN_GRAPH" takes the join graph as input (assume the same schema as training data)
+    # output_mode = "NUMPY" returns a numpy array
+    # output_mode = "WRITE_TO_TABLE" stores the prediction in a table and returns table name
     def predict(
         self,
-        data: Union[str, JoinGraph],
-        input_mode: int = 1,
-        output_mode: int = 1,
-    ):
+        joingraph: JoinGraph,
+        input_mode: str = "FULL_JOIN_JG",
+        output_mode: str = "NUMPY",
+    ):  
+        input_modes = ["FULL_JOIN_JG","FULL_JOIN_DF", "JOIN_GRAPH"]
+        output_modes = ["NUMPY","WRITE_TO_TABLE"]
+        if input_mode not in input_modes:
+            raise Exception("Unsupported input_mode")
+        if output_mode not in output_modes:
+            raise Exception("Unsupported output_mode")
 
-        if input_mode == 1:
-            assert isinstance(data, str)
-            view = self.cjt.exe.case_query(
-                data,
+        if input_mode == "FULL_JOIN_JG":
+            # TODO: one concern of full join is that, there would be ambiguity for features with the same name but from table
+            # E.g., R(A,B), S(A,B). They join on A, and B is a feature name shared by both. 
+            # The full will have ambiguous naming, and may be renamed to (A, R.B, S.B)
+            # To avoid this, requires a rename mapping from users. By default, we consider renaming mapping which prefixes the feature with relation name.
+            view = joingraph.exe.case_query(
+                joingraph.target_relation,
                 "+",
                 "prediction",
                 str(self.constant_),
                 self.model_def,
                 [self.cjt.target_var],
             )
-
-        elif input_mode == 2:
-            assert isinstance(data, JoinGraph)
-            # TODO
-            pass
-
-        elif input_mode == 3:
-            assert isinstance(data, str)
-            view = self.cjt.exe.case_query(
-                self._full_join_sql,
+        if input_mode == "JOIN_GRAPH":
+            # TODO: reapply all the preprocessing steps
+            self._update_fact_table_column_name(jg=joingraph, check_rowid_col = True)
+            
+            full_join = joingraph.get_full_join_sql()
+            # the reason why we order by rowid is because of the set semantics of the relational models
+            # e.g., for duckdb, join result has its row order shuffled, making it hard to decide the corresponding prediction
+            # we therefore sort by rowid to enforce the correct ordering
+            view = joingraph.exe.case_query(
+                full_join,
                 "+",
                 "prediction",
                 str(self.constant_),
                 self.model_def,
                 [self.cjt.target_var],
-                order_by=f"{data}.rowid",
+                order_by=f"{joingraph.target_relation}.rowid",
             )
+            self._update_fact_table_column_name(jg=joingraph, resume_rowid_col = True)
 
-        preds = self.cjt.exe._execute_query(f"select prediction from {view};")
-        return np.array(preds)[:, 0]
+        if output_mode == "NUMPY":
+            preds = joingraph.exe._execute_query(f"select prediction from {view};")
+            return np.array(preds)[:, 0]
+        elif output_mode == "WRITE_TO_TABLE":
+            return view
+        
+    def _update_fact_table_column_name(self, jg, check_rowid_col=False, resume_rowid_col=False):
+        """Rename/resume fact table's rowid column(if exists)."""
+
+        if jg.check_target_relation_contains_rowid_col():
+            if check_rowid_col:
+                old_name, new_name = "rowid", jg.target_rowid_colname
+
+            if resume_rowid_col:
+                old_name, new_name = jg.target_rowid_colname, "rowid"
+
+            sql = f"ALTER TABLE {jg.target_relation} RENAME COLUMN {old_name} TO {new_name};"
+            self.cjt.exe._execute_query(sql)
 
     def _clean_messages(self):
         for cjt in self.nodes.values():
