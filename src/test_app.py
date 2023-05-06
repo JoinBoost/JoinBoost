@@ -1,11 +1,8 @@
 import unittest
 import math
-import time
 import pandas as pd
 import numpy as np
 import duckdb
-import lightgbm
-from sklearn.tree import DecisionTreeRegressor
 from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.metrics import mean_squared_error
 from joinboost.executor import DuckdbExecutor
