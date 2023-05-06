@@ -160,8 +160,10 @@ class JoinGraph:
 
         X = X if X else []
         categorical_feature = categorical_feature if categorical_feature else []
-
-        self.exe.add_table(relation, relation_address)
+        
+        if relation_address is not None:
+            self.exe.add_table(relation, relation_address)
+            
         self.joins[relation] = dict()
         if relation not in self.relation_schema:
             self.relation_schema[relation] = {}
