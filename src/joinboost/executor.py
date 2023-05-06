@@ -7,7 +7,7 @@ from typing import Optional, Any, List
 
 import pandas as pd
 
-from aggregator import *
+from .aggregator import *
 
 ExecuteMode = Enum(
     "ExecuteMode", ["WRITE_TO_TABLE", "CREATE_VIEW", "EXECUTE", "NESTED_QUERY"]
