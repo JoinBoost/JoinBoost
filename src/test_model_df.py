@@ -74,7 +74,7 @@ class TestExecutor(unittest.TestCase):
             "f1",
         ]
 
-        exe = PandasExecutor(con, debug=True)
+        exe = PandasExecutor(con, debug=False)
 
         dataset = JoinGraph(exe=exe)
         dataset.add_relation(

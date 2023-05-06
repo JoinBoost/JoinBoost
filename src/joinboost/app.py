@@ -424,6 +424,7 @@ class DecisionTree(DummyModel):
                 if not results:
                     continue
                 cur_value, cur_criteria, left_g, left_h = results[0]
+                # print((cur_value, cur_criteria, left_g, left_h))
                 if cur_criteria > best_criteria:
                     best_criteria = cur_criteria
                     # relation name, split attribute, split value, left gradient, left hessian
@@ -485,6 +486,7 @@ class DecisionTree(DummyModel):
             l_semi_ring = expanding_cjt.semi_ring.copy()
             l_semi_ring.set_semi_ring(left_g, left_h)
 
+
             l_semi_ring, r_semi_ring = self.split_semi_ring(
                 expanding_cjt.get_semi_ring(), l_semi_ring
             )
@@ -516,6 +518,8 @@ class DecisionTree(DummyModel):
             r_cjt.downward_message_passing(r_name)
 
             self._get_best_split(l_id, cur_level + 1)
+            # print('level, right g, h')
+            # print((cur_level, r_cjt.semi_ring.pair[0], r_cjt.semi_ring.pair[1]))
             self._get_best_split(r_id, cur_level + 1)
 
         self.leaf_nodes = [self.nodes[ele[-1]] for ele in self.split_candidates.queue]

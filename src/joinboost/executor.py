@@ -7,8 +7,7 @@ from typing import Optional, Any, List
 
 import pandas as pd
 
-from joinboost import aggregator
-
+from .aggregator import *
 
 ExecuteMode = Enum(
     "ExecuteMode", ["WRITE_TO_TABLE", "CREATE_VIEW", "EXECUTE", "NESTED_QUERY"]
@@ -51,7 +50,7 @@ class SPJAData:
     """
 
     aggregate_expressions: dict = field(
-        default_factory=lambda: {None: ("*", aggregator.Aggregator.IDENTITY)}
+        default_factory=lambda: {None: ("*", Aggregator.IDENTITY)}
     )
     from_tables: List[str] = field(default_factory=list)
     select_conds: List[str] = field(default_factory=list)
@@ -283,6 +282,9 @@ class Executor(ABC):
                 f"mode parameter {mode} must be an instance of ExecuteMode."
             )
 
+    def set_query(self, param, set_left, set_right):
+        pass
+
 
 class DuckdbExecutor(Executor):
     """
@@ -342,6 +344,15 @@ class DuckdbExecutor(Executor):
         self._execute_query(sql)
         return view_name
 
+    def add_table(self, table: str, table_address):
+        if table_address is None:
+            raise ExecutorException("Please pass in the csv file location")
+        self.conn.execute(f"CREATE TABLE IF NOT EXISTS {table} AS SELECT * FROM '{table_address}'")
+
+    def set_query(self, operation, expr1, expr2):
+        return f'({expr1} {operation} {expr2})'
+
+
     # {case: value} operator {case: value} ...
     def case_query(
         self,
@@ -354,6 +365,20 @@ class DuckdbExecutor(Executor):
         table_name: str = None,
         order_by: str = None,
     ):
+        """
+        Executes a SQL query with a CASE statement to perform tree-model prediction.
+        Each CASE represents a tree and each WHEN within a CASE represents a leaf.
+
+        :param from_table: str, name of the source table
+        :param operator: str, the operator used to combine predictions
+        :param cond_attr: str, name of the column used in the conditions of the case statement
+        :param base_val: int, base value for the entire tree-model
+        :param case_definitions: list, a list of lists containing the (leaf prediction, leaf predicates) for each tree.
+        :param select_attrs: list, list of attributes to be selected, defaults to empty
+        :param table_name: str, name of the new table, defaults to None
+        :param order_by: str, name of the table to be ordered by rowid, defaults to None
+        :return: str, name of the new table
+        """
 
         # If no select attributes are provided, retrieve all columns
         # except the one used in the conditions of the case statement
@@ -438,9 +463,6 @@ class DuckdbExecutor(Executor):
 
         if not table.startswith(self.prefix):
             raise Exception("Don't modify user tables!")
-
-    def add_table(self, table: str, table_address: str) -> None:
-        ...
 
     def update_query(self, update_expression, table, select_conds: list = []):
         """
@@ -642,7 +664,7 @@ class DuckdbExecutor(Executor):
         return result
 
     def _parse_aggregate_expression(
-        self, target_col: str, para, agg: aggregator.Aggregator, window_by: list = None
+        self, target_col: str, para, agg: Aggregator, window_by: list = None
     ):
         """
         Parameters
@@ -663,11 +685,11 @@ class DuckdbExecutor(Executor):
         """
 
         window_clause = (
-            " OVER joinboost_window " if window_by and aggregator.is_agg(agg) else ""
+            " OVER joinboost_window " if window_by and is_agg(agg) else ""
         )
         rename_expr = " AS " + target_col if target_col is not None else ""
         parsed_expression = (
-            aggregator.parse_agg(agg, para) + window_clause + rename_expr
+            parse_agg(agg, para) + window_clause + rename_expr
         )
 
         return parsed_expression
@@ -680,8 +702,6 @@ class PandasExecutor(DuckdbExecutor):
     def __init__(self, conn, debug=False):
         super().__init__(conn)
         self.debug = debug
-        self.prefix = "joinboost_"
-        self.table_counter = 0
 
     def add_table(self, table: str, table_address):
         if table_address is None:
@@ -699,6 +719,27 @@ class PandasExecutor(DuckdbExecutor):
         if table in self.table_registry:
             del self.table_registry[table]
 
+    # set operations in pandas
+    def set_query(self, operation, df1_name, df2_name):
+        df1 = self.table_registry[df1_name]
+        df2 = self.table_registry[df2_name]
+        # unqualify the column names in both dataframes
+        df1.columns = [col.split('.')[-1] for col in df1.columns]
+        df2.columns = [col.split('.')[-1] for col in df2.columns]
+
+        if operation == 'UNION':
+            df1 = df1.concat(df2, ignore_index=True)
+        elif operation == 'INTERSECT':
+            df1 = df1.merge(df2, how='inner')
+        elif operation == 'EXCEPT':
+            df1 = df1.merge(df2, how='left', indicator=True).query('_merge=="left_only"')\
+                .drop('_merge', axis=1)
+        else:
+            raise ExecutorException("Unsupported set operation!")
+        self.table_registry[df1_name] = df1
+        return df1_name
+
+
     def get_schema(self, table):
         # unqualify the column names, this is required as duckdb returns unqualified column names
         return [col.split(".")[-1] for col in self.table_registry[table].columns]
@@ -714,6 +755,13 @@ class PandasExecutor(DuckdbExecutor):
         self._check_mode(mode)
 
         intermediates = {}
+
+        for i, table in enumerate(spja_data.from_tables):
+            # if table name is surrounded by parentheses, remove them
+            # this is required for compatibility in nested queries across duckdb and pandas
+            if table.startswith('(') and table.endswith(')'):
+                spja_data.from_tables[i] = table[1:-1]
+
         for table in spja_data.from_tables:
             intermediates[table] = self.table_registry[table]
 
@@ -758,17 +806,9 @@ class PandasExecutor(DuckdbExecutor):
             agg_conditions, df, spja_data.group_by, spja_data.window_by
         )
 
-        should_drop_columns = True
-        for keys, values in spja_data.aggregate_expressions.items():
-            if values[1] == Aggregator.IDENTITY and values[0] == "*":
-                should_drop_columns = False
-
-        if should_drop_columns:
-            # drop columns that don't appear in aggregate_expressions
-            final_cols = [
-                col for col in spja_data.aggregate_expressions.keys() if col is not None
-            ]
-            df = df[final_cols]
+        # drop columns that don't appear in aggregate_expressions
+        final_cols = [col for col in spja_data.aggregate_expressions.keys() if col is not None]
+        df = df[final_cols]
 
         # sort by each column in order_by
         if len(spja_data.order_by) > 0:
@@ -835,7 +875,17 @@ class PandasExecutor(DuckdbExecutor):
                     unqualified_cols = [col.split(".")[-1] for col in df.columns]
                     if col not in df.columns and col not in unqualified_cols:
                         df[col] = 1
-                df = inter_df.agg(**agg_conditions).reset_index()
+
+                for col in list(agg_conditions.keys()):
+                    if agg_conditions[col].column == '*':
+                        func = agg_conditions[col].aggfunc
+                        df[col] = df.apply(func, axis=1)
+                        del agg_conditions[col]
+                    elif agg_conditions[col].aggfunc == 'first' and (col == agg_conditions[col].column or col == agg_conditions[col].column.split('.')[-1]):
+                        del agg_conditions[col]
+
+                if len(agg_conditions) > 0:
+                    df = inter_df.agg(**agg_conditions).reset_index()
                 # unqualify all columns in df. This is to avoid nested columns being qualified with the table name
                 for col in df.columns:
                     df = df.rename(columns={col: col.split(".")[-1]})
@@ -844,9 +894,9 @@ class PandasExecutor(DuckdbExecutor):
                 if len(window_by) > 0:
                     # apply cumulative sum on window_by columns in pandas dataframe
                     df = df.sort_values(window_by)
-                    # TODO: remove hack, propogate g_col and h_col instead of hardcoding
-                    df["s"] = df["s"].cumsum()
-                    df["c"] = df["c"].cumsum()
+                    # TODO: remove hack, propagate g_col and h_col instead of hardcoding
+                    df['s'] = df['s'].cumsum()
+                    df['c'] = df['c'].cumsum()
                 else:
                     # check if column does not exist and create it before applying agg_conditions (for s anc c)
                     for col in agg_conditions.keys():
@@ -859,16 +909,15 @@ class PandasExecutor(DuckdbExecutor):
                             func = agg_conditions[col].aggfunc
                             df[col] = df.apply(func, axis=1)
                             del agg_conditions[col]
+                        elif agg_conditions[col].aggfunc == 'first' and col == agg_conditions[col].column:
+                            del agg_conditions[col]
+
                     if len(agg_conditions) > 0:
-                        df = (
-                            df.assign(temp=0)
-                            .groupby("temp")
-                            .agg(**agg_conditions)
-                            .reset_index()
-                            .drop(columns="temp")
-                        )
+                        df = df.assign(temp=0).groupby('temp').agg(**agg_conditions)\
+                            .reset_index().drop(columns='temp')
                     for col in df.columns:
-                        df = df.rename(columns={col: col.split(".")[-1]})
+                        df = df.rename(columns={col: col.split('.')[-1]})
+
         return df
 
     # computes join or cross (if no join condition) between all tables.
@@ -904,7 +953,6 @@ class PandasExecutor(DuckdbExecutor):
         )
 
         for table in tables_to_join:
-
             if df is None:
                 df = intermediates[table]
                 if df is not None:
@@ -1066,25 +1114,25 @@ class PandasExecutor(DuckdbExecutor):
                 target_col = para
 
             # use named aggregation and column renaming with dictionary
-            if agg == Aggregator.COUNT:
+            if agg.value == Aggregator.COUNT.value:
                 agg_conditions[target_col] = pd.NamedAgg(column=para, aggfunc="count")
-            elif agg == Aggregator.SUM:
+            elif agg.value == Aggregator.SUM.value:
                 # check if column is a number in string form, in that case use target_col as the column name
                 if str(para).isnumeric():
                     para = target_col
                 agg_conditions[target_col] = pd.NamedAgg(column=para, aggfunc="sum")
-            elif agg == Aggregator.MAX:
+            elif agg.value == Aggregator.MAX.value:
                 agg_conditions[target_col] = pd.NamedAgg(column=para, aggfunc="max")
-            elif agg == Aggregator.MIN:
+            elif agg.value == Aggregator.MIN.value:
                 agg_conditions[target_col] = pd.NamedAgg(column=para, aggfunc="min")
-            elif agg == Aggregator.IDENTITY:
-                if para == "1":
-                    agg_conditions[target_col] = pd.NamedAgg(
-                        column="*", aggfunc=lambda x: 1
-                    )
+            elif agg.value == Aggregator.IDENTITY.value:
+                if para == '1':
+                    agg_conditions[target_col] = pd.NamedAgg(column='*', aggfunc=lambda x: 1)
+                elif para != '*':
+                    agg_conditions[target_col] = pd.NamedAgg(column=para, aggfunc='first')
                 else:
                     pass
-            elif agg == Aggregator.IDENTITY_LAMBDA:
+            elif agg.value == Aggregator.IDENTITY_LAMBDA.value:
                 agg_conditions[target_col] = pd.NamedAgg(column="*", aggfunc=para)
 
             else:

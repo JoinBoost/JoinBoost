@@ -4,7 +4,7 @@ from .aggregator import Aggregator
 import copy
 import time
 
-from .executor import ExecutorFactory
+from .executor import ExecutorFactory, SPJAData, ExecuteMode
 import pkgutil
 
 
@@ -26,12 +26,14 @@ class JoinGraph:
 
         self.exe = ExecutorFactory(exe)
 
-        # maps each from_relation => to_relation => {keys: (from_keys, to_keys)}
-        self._joins = copy.deepcopy(joins)
-        # maps each relation => feature => feature_type
-        self._relation_schema = copy.deepcopy(relation_schema)
-        self._target_var = target_var
-        self._target_relation = target_relation
+        # maps each from_relation => to_relation => {keys: (from_keys, to_keys), message_type: "", message: name,
+        # multiplicity: x, missing_keys: x ...}
+        self.joins = copy.deepcopy(joins)
+        # maps each relation => {feature: feature_type}
+        self.relation_schema = copy.deepcopy(relation_schema)
+        
+        self.target_var = target_var
+        self.target_relation = target_relation
         # some magic/random number used for jupyter notebook display
         self.session_id = int(time.time())
         self.rep_template = data = pkgutil.get_data(__name__, "d3graph.html").decode(
@@ -240,12 +242,107 @@ class JoinGraph:
         left_keys = [attr for attr in left_keys]
         right_keys = [attr for attr in right_keys]
 
-        self.joins[table_name_left][table_name_right] = {
-            "keys": (left_keys, right_keys)
-        }
-        self.joins[table_name_right][table_name_left] = {
-            "keys": (right_keys, left_keys)
-        }
+        self.joins[table_name_left][table_name_right] = {"keys": (left_keys, right_keys)}
+        self.joins[table_name_right][table_name_left] = {"keys": (right_keys, left_keys)}
+        
+        self.determine_multiplicity_and_missing(
+            table_name_left, left_keys, table_name_right, right_keys)
+        
+    def determine_multiplicity_and_missing(self,
+                                           relation_left: str,
+                                           leftKeys: list,
+                                           relation_right: str,
+                                           rightKeys: list):
+
+        num_miss_left, num_miss_right = self.get_num_missing_join_keys(relation_left,
+                                                                       leftKeys,
+                                                                       relation_right,
+                                                                       rightKeys)
+
+        self.joins[relation_right][relation_left]["missing_keys"] = num_miss_left
+        self.joins[relation_left][relation_right]["missing_keys"] = num_miss_right
+
+        self.joins[relation_left][relation_right]["multiplicity"] = \
+            self.get_max_multiplicity(relation_left, leftKeys)
+        self.joins[relation_right][relation_left]["multiplicity"] = \
+            self.get_max_multiplicity(relation_right, rightKeys)
+
+    def get_num_missing_join_keys(self,
+                                  relation_left: str,
+                                  leftKeys: list,
+                                  relation_right: str,
+                                  rightKeys: list):
+        # below two queries get the set of join keys
+        spja_data = SPJAData(
+            aggregate_expressions={"join_key": (",".join(leftKeys), Aggregator.IDENTITY)},
+            from_tables=[relation_left],
+        )
+        set_left = self.exe.execute_spja_query(spja_data, mode=ExecuteMode.NESTED_QUERY)
+        spja_data = SPJAData(
+            aggregate_expressions={"join_key": (",".join(rightKeys), Aggregator.IDENTITY)},
+            from_tables=[relation_right],
+        )
+        set_right = self.exe.execute_spja_query(spja_data, mode=ExecuteMode.NESTED_QUERY)
+
+        # below two queries get the difference of join keys
+        diff_left = self.exe.set_query("EXCEPT", set_left, set_right)
+        diff_right = self.exe.set_query("EXCEPT", set_right, set_left)
+
+        spja_data = SPJAData(
+            aggregate_expressions={'count': ('*',  Aggregator.COUNT)},
+            from_tables=[diff_left]
+        )
+        # get the count of the difference of join keys
+        res = self.exe.execute_spja_query(spja_data, mode=ExecuteMode.EXECUTE)
+
+        if len(res) == 0:
+            num_miss_left = 0
+        else:
+            num_miss_left = res[0][0]
+
+        spja_data = SPJAData(
+            aggregate_expressions={'count': ('*',  Aggregator.COUNT)},
+            from_tables=[diff_right]
+        )
+        res = self.exe.execute_spja_query(spja_data, mode=ExecuteMode.EXECUTE)
+        if len(res) == 0:
+            num_miss_right = 0
+        else:
+            num_miss_right = res[0][0]
+
+        return num_miss_left, num_miss_right
+
+    def get_max_multiplicity(self, table, keys):
+        spja_data = SPJAData(
+            aggregate_expressions={'count': ('*',  Aggregator.COUNT)},
+            from_tables=[table],
+            group_by=keys
+        )
+        multiplicity = self.exe.execute_spja_query(spja_data, mode=ExecuteMode.NESTED_QUERY)
+
+        spja_data = SPJAData(
+            aggregate_expressions={'max_count': ('count', Aggregator.MAX)},
+            from_tables=[
+                '(' + multiplicity + ')'],
+            )
+
+        res = self.exe.execute_spja_query(spja_data, mode=ExecuteMode.EXECUTE)
+        if len(res) == 0:
+            max_multiplicity = 0
+        else:
+            max_multiplicity = res[0][0]
+
+        return max_multiplicity
+
+    def get_multiplicity(self, from_table, to_table, simple=False):
+        if not simple:
+            return self.joins[from_table][to_table]["multiplicity"]
+        else:
+            return "M" if (self.joins[from_table][to_table]["multiplicity"] > 1) else "1"
+
+    def get_missing_keys(self, from_table, to_table):
+        return self.joins[from_table][to_table]["missing_keys"]
+
 
     # Return the sql statement of full join
     def get_full_join_sql(self):
@@ -360,3 +457,18 @@ class JoinGraph:
     #                     r_meta[attr] = 'LCAT'
     #         self.meta_data[table] = r_meta
     #         self.r_attrs[table] = list(r_meta.keys())
+    @joins.setter
+    def joins(self, value):
+        self._joins = value
+
+    @relation_schema.setter
+    def relation_schema(self, value):
+        self._relation_schema = value
+
+    @target_var.setter
+    def target_var(self, value):
+        self._target_var = value
+
+    @target_relation.setter
+    def target_relation(self, value):
+        self._target_relation = value

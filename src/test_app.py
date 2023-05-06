@@ -1,11 +1,8 @@
 import unittest
 import math
-import time
 import pandas as pd
 import numpy as np
 import duckdb
-import lightgbm
-from sklearn.tree import DecisionTreeRegressor
 from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.metrics import mean_squared_error
 from joinboost.executor import DuckdbExecutor
@@ -64,14 +61,14 @@ class TestApp(unittest.TestCase):
         depth = 3
         iteration = 3
         dataset = JoinGraph(exe=exe)
-        dataset.add_relation("sales", [], y="Y")
+        dataset.add_relation("sales", [], y="Y", relation_address="../data/favorita/sales_small.csv")
         dataset.add_relation(
-            "holidays", ["htype", "locale", "locale_name", "transferred", "f2"]
+            "holidays", ["htype", "locale", "locale_name", "transferred", "f2"], relation_address="../data/favorita/holidays.csv"
         )
-        dataset.add_relation("oil", ["dcoilwtico", "f3"])
-        dataset.add_relation("transactions", ["transactions", "f5"])
-        dataset.add_relation("stores", ["city", "state", "stype", "cluster", "f4"])
-        dataset.add_relation("items", ["family", "class", "perishable", "f1"])
+        dataset.add_relation("oil", ["dcoilwtico", "f3"], relation_address="../data/favorita/oil.csv")
+        dataset.add_relation("transactions", ["transactions", "f5"], relation_address="../data/favorita/transactions.csv")
+        dataset.add_relation("stores", ["city", "state", "stype", "cluster", "f4"], relation_address="../data/favorita/stores.csv")
+        dataset.add_relation("items", ["family", "class", "perishable", "f1"], relation_address="../data/favorita/items.csv")
         dataset.add_join("sales", "items", ["item_nbr"], ["item_nbr"])
         dataset.add_join("sales", "transactions", ["tid"], ["tid"])
         dataset.add_join("transactions", "stores", ["store_nbr"], ["store_nbr"])
@@ -117,12 +114,12 @@ class TestApp(unittest.TestCase):
         depth = 3
         iteration = 3
         dataset = JoinGraph(exe=exe)
-        dataset.add_relation("sales", [], y = 'Y')
-        dataset.add_relation("holidays", ["htype", "locale", "locale_name", "transferred","f2"])
-        dataset.add_relation("oil", ["dcoilwtico","f3"])
-        dataset.add_relation("transactions", ["transactions","f5"])
-        dataset.add_relation("stores", ["city","state","stype","cluster","f4"])
-        dataset.add_relation("items", ["family","class","perishable","f1"])
+        dataset.add_relation("sales", [], y = 'Y', relation_address="../data/favorita/sales_small.csv")
+        dataset.add_relation("holidays", ["htype", "locale", "locale_name", "transferred","f2"], relation_address="../data/favorita/holidays.csv")
+        dataset.add_relation("oil", ["dcoilwtico","f3"], relation_address="../data/favorita/oil.csv")
+        dataset.add_relation("transactions", ["transactions","f5"], relation_address="../data/favorita/transactions.csv")
+        dataset.add_relation("stores", ["city","state","stype","cluster","f4"], relation_address="../data/favorita/stores.csv")
+        dataset.add_relation("items", ["family","class","perishable","f1"], relation_address="../data/favorita/items.csv")
         dataset.add_join("sales", "items", ["item_nbr"], ["item_nbr"])
         dataset.add_join("sales", "transactions", ["tid"], ["tid"])
         dataset.add_join("transactions", "stores", ["store_nbr"], ["store_nbr"])
@@ -130,12 +127,12 @@ class TestApp(unittest.TestCase):
         dataset.add_join("holidays", "oil", ["date"], ["date"])
         
         dataset2 = JoinGraph(exe=exe)
-        dataset2.add_relation("sales", [], y = 'Y')
-        dataset2.add_relation("holidays", ["htype", "locale", "locale_name", "transferred","f2"])
-        dataset2.add_relation("oil", ["dcoilwtico","f3"])
-        dataset2.add_relation("transactions", ["transactions","f5"])
-        dataset2.add_relation("stores", ["city","state","stype","cluster","f4"])
-        dataset2.add_relation("items", ["family","class","perishable","f1"])
+        dataset2.add_relation("sales", [], y = 'Y', relation_address="../data/favorita/sales_small.csv")
+        dataset2.add_relation("holidays", ["htype", "locale", "locale_name", "transferred","f2"], relation_address="../data/favorita/holidays.csv")
+        dataset2.add_relation("oil", ["dcoilwtico","f3"], relation_address="../data/favorita/oil.csv")
+        dataset2.add_relation("transactions", ["transactions","f5"], relation_address="../data/favorita/transactions.csv")
+        dataset2.add_relation("stores", ["city","state","stype","cluster","f4"], relation_address="../data/favorita/stores.csv")
+        dataset2.add_relation("items", ["family","class","perishable","f1"], relation_address="../data/favorita/items.csv")
         dataset2.add_join("sales", "items", ["item_nbr"], ["item_nbr"])
         dataset2.add_join("sales", "transactions", ["tid"], ["tid"])
         dataset2.add_join("transactions", "stores", ["store_nbr"], ["store_nbr"])
@@ -176,12 +173,12 @@ class TestApp(unittest.TestCase):
         depth = 3
         iteration = 3
         dataset = JoinGraph(exe=exe)
-        dataset.add_relation("sales", [], y = 'Y')
-        dataset.add_relation("holidays", ["htype", "locale", "locale_name", "transferred","f2"])
-        dataset.add_relation("oil", ["dcoilwtico","f3"])
-        dataset.add_relation("transactions", ["transactions","f5"])
-        dataset.add_relation("stores", ["city","state","stype","cluster","f4"])
-        dataset.add_relation("items", ["family","class","perishable","f1"])
+        dataset.add_relation("sales", [], y = 'Y', relation_address="../data/favorita/sales_small.csv")
+        dataset.add_relation("holidays", ["htype", "locale", "locale_name", "transferred","f2"], relation_address="../data/favorita/holidays.csv")
+        dataset.add_relation("oil", ["dcoilwtico","f3"], relation_address="../data/favorita/oil.csv")
+        dataset.add_relation("transactions", ["transactions","f5"], relation_address="../data/favorita/transactions.csv")
+        dataset.add_relation("stores", ["city","state","stype","cluster","f4"], relation_address="../data/favorita/stores.csv")
+        dataset.add_relation("items", ["family","class","perishable","f1"], relation_address="../data/favorita/items.csv")
         dataset.add_join("sales", "items", ["item_nbr"], ["item_nbr"])
         dataset.add_join("sales", "transactions", ["tid"], ["tid"])
         dataset.add_join("transactions", "stores", ["store_nbr"], ["store_nbr"])
@@ -189,12 +186,12 @@ class TestApp(unittest.TestCase):
         dataset.add_join("holidays", "oil", ["date"], ["date"])
         
         dataset2 = JoinGraph(exe=exe)
-        dataset2.add_relation("sales", [], y = 'Y')
-        dataset2.add_relation("holidays", ["htype", "locale", "locale_name", "transferred","f2"])
-        dataset2.add_relation("oil", ["dcoilwtico","f3"])
-        dataset2.add_relation("transactions", ["transactions","f5"])
-        dataset2.add_relation("stores", ["city","state","stype","cluster","f4"])
-        dataset2.add_relation("items", ["family","class","perishable","f1"])
+        dataset2.add_relation("sales", [], y = 'Y', relation_address="../data/favorita/sales_small.csv")
+        dataset2.add_relation("holidays", ["htype", "locale", "locale_name", "transferred","f2"], relation_address="../data/favorita/holidays.csv")
+        dataset2.add_relation("oil", ["dcoilwtico","f3"], relation_address="../data/favorita/oil.csv")
+        dataset2.add_relation("transactions", ["transactions","f5"], relation_address="../data/favorita/transactions.csv")
+        dataset2.add_relation("stores", ["city","state","stype","cluster","f4"], relation_address="../data/favorita/stores.csv")
+        dataset2.add_relation("items", ["family","class","perishable","f1"], relation_address="../data/favorita/items.csv")
         dataset2.add_join("sales", "items", ["item_nbr"], ["item_nbr"])
         dataset2.add_join("sales", "transactions", ["tid"], ["tid"])
         dataset2.add_join("transactions", "stores", ["store_nbr"], ["store_nbr"])
