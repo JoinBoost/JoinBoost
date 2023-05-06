@@ -84,12 +84,6 @@ class TestModel(unittest.TestCase):
     
     def test_favorita(self):
         con = duckdb.connect(database=':memory:')
-        con.execute("CREATE OR REPLACE TABLE holidays AS SELECT * FROM '../data/favorita/holidays.csv';")
-        con.execute("CREATE OR REPLACE TABLE oil AS SELECT * FROM '../data/favorita/oil.csv';")
-        con.execute("CREATE OR REPLACE TABLE transactions AS SELECT * FROM '../data/favorita/transactions.csv';")
-        con.execute("CREATE OR REPLACE TABLE stores AS SELECT * FROM '../data/favorita/stores.csv';")
-        con.execute("CREATE OR REPLACE TABLE items AS SELECT * FROM '../data/favorita/items.csv';")
-        con.execute("CREATE OR REPLACE TABLE sales AS SELECT * FROM '../data/favorita/sales_small.csv';")
         con.execute("CREATE OR REPLACE TABLE train AS SELECT * FROM '../data/favorita/train_small.csv';")
 
         y = "Y"
@@ -124,12 +118,6 @@ class TestModel(unittest.TestCase):
         
     def test_gradient_boosting(self):
         con = duckdb.connect(database=':memory:')
-        con.execute("CREATE OR REPLACE TABLE holidays AS SELECT * FROM '../data/favorita/holidays.csv';")
-        con.execute("CREATE OR REPLACE TABLE oil AS SELECT * FROM '../data/favorita/oil.csv';")
-        con.execute("CREATE OR REPLACE TABLE transactions AS SELECT * FROM '../data/favorita/transactions.csv';")
-        con.execute("CREATE OR REPLACE TABLE stores AS SELECT * FROM '../data/favorita/stores.csv';")
-        con.execute("CREATE OR REPLACE TABLE items AS SELECT * FROM '../data/favorita/items.csv';")
-        con.execute("CREATE OR REPLACE TABLE sales AS SELECT * FROM '../data/favorita/sales_small.csv';")
         con.execute("CREATE OR REPLACE TABLE train AS SELECT * FROM '../data/favorita/train_small.csv';")
 
         y = "Y"
@@ -170,9 +158,6 @@ class TestModel(unittest.TestCase):
     def test_sample_syn(self):
         data = pd.read_csv("../data/synthetic/RST.csv")
         con = duckdb.connect(database=':memory:')
-        con.execute("CREATE TABLE R AS SELECT * FROM '../data/synthetic/R.csv'")
-        con.execute("CREATE TABLE S AS SELECT * FROM '../data/synthetic/S.csv'")
-        con.execute("CREATE TABLE T AS SELECT * FROM '../data/synthetic/T.csv'")
         con.execute("CREATE TABLE train AS SELECT * FROM '../data/synthetic/RST.csv'")
         x = ["A", "B", "D", "E", "F"]
         y = "H"
