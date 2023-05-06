@@ -7,8 +7,7 @@ from typing import Optional, Any, List
 
 import pandas as pd
 
-from src.joinboost import aggregator
-from src.joinboost.aggregator import Aggregator
+from aggregator import *
 
 ExecuteMode = Enum(
     "ExecuteMode", ["WRITE_TO_TABLE", "CREATE_VIEW", "EXECUTE", "NESTED_QUERY"]
@@ -51,7 +50,7 @@ class SPJAData:
     """
 
     aggregate_expressions: dict = field(
-        default_factory=lambda: {None: ("*", aggregator.Aggregator.IDENTITY)}
+        default_factory=lambda: {None: ("*", Aggregator.IDENTITY)}
     )
     from_tables: List[str] = field(default_factory=list)
     select_conds: List[str] = field(default_factory=list)
@@ -665,7 +664,7 @@ class DuckdbExecutor(Executor):
         return result
 
     def _parse_aggregate_expression(
-        self, target_col: str, para, agg: aggregator.Aggregator, window_by: list = None
+        self, target_col: str, para, agg: Aggregator, window_by: list = None
     ):
         """
         Parameters
@@ -686,11 +685,11 @@ class DuckdbExecutor(Executor):
         """
 
         window_clause = (
-            " OVER joinboost_window " if window_by and aggregator.is_agg(agg) else ""
+            " OVER joinboost_window " if window_by and is_agg(agg) else ""
         )
         rename_expr = " AS " + target_col if target_col is not None else ""
         parsed_expression = (
-            aggregator.parse_agg(agg, para) + window_clause + rename_expr
+            parse_agg(agg, para) + window_clause + rename_expr
         )
 
         return parsed_expression
