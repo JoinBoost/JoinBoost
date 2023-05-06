@@ -1,7 +1,7 @@
 from enum import Enum
 
 # TODO: make aggregator class (like operator in database), so we can do simple composition and optimization
-Aggregator = Enum('Aggregator', 'SUM MAX MIN SUB SUM_PROD PROD DIV COUNT DISTINCT_COUNT IDENTITY IDENTITY_LAMBDA')
+Aggregator = Enum('Aggregator', 'SUM MAX MIN SUB SUM_PROD DISTRIBUTED_SUM_PROD PROD DIV COUNT DISTINCT_COUNT IDENTITY IDENTITY_LAMBDA')
 Annotation = Enum('NULL', 'NULL NOT_NULL NOT_GREATER GREATER DISTINCT NOT_DISTINCT IN NOT_IN')
 Message = Enum('Message', 'IDENTITY SELECTION FULL UNDECIDED')
 
@@ -9,6 +9,13 @@ def parse_agg(agg, para):
     if agg == Aggregator.SUM:
         assert isinstance(para, str)
         return 'SUM(' + para + ')'
+    elif agg == Aggregator.DISTRIBUTED_SUM_PROD:
+        assert isinstance(para, list)
+        # para structure: [[sum_column and list of annotated columns in other relations],[...]]
+        # example para: [[R1.s, R2.c, R3.c], [R2.s, R1.c, R3.c], [R3.s, R1.c, R2.c]]
+        _tmp = ['*'.join(elem) for elem in para]
+        # expected: SUM(R1.s*R2.c*R3.c + R2.s*R1.c*R3.c + R3.s*R1.c*R2.c)
+        return 'SUM(' + '+'.join(_tmp) + ')'
     elif agg == Aggregator.SUM_PROD:
         assert isinstance(para, dict)
         _tmp = [key + '.' + value for key, value in para.items()]
@@ -31,6 +38,9 @@ def parse_agg(agg, para):
     elif agg == Aggregator.DIV:
         assert isinstance(para, tuple)
         return str(para[0]) + ' / ' + str(para[1])
+    elif agg == Aggregator.MAX:
+        assert isinstance(para, str)
+        return 'MAX(' + para + ')'
     else:
         raise Exception('Unsupported Semiring Expression')
         

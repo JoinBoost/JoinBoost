@@ -26,7 +26,11 @@ class SemiRing(ABC):
 
     def get_sr_in_select(self, m_type: Message, f_table: str, in_msgs: list, f_table_attrs: list):
         pass
-    
+
+
+class SemiField(SemiRing):
+    def division(self, dividend, divisor):
+        pass
 
 class GradientHessianSemiRing(SemiRing):
     def __init__(self, g=0, h=0, g_name='s', h_name='c'):
@@ -93,6 +97,51 @@ class varSemiRing(GradientHessianSemiRing):
 
     def get_value(self):
         return self.pair
-    
 
-    
+
+class AvgSemiRing(SemiField):
+
+    def __init__(self, user_table="", attr=""):
+        self.user_table = user_table
+        self.attr = attr
+        self.agg = "AVG"
+
+    def lift_exp(self, s_after='s', c_after='c', user_table=""):
+        if user_table == self.user_table:
+            return {s_after: (self.attr, Aggregator.IDENTITY), c_after: ("1", Aggregator.IDENTITY)}
+        else:
+            return {s_after: ("0", Aggregator.IDENTITY), c_after: ("1", Aggregator.IDENTITY)}
+
+    def col_sum(self, s='s', c='c', s_after='s', c_after='c'):
+        return {s_after: (s, Aggregator.SUM), c_after: (c, Aggregator.SUM)}
+
+    def sum_over_product(self, user_tables=[], s='s', c='c', s_after='s', c_after='c'):
+        annotated_count = {}
+        for i, user_table in enumerate(user_tables):
+            annotated_count[f'"{user_table}"'] = f'"{c}"'
+
+        sum_join_calculation = []
+        for i, user_table in enumerate(user_tables):
+            sum_join_calculation.append([f'"{str(user_table)}"."{s}"'] + \
+                                        [f'"{rel}"."{c}"' for rel in (user_tables[:i] + user_tables[i + 1:])])
+
+        return {s_after: (sum_join_calculation, Aggregator.DISTRIBUTED_SUM_PROD),
+                c_after: (annotated_count, Aggregator.SUM_PROD)}
+
+    def sum_col(self, user_table):
+        return self.sum_over_product([user_table])
+
+    # we assume that divisor.s is 0
+    def division(self, dividend, divisor, s='s', c='c', s_after='s', c_after='c'):
+        return {s_after: ([f'"{dividend}"."{s}"', f'"{divisor}"."{c}"'], Aggregator.DIV),
+                c_after: ([f'"{dividend}"."{c}"', f'"{divisor}"."{c}"'], Aggregator.DIV)}
+
+    def get_value(self):
+        return self.r_pair
+
+    def get_user_table(self):
+        return self.user_table
+
+    def __str__(self, relation=True):
+        return f'AVG({(self.user_table + ".") if relation else ""}{self.attr})'
+

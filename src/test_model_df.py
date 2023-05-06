@@ -55,7 +55,7 @@ class TestExecutor(unittest.TestCase):
         x = ["htype", "locale", "locale_name", "transferred", "f2", "dcoilwtico", "f3", "transactions",
              "f5", "city", "state", "stype", "cluster", "f4", "family", "class", "perishable", "f1"]
 
-        exe = PandasExecutor(con, debug=True)
+        exe = PandasExecutor(con, debug=False)
 
         dataset = JoinGraph(exe=exe)
         dataset.add_relation("sales", [], y='Y', relation_address='../data/favorita/sales_small.csv')

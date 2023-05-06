@@ -275,10 +275,13 @@ class DecisionTree(DummyModel):
                 if not results:
                     continue
                 cur_value, cur_criteria, left_g, left_h = results[0]
+                print((cur_value, cur_criteria, left_g, left_h))
                 if cur_criteria > best_criteria:
                     best_criteria = cur_criteria
                     # relation name, split attribute, split value, left gradient, left hessian
                     best_criteria_ann = (r_name, attr, str(cur_value), left_g, left_h)
+        print('END OF BEST SPLIT SEARCH')
+        print((const_-best_criteria, cjt_depth,) + best_criteria_ann + (cjt_id,))
         self.split_candidates.put((const_-best_criteria, cjt_depth,) + best_criteria_ann + (cjt_id,))
         
     # split the semi-ring according to current split
@@ -309,12 +312,14 @@ class DecisionTree(DummyModel):
               self.split_candidates.queue[0][0] < 0 and \
               self.split_candidates.qsize() < self.max_leaves:
             criteria, cur_level, r_name, attr, cur_value, left_g, left_h, c_id = self.split_candidates.get()
+            # print((criteria, cur_level, r_name, attr, cur_value, left_g, left_h, c_id))
             expanding_cjt = self.nodes[c_id]
             
             l_semi_ring = expanding_cjt.semi_ring.copy()
             l_semi_ring.set_semi_ring(left_g, left_h)
             
             l_semi_ring, r_semi_ring = self.split_semi_ring(expanding_cjt.get_semi_ring(), l_semi_ring)
+            # print(r_semi_ring.pair)
 
             l_cjt, r_cjt, l_id, r_id = self._get_split_cjt(expanding_cjt=expanding_cjt,
                                                            l_semi_ring=l_semi_ring,
@@ -337,8 +342,12 @@ class DecisionTree(DummyModel):
             # Can be optimized to upward_message_passing(fact)
             l_cjt.downward_message_passing(r_name)
             r_cjt.downward_message_passing(r_name)
-            
+
+            print('level, left g, h')
+            print((cur_level, left_g, left_h))
             self._get_best_split(l_id, cur_level + 1)
+            print('level, right g, h')
+            print((cur_level, r_cjt.semi_ring.pair[0], r_cjt.semi_ring.pair[1]))
             self._get_best_split(r_id, cur_level + 1)
                 
         self.leaf_nodes = [self.nodes[ele[-1]] for ele in self.split_candidates.queue]

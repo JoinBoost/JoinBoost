@@ -118,6 +118,15 @@ class DuckdbExecutor(Executor):
         self._execute_query(sql)
         return view_name
 
+    def add_table(self, table: str, table_address):
+        if table_address is None:
+            raise ExecutorException("Please pass in the csv file location")
+        self.conn.execute(f"CREATE TABLE IF NOT EXISTS {table} AS SELECT * FROM '{table_address}'")
+
+    def set_query(self, operation, expr1, expr2):
+        return f'({expr1} {operation} {expr2})'
+
+
     def case_query(self, from_table: str, operator: str, cond_attr: str, base_val: str,
                    case_definitions: list, select_attrs: list = [], table_name: str = None, order_by: str = None):
         """
@@ -336,8 +345,6 @@ class PandasExecutor(DuckdbExecutor):
     def __init__(self, conn, debug=False):
         super().__init__(conn)
         self.debug = debug
-        self.prefix = 'joinboost_'
-        self.table_counter = 0
 
     def add_table(self, table: str, table_address):
         if table_address is None:
@@ -354,6 +361,27 @@ class PandasExecutor(DuckdbExecutor):
 
         if table in self.table_registry:
             del self.table_registry[table]
+
+    # set operations in pandas
+    def set_query(self, operation, df1_name, df2_name):
+        df1 = self.table_registry[df1_name]
+        df2 = self.table_registry[df2_name]
+        # unqualify the column names in both dataframes
+        df1.columns = [col.split('.')[-1] for col in df1.columns]
+        df2.columns = [col.split('.')[-1] for col in df2.columns]
+
+        if operation == 'UNION':
+            df1 = df1.concat(df2, ignore_index=True)
+        elif operation == 'INTERSECT':
+            df1 = df1.merge(df2, how='inner')
+        elif operation == 'EXCEPT':
+            df1 = df1.merge(df2, how='left', indicator=True).query('_merge=="left_only"')\
+                .drop('_merge', axis=1)
+        else:
+            raise ExecutorException("Unsupported set operation!")
+        self.table_registry[df1_name] = df1
+        return df1_name
+
 
     def get_schema(self, table):
         # unqualify the column names, this is required as duckdb returns unqualified column names
@@ -378,6 +406,13 @@ class PandasExecutor(DuckdbExecutor):
                            mode: int = 4
                            ):
         intermediates = {}
+
+        for i, table in enumerate(from_tables):
+            # if table name is surrounded by parentheses, remove them
+            # this is required for compatibility in nested queries across duckdb and pandas
+            if table.startswith('(') and table.endswith(')'):
+                from_tables[i] = table[1:-1]
+
         for table in from_tables:
             intermediates[table] = self.table_registry[table]
 
@@ -406,15 +441,9 @@ class PandasExecutor(DuckdbExecutor):
         # group by and aggregate
         df = self.apply_group_by_and_agg(agg_conditions, df, group_by, window_by)
 
-        should_drop_columns = True
-        for keys, values in aggregate_expressions.items():
-            if values[1] == Aggregator.IDENTITY and values[0] == '*':
-                should_drop_columns = False
-
-        if should_drop_columns:
-            # drop columns that don't appear in aggregate_expressions
-            final_cols = [col for col in aggregate_expressions.keys() if col is not None]
-            df = df[final_cols]
+        # drop columns that don't appear in aggregate_expressions
+        final_cols = [col for col in aggregate_expressions.keys() if col is not None]
+        df = df[final_cols]
 
         # sort by each column in order_by
         if len(order_by) > 0:
@@ -476,7 +505,17 @@ class PandasExecutor(DuckdbExecutor):
                     unqualified_cols = [col.split('.')[-1] for col in df.columns]
                     if col not in df.columns and col not in unqualified_cols:
                         df[col] = 1
-                df = inter_df.agg(**agg_conditions).reset_index()
+
+                for col in list(agg_conditions.keys()):
+                    if agg_conditions[col].column == '*':
+                        func = agg_conditions[col].aggfunc
+                        df[col] = df.apply(func, axis=1)
+                        del agg_conditions[col]
+                    elif agg_conditions[col].aggfunc == 'first' and (col == agg_conditions[col].column or col == agg_conditions[col].column.split('.')[-1]):
+                        del agg_conditions[col]
+
+                if len(agg_conditions) > 0:
+                    df = inter_df.agg(**agg_conditions).reset_index()
                 # unqualify all columns in df. This is to avoid nested columns being qualified with the table name
                 for col in df.columns:
                     df = df.rename(columns={col: col.split('.')[-1]})
@@ -485,7 +524,7 @@ class PandasExecutor(DuckdbExecutor):
                 if len(window_by) > 0:
                     # apply cumulative sum on window_by columns in pandas dataframe
                     df = df.sort_values(window_by)
-                    # TODO: remove hack, propogate g_col and h_col instead of hardcoding
+                    # TODO: remove hack, propagate g_col and h_col instead of hardcoding
                     df['s'] = df['s'].cumsum()
                     df['c'] = df['c'].cumsum()
                 else:
@@ -500,10 +539,15 @@ class PandasExecutor(DuckdbExecutor):
                             func = agg_conditions[col].aggfunc
                             df[col] = df.apply(func, axis=1)
                             del agg_conditions[col]
+                        elif agg_conditions[col].aggfunc == 'first' and col == agg_conditions[col].column:
+                            del agg_conditions[col]
+
                     if len(agg_conditions) > 0:
-                        df = df.assign(temp=0).groupby('temp').agg(**agg_conditions).reset_index().drop(columns='temp')
+                        df = df.assign(temp=0).groupby('temp').agg(**agg_conditions)\
+                            .reset_index().drop(columns='temp')
                     for col in df.columns:
                         df = df.rename(columns={col: col.split('.')[-1]})
+
         return df
 
     # computes join or cross (if no join condition) between all tables.
@@ -530,7 +574,6 @@ class PandasExecutor(DuckdbExecutor):
                                 reverse=True)
 
         for table in tables_to_join:
-
             if df is None:
                 df = intermediates[table]
                 if df is not None:
@@ -652,6 +695,8 @@ class PandasExecutor(DuckdbExecutor):
             elif agg == Aggregator.IDENTITY:
                 if para == '1':
                     agg_conditions[target_col] = pd.NamedAgg(column='*', aggfunc=lambda x: 1)
+                elif para != '*':
+                    agg_conditions[target_col] = pd.NamedAgg(column=para, aggfunc='first')
                 else:
                     pass
             elif agg == Aggregator.IDENTITY_LAMBDA:

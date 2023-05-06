@@ -3,13 +3,11 @@ import math
 import time
 import pandas as pd
 import duckdb
-import lightgbm
-from sklearn.tree import DecisionTreeRegressor
-from sklearn.ensemble import GradientBoostingRegressor
-from sklearn.metrics import mean_squared_error
 from joinboost.executor import DuckdbExecutor, ExecutorException
 from joinboost.joingraph import JoinGraph, JoinGraphException
 from joinboost.app import DecisionTree,GradientBoosting,RandomForest
+from src import test_utils
+
 
 class TestJoingraph(unittest.TestCase):
         
@@ -47,6 +45,33 @@ class TestJoingraph(unittest.TestCase):
             raise Exception('Cyclic join graph is allowed!')
         except JoinGraphException:
             pass
-    
+
+    def test_multiplicity_for_many_to_many(self):
+        cjt = test_utils.initialize_synthetic_many_to_many()
+
+        self.assertGreater(cjt.get_multiplicity('R','S'), 1)
+        self.assertGreater(cjt.get_multiplicity('S','R'), 1)
+        self.assertGreater(cjt.get_multiplicity('S','T'), 1)
+        self.assertGreater(cjt.get_multiplicity('T','S'), 1)
+
+        self.assertEqual(cjt.get_missing_keys('S','R'), 1)
+        self.assertEqual(cjt.get_missing_keys('R','S'), 0)
+        self.assertEqual(cjt.get_missing_keys('T','S'), 0)
+        self.assertEqual(cjt.get_missing_keys('S','T'), 1)
+
+    def test_multiplicity_for_one_to_many(self):
+        cjt = test_utils.initialize_synthetic_one_to_many()
+
+        self.assertGreater(cjt.get_multiplicity('R','T'), 1)
+        self.assertEqual(cjt.get_multiplicity('T','R'), 1)
+        self.assertGreater(cjt.get_multiplicity('S','T'), 1)
+        self.assertEqual(cjt.get_multiplicity('T','S'), 1)
+
+        self.assertEqual(cjt.get_missing_keys('S','T'), 1)
+        self.assertEqual(cjt.get_missing_keys('T','S'), 0)
+        self.assertEqual(cjt.get_missing_keys('T','S'), 0)
+        self.assertEqual(cjt.get_missing_keys('S','T'), 1)
+
+
 if __name__ == '__main__':
     unittest.main()
