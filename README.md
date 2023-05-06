@@ -46,6 +46,14 @@ reg.fit(dataset)
 
 [Please Check out this notebook for Demo](https://colab.research.google.com/github/zachary62/JoinBoost/blob/main/demo/JoinBoostDemo.ipynb)
 
+## Docs
+
+Documentation is currently under development. To build docs locally, download [Sphinx](https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html) and run
+```bash
+make html
+```
+in the folder `docs`. The docs will be generated in the folder `docs/build/html`.
+
 ## Reproducibility
 
 The technical report of JoinBoost could be found under /technical directory.
