@@ -47,15 +47,15 @@ def parse_agg(agg, para):
 
 # temp way to check if agg is aggregation or not
 def is_agg(agg):
-    if agg == Aggregator.SUM:
+    if agg.value == Aggregator.SUM.value:
         return True
-    elif agg == Aggregator.SUM_PROD:
+    elif agg.value == Aggregator.SUM_PROD.value:
         return True
-    elif agg == Aggregator.DISTINCT_COUNT:
+    elif agg.value == Aggregator.DISTINCT_COUNT.value:
         return True
-    elif agg == Aggregator.COUNT:
+    elif agg.value == Aggregator.COUNT.value:
         return True
-    elif agg == Aggregator.PROD:
+    elif agg.value == Aggregator.PROD.value:
         return True
     return False
 
