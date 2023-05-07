@@ -694,7 +694,139 @@ class DuckdbExecutor(Executor):
 
         return parsed_expression
 
+class SparkExecutor(DuckdbExecutor):
+    def add_table(self, table: str, table_address):
+        if table_address is None:
+            raise ExecutorException("Please pass in the pandas dataframe!")
 
+        df = self.conn.read.csv(table_address, header=True, inferSchema=True)
+        # register the DataFrame as a temporary view
+        df.createOrReplaceTempView(table)
+    
+    def get_schema(self, table: str) -> list:
+        # Get the schema of the source_table
+        source_table_schema = self.conn.sql(f"DESCRIBE {table}")
+
+        # Extract the column names as a list
+        return [row.col_name for row in source_table_schema.collect()]
+    
+    def _execute_query(self, q, collect=True):
+        """
+        Executes the given SQL query and returns the result.
+
+        Parameters
+        ----------
+        q : str
+            The SQL query to be executed.
+
+        Returns
+        -------
+        Any
+            The result of the query execution.
+        """
+        start_time = time.time()
+        if self.debug:
+            print(q)
+        result = self.conn.sql(q)
+        elapsed_time = time.time() - start_time
+
+        if self.debug:
+            print(elapsed_time)
+            
+        if self.debug:
+            result.show()
+        
+        if collect:
+            return [tuple(row) for row in result.collect()]
+        else:
+            return result
+    
+    def _spja_query_to_table(self, spja_data: SPJAData) -> str:
+        """
+        Executes an SPJA query and stores the results in a new table.
+
+        Parameters
+        ----------
+        spja_data : SPJAData
+            The SPJAData object containing the query parameters.
+
+        Returns
+        -------
+        str
+            The name of the new table.
+        """
+        spja = self.spja_query(spja_data, parenthesize=False)
+        name_ = self.get_next_name()
+        
+        result_df = self._execute_query(spja, collect=False)
+
+        # Register the result DataFrame as a new temporary table
+        result_df.createOrReplaceTempView(name_)
+        return name_
+    
+    
+     # {case: value} operator {case: value} ...
+    def case_query(
+        self,
+        from_table: str,
+        operator: str,
+        cond_attr: str,
+        base_val: str,
+        case_definitions: list,
+        select_attrs: list = [],
+        table_name: str = None,
+        order_by: str = None,
+    ):
+        """
+        Executes a SQL query with a CASE statement to perform tree-model prediction.
+        Each CASE represents a tree and each WHEN within a CASE represents a leaf.
+
+        :param from_table: str, name of the source table
+        :param operator: str, the operator used to combine predictions
+        :param cond_attr: str, name of the column used in the conditions of the case statement
+        :param base_val: int, base value for the entire tree-model
+        :param case_definitions: list, a list of lists containing the (leaf prediction, leaf predicates) for each tree.
+        :param select_attrs: list, list of attributes to be selected, defaults to empty
+        :param table_name: str, name of the new table, defaults to None
+        :param order_by: str, name of the table to be ordered by rowid, defaults to None
+        :return: str, name of the new table
+        """
+        
+        
+        # If no table name is provided, generate a new one
+        if not table_name:
+            view = self.get_next_name()
+        else:
+            view = table_name
+
+        # Prepare the case statement using the provided operator
+        cases = []
+        for case_definition in case_definitions:
+            sql_case = f"{operator}\nCASE\n"
+            for val, cond in case_definition:
+                conds = " AND ".join(cond)
+                sql_case += f" WHEN {conds} THEN CAST({val} AS DOUBLE)\n"
+            sql_case += "ELSE 0 END\n"
+            cases.append(sql_case)
+        sql_cases = "".join(cases)
+
+        # Create the SELECT statement with the CASE statement
+        attrs = ",".join(select_attrs)
+        sql = (
+              f"SELECT {attrs}, {base_val}"
+            + f"{sql_cases}"
+            + f"AS {cond_attr} FROM {from_table} "
+        )
+        if order_by:
+            sql += f"ORDER BY {order_by};"
+            
+        result_df = self._execute_query(sql, collect=False)
+
+        # Register the result DataFrame as a new temporary table
+        result_df.createOrReplaceTempView(view)
+        return view
+    
+    
 class PandasExecutor(DuckdbExecutor):
     # Because Pandas is not a database, we use a dictionary to store table_name -> dataframe
     table_registry = {}

@@ -432,7 +432,7 @@ class DecisionTree(DummyModel):
                     best_criteria_ann = (r_name, attr, str(cur_value), left_g, left_h)
         self.split_candidates.put(
             (
-                const_ - best_criteria,
+                const_ - float(best_criteria),
                 cjt_depth,
             )
             + best_criteria_ann
