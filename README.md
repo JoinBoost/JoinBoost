@@ -46,6 +46,8 @@ reg.fit(dataset)
 
 [Please Check out this notebook for Demo](https://colab.research.google.com/github/zachary62/JoinBoost/blob/main/demo/JoinBoostDemo.ipynb)
 
+For dev: https://gitpod.io/new#https://github.com/zachary62/JoinBoost
+
 ## Docs
 
 Documentation is currently under development. To build docs locally, download [Sphinx](https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html) and run
