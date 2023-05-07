@@ -13,14 +13,14 @@ from joinboost.joingraph import JoinGraph
 
 
 class TestExecutor(unittest.TestCase):
-    @pytest.mark.skip(reason="compute_rmse is not implemented yet")
+
     def test_synthetic(self):
         join = pd.read_csv("../data/synthetic/RST.csv")
         con = duckdb.connect(database=":memory:")
         x = ["A", "B", "D", "E", "F"]
         y = "H"
 
-        exe = PandasExecutor(con)
+        exe = PandasExecutor(con, debug=False)
         # exe = DuckdbExecutor(con, debug=False)
 
         dataset = JoinGraph(exe=exe)
@@ -42,13 +42,23 @@ class TestExecutor(unittest.TestCase):
         clf = DecisionTreeRegressor(max_depth=depth)
         clf = clf.fit(join[x], join[y])
         mse = mean_squared_error(join[y], clf.predict(join[x]))
+        expected_model_def = [
+            (-5671945.596612875, ['A <= 3197.0', 'A <= 1981.0', 'D <= 963.0']),
+            (-8322336.378526217, ['A <= 3197.0', 'A <= 1981.0', 'D > 963.0']),
+            (14692866.08994809, ['A > 3197.0', 'A > 4134.0', 'A > 4587.0']),
+            (579584.8480680565, ['A <= 3197.0', 'A > 1981.0', 'A > 2770.0']),
+        (10730215.776843822, ['A > 3197.0', 'A > 4134.0', 'A <= 4587.0']),
+        (-2624682.6485183574, ['A <= 3197.0', 'A > 1981.0', 'A <= 2770.0']),
+        (3546818.3957054005, ['A > 3197.0', 'A <= 4134.0', 'A <= 3667.0']),
+        (6931916.088615404, ['A > 3197.0', 'A <= 4134.0', 'A > 3667.0']),
+        ]
         for i in range(len(gb.model_def)):
             for j in range(len(gb.model_def[i])):
+                self.assertTrue(abs(gb.model_def[i][j][0] - expected_model_def[j][0]) < 1e-3)
                 print(gb.model_def[i][j])
 
-        self.assertTrue(abs(gb.compute_rmse("test")[0] - math.sqrt(mse)) < 1e-3)
+        # self.assertTrue(abs(gb.compute_rmse("test")[0] - math.sqrt(mse)) < 1e-3)
 
-    @pytest.mark.skip(reason="compute_rmse is not implemented yet")
     def test_favorita(self):
         con = duckdb.connect(database=":memory:")
 
@@ -117,11 +127,38 @@ class TestExecutor(unittest.TestCase):
         data = pd.read_csv("../data/favorita/train_small.csv")
         clf = DecisionTreeRegressor(max_depth=depth)
         clf = clf.fit(data[x], data[y])
+        expected_model_def = [
+            [(-2337.9228084177735, ['f4 > 496', 'f5 <= 553', 'f3 <= 475']), (
+        -7160.971070371713, ['f4 > 496', 'f5 <= 553', 'f3 > 475']), (
+        -2060.958149762831, ['f4 <= 496', 'f5 <= 557', 'f3 > 475']), (
+        -1953.1974409598786, ['f4 > 496', 'f5 > 553', 'f3 > 450']), (
+        3039.5826387332845, ['f4 <= 496', 'f5 <= 557', 'f3 <= 475']), (
+        3077.0322614426113, ['f4 > 496', 'f5 > 553', 'f3 <= 450']), (
+        8135.210187401269, ['f4 <= 496', 'f5 > 557', 'f3 <= 463']), (
+        3187.9458062845265, ['f4 <= 496', 'f5 > 557', 'f3 > 463'])],
+        [(1283.702144280435, ['f5 > 229', 'f4 <= 797', 'f3 <= 774']), (
+        -478.6770702231717, ['f5 > 229', 'f4 <= 797', 'f3 > 774']), (
+        -868.3545071360177, ['f5 <= 229', 'f4 <= 829', 'f3 <= 815']), (
+        -2596.802972185131, ['f5 > 229', 'f4 > 797', 'f3 > 781']), (
+        -553.9671029322164, ['f5 > 229', 'f4 > 797', 'f3 <= 781']), (
+        -2889.972196029417, ['f5 <= 229', 'f4 <= 829', 'f3 > 815']), (
+        -2787.542235779109, ['f5 <= 229', 'f4 > 829', 'f3 <= 777']), (
+        -4727.273559858574, ['f5 <= 229', 'f4 > 829', 'f3 > 777'])],
+        [(-635.0822083124633, ['f4 > 115', 'f4 <= 496', 'f4 <= 326']), (
+        -2566.2580076237236, ['f4 > 115', 'f4 <= 496', 'f4 > 326']), (
+        38.48773229020168, ['f4 > 115', 'f4 > 496', 'f4 > 604']), (
+        1446.281210767631, ['f4 > 115', 'f4 > 496', 'f4 <= 604']), (
+        1634.9714863857482, ['f4 <= 115', 'f3 > 166', 'f3 > 471']), (
+        26.7753578224185, ['f4 <= 115', 'f3 > 166', 'f3 <= 471']), (
+        2314.8470149268637, ['f4 <= 115', 'f3 <= 166', 'f5 <= 866']), (
+        3684.8484795115146, ['f4 <= 115', 'f3 <= 166', 'f5 > 866'])]
+            ]
         for i in range(len(reg.model_def)):
             for j in range(len(reg.model_def[i])):
+                self.assertTrue(abs(reg.model_def[i][j][0] - expected_model_def[i][j][0]) < 1e-3)
                 print(reg.model_def[i][j])
-        mse = mean_squared_error(data[y], clf.predict(data[x]))
-        self.assertTrue(abs(reg.compute_rmse("train")[0] - math.sqrt(mse)) < 1e-3)
+        # mse = mean_squared_error(data[y], clf.predict(data[x]))
+        # self.assertTrue(abs(reg.compute_rmse("train")[0] - math.sqrt(mse)) < 1e-3)
 
     # def test_gradient_boosting(self):
     #     con = duckdb.connect(database=':memory:')
