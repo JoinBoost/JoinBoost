@@ -281,11 +281,13 @@ class JoinGraph:
         spja_data = SPJAData(
             aggregate_expressions={"join_key": (",".join(leftKeys), Aggregator.IDENTITY)},
             from_tables=[relation_left],
+            group_by=[",".join(leftKeys)]
         )
         set_left = self.exe.execute_spja_query(spja_data, mode=ExecuteMode.NESTED_QUERY)
         spja_data = SPJAData(
             aggregate_expressions={"join_key": (",".join(rightKeys), Aggregator.IDENTITY)},
             from_tables=[relation_right],
+            group_by=[",".join(rightKeys)]
         )
         set_right = self.exe.execute_spja_query(spja_data, mode=ExecuteMode.NESTED_QUERY)
 
@@ -319,7 +321,7 @@ class JoinGraph:
 
     def get_max_multiplicity(self, table, keys):
         spja_data = SPJAData(
-            aggregate_expressions={'count': ('*',  Aggregator.COUNT)},
+            aggregate_expressions={'count': (','.join(keys),  Aggregator.COUNT)},
             from_tables=[table],
             group_by=keys
         )
