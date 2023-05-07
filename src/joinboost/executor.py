@@ -899,11 +899,18 @@ class PandasExecutor(DuckdbExecutor):
 
         agg_conditions = self.convert_agg_conditions(spja_data.aggregate_expressions)
 
+        # search select_conds for join_conditions that are of the form "table1.col1 IS NOT DISTINCT FROM table2.col2"
+        join_conds = [
+            re.findall(r"(\w+\.\w+ IS NOT DISTINCT FROM \w+\.\w+)", cond)[0]
+            for cond in spja_data.select_conds
+            if "IS NOT DISTINCT FROM" in cond
+        ]
         select_conds = self.convert_predicates(spja_data.select_conds)
 
-        # join_conds are of the form "table1.col1 IS NOT DISTINCT FROM table2.col2"p.
+
+        # join_conds are of the form "table1.col1 IS NOT DISTINCT FROM table2.col2".
         # extract the table1.col1 and table2.col2
-        join_conds = [re.findall(r"(\w+\.\w+)", cond) for cond in spja_data.join_conds]
+        join_conds = [re.findall(r"(\w+\.\w+)", cond) for cond in join_conds]
 
         # filter list of tables that don't have any join conditions
         tables_to_join = [

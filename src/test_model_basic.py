@@ -7,13 +7,13 @@ import lightgbm
 from sklearn.tree import DecisionTreeRegressor
 from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.metrics import mean_squared_error
-from joinboost.executor import DuckdbExecutor, PandasExecutor
+from joinboost.executor import DuckdbExecutor
 from joinboost.joingraph import JoinGraph
 from joinboost.app import DecisionTree, GradientBoosting, RandomForest
 
 
 class TestModel(unittest.TestCase):
-    
+
     # TODO: some table have the same attribute name, making it hard to predict
     def test_demo(self):
         con = duckdb.connect(database=':memory:')
@@ -22,49 +22,38 @@ class TestModel(unittest.TestCase):
         con.execute("CREATE TABLE date AS SELECT * FROM '../data/demo/date.csv'")
         con.execute("CREATE TABLE part AS SELECT * FROM '../data/demo/part.csv'")
         con.execute("CREATE TABLE supplier AS SELECT * FROM '../data/demo/supplier.csv'")
-        
+        x = ["NAME", "ADDRESS", "CITY", "NAME", "MFGR", "CATEGORY", "BRAND1", "DATE", "DAYOFWEEK",
+             "MONTH", "YEAR", "YEARMONTH", "YEARMONTHNUM", "DAYNUMINWEEK", "NAME", "ADDRESS", "CITY", "NATION"]
+        y = "REVENUE"
+        # delete rows beyond 1000 in lineorder using duckdb
+        # con.execute("DELETE FROM lineorder WHERE rowid > 1000")
+
         exe = DuckdbExecutor(con, debug=False)
 
         dataset = JoinGraph(exe=exe)
-        dataset.add_relation('lineorder', [], y='REVENUE')
-        dataset.add_relation('customer', ['NAME', 'ADDRESS', 'CITY'])
-        dataset.add_relation('part', ['NAME', 'MFGR', 'CATEGORY', 'BRAND1'])
-        dataset.add_relation('date', ['DATE', 'DAYOFWEEK', 'MONTH', 'YEAR', 'YEARMONTH', 'YEARMONTHNUM', 'DAYNUMINWEEK'])
-        dataset.add_relation('supplier', ['NAME', 'ADDRESS', 'CITY', 'NATION'])
+        dataset.add_relation('lineorder', [], y='REVENUE', relation_address='../data/demo/lineorder.csv')
+        dataset.add_relation('customer', ['NAME', 'ADDRESS', 'CITY'], relation_address='../data/demo/customer.csv')
+        dataset.add_relation('part', ['NAME', 'MFGR', 'CATEGORY', 'BRAND1'], relation_address='../data/demo/part.csv')
+        dataset.add_relation('date', ['DATE', 'DAYOFWEEK', 'MONTH', 'YEAR', 'YEARMONTH', 'YEARMONTHNUM', 'DAYNUMINWEEK'], relation_address='../data/demo/date.csv')
+        dataset.add_relation('supplier', ['NAME', 'ADDRESS', 'CITY', 'NATION'], relation_address='../data/demo/supplier.csv')
         dataset.add_join("customer", "lineorder", ["CUSTKEY"], ["CUSTKEY"])
         dataset.add_join("part", "lineorder", ["PARTKEY"], ["PARTKEY"])
         dataset.add_join("date", "lineorder", ["DATEKEY"], ["ORDERDATE"])
         dataset.add_join("supplier", "lineorder", ["SUPPKEY"], ["SUPPKEY"])
-        
-        x = ["customer.NAME as cName", "customer.ADDRESS as cAddress", "customer.CITY as cCity", 
-         "part.NAME as pName", "part.MFGR as pMFGR", "part.CATEGORY as pCategory", "part.BRAND1 as pBrand1", 
-         "date.DATE as dDate", "date.DAYOFWEEK as dDayOfWeek", "date.MONTH as dMonth", "date.YEAR as dYear", 
-         "date.YEARMONTH as dYearMonth", "date.YEARMONTHNUM as dYearMonthNum", "date.DAYNUMINWEEK as dDayNumInWeek", 
-         "supplier.NAME as sName", "supplier.ADDRESS as sAddress", "supplier.CITY as sCity", "supplier.NATION as sNation"]
-        y = "REVENUE"
-
-        con.execute(f"""CREATE TABLE train AS
-            SELECT {",".join(x + [y])}
-            FROM {dataset.get_full_join_sql()}
-        """)
-        
-        train = con.execute("SELECT * FROM train").df()
 
         depth = 3
-#         gb = DecisionTree(learning_rate=1, max_leaves=2 ** depth, max_depth=depth)
+        gb = DecisionTree(learning_rate=1, max_leaves=2 ** depth, max_depth=depth)
 
-#         gb.fit(dataset)
+        gb.fit(dataset)
 
-#         for line in gb.model_def:
-#             for subline in line:
-#                 print(subline)
-#         clf = DecisionTreeRegressor(max_depth=depth)
-        
-#         x_aliases = ["cName", "cAddress", "cCity", "pName", "pMFGR", "pCategory", "pBrand1", "dDate", "dDayOfWeek", "dMonth", "dYear", "dYearMonth", "dYearMonthNum", "dDayNumInWeek", "sName", "sAddress", "sCity", "sNation"]
-        
-#         clf = clf.fit(train[x_aliases], train[y])
-#         mse = mean_squared_error(train[y], clf.predict(train[x_aliases]))
-#         self.assertTrue(abs(gb.compute_rmse('train')[0] - math.sqrt(mse)) < 1e-3)
+        for line in gb.model_def:
+            for subline in line:
+                print(subline)
+        # clf = DecisionTreeRegressor(max_depth=depth)
+        # clf = clf.fit(join[x], join[y])
+        # mse = mean_squared_error(join[y], clf.predict(join[x]))
+
+        # self.assertTrue(abs(gb.compute_rmse('test')[0] - math.sqrt(mse)) < 1e-3)
 
     def test_synthetic(self):
         join = pd.read_csv("../data/synthetic/RST.csv")
