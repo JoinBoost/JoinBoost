@@ -853,22 +853,14 @@ class PandasExecutor(DuckdbExecutor):
         # unqualify the column names, this is required as duckdb returns unqualified column names
         return [col.split(".")[-1] for col in self.table_registry[table].columns]
 
-    # mode 1: write the query result to a table and return table name
-    # mode 2: same as mode 1
-    # mode 3: execute the query and return the result
-    # mode 4: same as mode 1 (for now)
-    def execute_spja_query(
-        self, spja_data: SPJAData, mode: ExecuteMode = ExecuteMode.NESTED_QUERY
-    ):
-        intermediates = {}
 
-        print(spja_data)
-        # for i, table in enumerate(spja_data.from_tables):
-        #     # if table name is surrounded by parentheses, remove them
-        #     # this is required for compatibility in nested queries across duckdb and pandas
-        #     if table.startswith("(") and table.endswith(")"):
-        #         spja_data.from_tables[i] = table[1:-1]
-                
+    def execute_spja_query(
+        self, spja_data: SPJAData, mode: ExecuteMode = ExecuteMode.WRITE_TO_TABLE
+    ):
+        
+        # TODO: may need to execute_spja_query, if the from_tables in spja_table is also a spja_table
+        intermediates = {}
+        
         for table in spja_data.from_tables:
             intermediates[table] = self.table_registry[table]
 

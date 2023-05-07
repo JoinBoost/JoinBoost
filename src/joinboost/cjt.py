@@ -28,9 +28,10 @@ class CJT(JoinGraph):
         if table not in self.annotations:
             return []
         return parse_ann({table: self.annotations[table]})
-
-    def get_all_parsed_annotations(self):
-        return parse_ann(self.annotations, True)
+    
+    # not qualified becuase the join table is different from orginal table
+    def get_all_parsed_annotations(self, qualified: bool = False):
+        return parse_ann(self.annotations, qualified)
 
     def add_annotations(self, r_name: str, annotation: str):
         if r_name not in self.annotations:

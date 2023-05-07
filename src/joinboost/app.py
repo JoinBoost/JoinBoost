@@ -308,17 +308,17 @@ class DecisionTree(DummyModel):
                     SPJAData(from_tables=[attr_view]), mode=ExecuteMode.EXECUTE
                 )
             ]
-            l_annotation = (attr, Annotation.IN, attrs)
-            r_annotation = (attr, Annotation.NOT_IN, attrs)
+            l_annotation = (QualifiedAttribute(r_name,attr), SELECTION.IN, attrs)
+            r_annotation = (QualifiedAttribute(r_name,attr), SELECTION.NOT_IN, attrs)
         elif cur_value == "NULL":
-            l_annotation = (attr, Annotation.NULL, Annotation.NULL)
-            r_annotation = (attr, Annotation.NOT_NULL, Annotation.NOT_NULL)
+            l_annotation = (QualifiedAttribute(r_name,attr), SELECTION.NULL)
+            r_annotation = (QualifiedAttribute(r_name,attr), SELECTION.NOT_NULL)
         elif attr_type == "NUM":
-            l_annotation = (attr, Annotation.NOT_GREATER, cur_value)
-            r_annotation = (attr, Annotation.GREATER, cur_value)
+            l_annotation = (QualifiedAttribute(r_name,attr), SELECTION.NOT_GREATER, cur_value)
+            r_annotation = (QualifiedAttribute(r_name,attr), SELECTION.GREATER, cur_value)
         elif attr_type == "CAT":
-            l_annotation = (attr, Annotation.NOT_DISTINCT, cur_value)
-            r_annotation = (attr, Annotation.DISTINCT, cur_value)
+            l_annotation = (QualifiedAttribute(r_name,attr), SELECTION.NOT_DISTINCT, cur_value)
+            r_annotation = (QualifiedAttribute(r_name,attr), SELECTION.DISTINCT, cur_value)
         else:
             raise Exception("Unsupported Split")
         return l_annotation, r_annotation

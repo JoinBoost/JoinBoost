@@ -1,11 +1,37 @@
 from enum import Enum
 
+class QualifiedAttribute:
+    def __init__(self, table_name, attribute_name):
+        self.table_name = table_name
+        self.attribute_name = attribute_name
+
+    def table(self):
+        return self.table_name
+
+    def attribute(self):
+        return self.attribute_name
+
+    def __str__(self):
+        return self.table_name + "." + self.attribute_name
+
+    def __repr__(self):
+        return self.__str__()
+
+    def __eq__(self, other):
+        return self.table_name == other.table_name and self.attribute_name == other.attribute_name
+
+    def __hash__(self):
+        return hash(self.__str__())
 
 class AggExpression:
     def __init__(self, agg, para):
         self.agg = agg
         self.para = para
 
+class SelectionExpression:
+    def __init__(self, selection, para):
+        self.selection = selection
+        self.para = para
 
 Aggregator = Enum(
     'Aggregator', 'SUM MAX MIN SUB ADD SUM_PROD DISTRIBUTED_SUM_PROD PROD DIV COUNT DISTINCT_COUNT IDENTITY IDENTITY_LAMBDA')
@@ -84,37 +110,48 @@ def is_agg(agg):
     return False
 
 
-Annotation = Enum(
-    'NULL', 'NULL NOT_NULL NOT_GREATER GREATER DISTINCT NOT_DISTINCT IN NOT_IN')
+SELECTION = Enum(
+    'NULL', 'NULL NOT_NULL NOT_GREATER GREATER DISTINCT NOT_DISTINCT IN NOT_IN EQUAL NOT_EQUAL')
+
+
 Message = Enum('Message', 'IDENTITY SELECTION FULL UNDECIDED')
 
+# refactor the codes to make it more readable
 
-def parse_ann(annotations: dict, prepend_relation=False):
+def parse_ann(annotations: dict, qualified=True):
     select_conds = []
+
     for r_name, annotations in annotations.items():
+        
         for ann in annotations:
-            if prepend_relation:
-                attr = ann[0]
+            if qualified:
+                attr = str(ann[0])
             else:
-                attr = r_name + "." + ann[0]
-            if ann[1] == Annotation.IN:
+                attr = ann[0].attribute()
+            if ann[1] == SELECTION.IN:
                 assert isinstance(ann[2], list)
                 _tmp = ["'" + str(ele) + "'" for ele in ann[2]]
                 select_conds.append(attr + " in (" + ",".join(_tmp) + ")")
-            elif ann[1] == Annotation.NOT_IN:
+            elif ann[1] == SELECTION.NOT_IN:
                 assert isinstance(ann[2], list)
                 _tmp = ["'" + str(ele) + "'" for ele in ann[2]]
                 select_conds.append(attr + " not in (" + ",".join(_tmp) + ")")
-            elif ann[1] == Annotation.NOT_DISTINCT:
+            elif ann[1] == SELECTION.NOT_DISTINCT:
+                select_conds.append(attr + " IS NOT DISTINCT FROM '" + str(ann[2]) + "'")
+            elif ann[1] == SELECTION.DISTINCT:
+                select_conds.append(attr + " IS DISTINCT FROM '" + str(ann[2]) + "'")
+            elif ann[1] == SELECTION.EQUAL:
                 select_conds.append(attr + " == '" + str(ann[2]) + "'")
-            elif ann[1] == Annotation.DISTINCT:
+            elif ann[1] == SELECTION.NOT_EQUAL:
                 select_conds.append(attr + " != '" + str(ann[2]) + "'")
-            elif ann[1] == Annotation.NOT_GREATER:
+            elif ann[1] == SELECTION.NOT_GREATER:
                 select_conds.append(attr + " <= " + str(ann[2]))
-            elif ann[1] == Annotation.GREATER:
+            elif ann[1] == SELECTION.GREATER:
                 select_conds.append(attr + " > " + str(ann[2]))
-            elif ann[1] == Annotation.NULL:
+            elif ann[1] == SELECTION.NULL:
                 select_conds.append(attr + " != " + attr)
-            elif ann[1] == Annotation.NOT_NULL:
+            elif ann[1] == SELECTION.NOT_NULL:
                 select_conds.append(attr + " == " + attr)
+            else:
+                raise Exception("Unsupported Selection Expression")
     return select_conds
