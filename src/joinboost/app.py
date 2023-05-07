@@ -5,7 +5,7 @@ from .preprocessor import Preprocessor, RenameStep
 from .executor import SPJAData, PandasExecutor, ExecuteMode
 from .joingraph import JoinGraph
 from .semiring import *
-from .aggregator import Aggregator, Annotation, Message, agg_to_sql
+from .aggregator import *
 from .cjt import CJT
 from queue import PriorityQueue
 import numpy as np
@@ -87,7 +87,7 @@ class DecisionTree(DummyModel):
         super()._fit(jg)
         
         # substracting the target variable by means
-        exp = agg_to_sql(Aggregator.SUB, (self.cjt.target_var, str(self.constant_)))
+        exp = agg_to_sql(AggExpression(Aggregator.SUB, (self.cjt.target_var, str(self.constant_))))
         
 #         if isinstance(self.cjt.exe, PandasExecutor):
 #             exp = lambda row: row[self.cjt.target_var] - self.constant_

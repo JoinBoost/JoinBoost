@@ -666,7 +666,7 @@ class DuckdbExecutor(Executor):
 
         window_clause = " OVER joinboost_window " if window_by and is_agg(agg) else ""
         rename_expr = " AS " + target_col if target_col is not None else ""
-        parsed_expression = agg_to_sql(agg, para) + window_clause + rename_expr
+        parsed_expression = agg_to_sql(AggExpression(agg, para)) + window_clause + rename_expr
 
         return parsed_expression
 

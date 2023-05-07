@@ -1,9 +1,15 @@
 from enum import Enum
 
-# TODO: make aggregator class (like operator in database), so we can do simple composition and optimization
+class AggExpression:
+    def __init__(self, agg, para):
+        self.agg = agg
+        self.para = para
+        
 Aggregator = Enum('Aggregator', 'SUM MAX MIN SUB SUM_PROD DISTRIBUTED_SUM_PROD PROD DIV COUNT DISTINCT_COUNT IDENTITY IDENTITY_LAMBDA')
 
-def agg_to_sql(agg, para):
+def agg_to_sql(agg_expr):
+    agg = agg_expr.agg
+    para = agg_expr.para
     if agg.value == Aggregator.SUM.value:
         assert isinstance(para, str)
         return 'SUM(' + para + ')'
