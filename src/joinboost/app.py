@@ -23,7 +23,7 @@ class DummyModel(App):
         self.semi_ring = varSemiRing()
         self.prefix = "joinboost_tmp_"
         self.model_def = []
-
+    
     def fit(self, jg: JoinGraph):
         jg._preprocess()
 
@@ -65,11 +65,12 @@ class DecisionTree(DummyModel):
         self.preprocessor = Preprocessor()
 
     def fit(self, jg: JoinGraph):
+        jg._preprocess()
+            
         # Create views for tables having conflicting column names with reserved words.
         g, h = self.semi_ring.get_columns_name()
 
         self.preprocessor.add_step(RenameStep(reserved_words=[g, h, "rowid"]))
-
         self.preprocessor.run_preprocessing(jg)
         jg = self.preprocessor.get_join_graph()
 

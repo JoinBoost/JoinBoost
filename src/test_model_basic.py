@@ -7,13 +7,14 @@ import lightgbm
 from sklearn.tree import DecisionTreeRegressor
 from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.metrics import mean_squared_error
-from joinboost.executor import DuckdbExecutor, PandasExecutor
+from joinboost.executor import DuckdbExecutor
 from joinboost.joingraph import JoinGraph
 from joinboost.app import DecisionTree, GradientBoosting, RandomForest
 
 
 class TestModel(unittest.TestCase):
 
+    # TODO: some table have the same attribute name, making it hard to predict
     def test_demo(self):
         con = duckdb.connect(database=':memory:')
         con.execute("CREATE TABLE customer AS SELECT * FROM '../data/demo/customer.csv'")
@@ -57,9 +58,6 @@ class TestModel(unittest.TestCase):
     def test_synthetic(self):
         join = pd.read_csv("../data/synthetic/RST.csv")
         con = duckdb.connect(database=":memory:")
-        con.execute("CREATE TABLE R AS SELECT * FROM '../data/synthetic/R.csv'")
-        con.execute("CREATE TABLE S AS SELECT * FROM '../data/synthetic/S.csv'")
-        con.execute("CREATE TABLE T AS SELECT * FROM '../data/synthetic/T.csv'")
         con.execute("CREATE TABLE test AS SELECT * FROM '../data/synthetic/RST.csv'")
         x = ["A", "B", "D", "E", "F"]
         y = "H"

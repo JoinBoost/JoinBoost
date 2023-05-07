@@ -36,9 +36,12 @@ class JoinGraph:
         self.target_relation = target_relation
         # some magic/random number used for jupyter notebook display
         self.session_id = int(time.time())
-        self.rep_template = data = pkgutil.get_data(__name__, "d3graph.html").decode(
-            "utf-8"
-        )
+#         self.rep_template = data = pkgutil.get_data(__name__, "d3graph.html").decode(
+#             "utf-8"
+#         )
+        
+        # template for jupyter notebook display
+        self.rep_template = data = pkgutil.get_data(__name__,"static_files/dashboard.html").decode('utf-8')
         self._target_rowid_colname = ""
 
     def copy(self):
@@ -160,8 +163,10 @@ class JoinGraph:
 
         X = X if X else []
         categorical_feature = categorical_feature if categorical_feature else []
-
-        self.exe.add_table(relation, relation_address)
+        
+        if relation_address is not None:
+            self.exe.add_table(relation, relation_address)
+            
         self.joins[relation] = dict()
         if relation not in self.relation_schema:
             self.relation_schema[relation] = {}
@@ -380,9 +385,56 @@ class JoinGraph:
         return sql
 
     def _preprocess(self):
-        # self.check_all_features_exist()
+        self.check_all_features_exist()
         self.check_acyclic()
+        self.check_target_exist()
+        self.check_target_is_fact()
+        
+    
+         
+    
+    # Below maybe move to preprocess
+    def check_target_is_fact(self):
+        seen = set()
 
+        def dfs(rel1, parent=None):
+            seen.add(rel1)
+            for rel2 in self.joins[rel1]:
+                if rel2 != parent:
+                    if rel2 in seen:
+                        return
+                    else:
+                        multiplicity = self.get_multiplicity(rel2, rel1)
+                        if multiplicity != 1:
+                            raise JoinGraphException(f"""
+The target table doesn't have many-to-one relationship with the rest.
+Please check the multiplicity between relations {rel2} and {rel1}.
+                            """)
+                        missing_keys = self.get_missing_keys(rel2, rel1)
+                        if missing_keys != 0:
+                            raise JoinGraphException(f"""
+The dimension table have missing key along the path to the target.
+Please check the missing key between relations {rel2} and {rel1}.
+                            """)
+                        
+            return
+
+        dfs(self.target_relation)
+    
+        if self.target_var is None:
+            raise JoinGraphException("Target variable doesn't exist!")
+
+        if self.target_relation is None:
+            raise JoinGraphException("Target relation doesn't exist!")
+    
+    # Below maybe move to preprocess
+    def check_target_exist(self):
+        if self.target_var is None:
+            raise JoinGraphException("Target variable doesn't exist!")
+
+        if self.target_relation is None:
+            raise JoinGraphException("Target relation doesn't exist!")
+            
     # Below maybe move to preprocess
     def check_target_exist(self):
         if self.target_var is None:
@@ -407,33 +459,118 @@ class JoinGraph:
             )
         return attributes
 
-    # output html that displays the join graph. Taken from JoinExplorer notebook
-    def _repr_html_(self):
+#     # output html that displays the join graph. Taken from JoinExplorer notebook
+#     def _repr_html_(self):
+#         nodes = []
+#         links = []
+#         for table_name in self.relation_schema:
+#             attributes = set(self.exe.get_schema(table_name))
+#             if table_name == self.target_relation:
+#                 attributes.add(self.target_var)
+#             nodes.append({"id": table_name, "attributes": list(attributes)})
+
+#         # avoid edge in opposite direction
+#         seen = set()
+#         for table_name_left in self.joins:
+#             for table_name_right in self.joins[table_name_left]:
+#                 if (table_name_right, table_name_left) in seen:
+#                     continue
+#                 keys = self.joins[table_name_left][table_name_right]["keys"]
+#                 links.append(
+#                     {
+#                         "source": table_name_left,
+#                         "target": table_name_right,
+#                         "left_keys": keys[0],
+#                         "right_keys": keys[1],
+#                     }
+#                 )
+#                 seen.add((table_name_left, table_name_right))
+
+#         self.session_id += 1
+
+#         s = self.rep_template
+#         s = s.replace("{{session_id}}", str(self.session_id))
+#         s = s.replace("{{nodes}}", str(nodes))
+#         s = s.replace("{{links}}", str(links))
+#         return s
+
+    
+    '''
+    node structure:
+    nodes: [
+        { 
+            id: relation,
+            attributes: [dim1, dim2, join_key1, join_key2, measurement1, measurement2],
+            join_keys: [
+                {
+                    key: col1
+                    multiplicity: many/one
+                },
+            ],
+            measurements: [ 
+            {
+                name: AVG(A,..),
+                relations: [
+                {name: t1, should_highlight: True/False, color: None},
+                {name: t2, should_highlight: True/False, color: None}],
+                edges: [
+                {left_rel: t1, right_rel: t2, should_highlight: True/False, color: None},
+                ]
+            }, 
+            {..}
+            ]
+        }
+    ]
+    
+    edge structure: [
+        {
+            source: node_id,
+            left_keys: [key1, key2, ...],
+            dest: node_id,
+            right_keys: [key1, key2, ...],
+        }
+    ]
+    
+    Edge and relation also stores:
+            highlight: true/false (control the opacity)
+            color: black by default
+    These two can be updated in js function through interaction
+    '''
+    def get_graph(self):
         nodes = []
         links = []
-        for table_name in self.relation_schema:
-            attributes = set(self.exe.get_schema(table_name))
-            if table_name == self.target_relation:
-                attributes.add(self.target_var)
-            nodes.append({"id": table_name, "attributes": list(attributes)})
 
         # avoid edge in opposite direction
         seen = set()
-        for table_name_left in self.joins:
-            for table_name_right in self.joins[table_name_left]:
-                if (table_name_right, table_name_left) in seen:
-                    continue
-                keys = self.joins[table_name_left][table_name_right]["keys"]
-                links.append(
-                    {
-                        "source": table_name_left,
-                        "target": table_name_right,
-                        "left_keys": keys[0],
-                        "right_keys": keys[1],
-                    }
-                )
-                seen.add((table_name_left, table_name_right))
+        for relation_left in self.joins:
+            for relation_right in self.joins[relation_left]:
+                if (relation_right, relation_left) in seen: continue
+                links.append({"source": relation_left,
+                              "target": relation_right,
+                              "left_keys": self.get_join_keys(relation_left, relation_right),
+                              "right_keys": self.get_join_keys(relation_right, relation_left),
+                              "multiplicity": [self.get_multiplicity(relation_left, relation_right, simple=True),
+                                               self.get_multiplicity(relation_right, relation_left, simple=True)],
+                              "missing":[self.get_missing_keys(relation_left, relation_right),
+                                         self.get_missing_keys(relation_right, relation_left)],
+                              })
+                seen.add((relation_left, relation_right))
 
+        for relation in self.relations:
+            join_keys = set(self.get_join_keys(relation))
+            attributes = set(self.get_useful_attributes(relation))
+            measurements = []
+
+            nodes.append({"id": relation,
+                          "name": relation,
+                          "measurements": measurements,
+                          "attributes": list(attributes),
+                          "join_keys": list(join_keys),
+                          })
+        return nodes, links
+
+    def _repr_html_(self):
+        nodes, links = self.get_graph()
         self.session_id += 1
 
         s = self.rep_template
@@ -441,6 +578,8 @@ class JoinGraph:
         s = s.replace("{{nodes}}", str(nodes))
         s = s.replace("{{links}}", str(links))
         return s
+    
+    
 
     #     def decide_feature_type(self, table, attrs, attr_types, threshold, exe: Executor):
     #         self.relations.append(table)

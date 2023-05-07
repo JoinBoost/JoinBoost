@@ -20,21 +20,21 @@ class TestJoingraph(unittest.TestCase):
         dataset.add_relation("T", ["A", "C"], relation_address=T)
 
         try:
-            dataset._preprocess()
+            dataset.check_acyclic()
             raise Exception("Disjoint join graph is allowed!")
         except JoinGraphException:
             pass
 
         dataset.add_join("R", "S", ["B"], ["B"])
         dataset.add_join("S", "T", ["C"], ["C"])
-        dataset._preprocess()
+        dataset.check_acyclic()
 
         # TODO: check join keys available
         # dataset.add_join("R", "S", ["A"], ["A"])
 
         dataset.add_join("R", "T", ["A"], ["A"])
         try:
-            dataset._preprocess()
+            dataset.check_acyclic()
             raise Exception("Cyclic join graph is allowed!")
         except JoinGraphException:
             pass
