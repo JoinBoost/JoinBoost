@@ -1,50 +1,70 @@
 from enum import Enum
 
+
 class AggExpression:
     def __init__(self, agg, para):
         self.agg = agg
         self.para = para
-        
-Aggregator = Enum('Aggregator', 'SUM MAX MIN SUB SUM_PROD DISTRIBUTED_SUM_PROD PROD DIV COUNT DISTINCT_COUNT IDENTITY IDENTITY_LAMBDA')
+
+
+Aggregator = Enum(
+    'Aggregator', 'SUM MAX MIN SUB ADD SUM_PROD DISTRIBUTED_SUM_PROD PROD DIV COUNT DISTINCT_COUNT IDENTITY IDENTITY_LAMBDA')
+
 
 def agg_to_sql(agg_expr):
+    # check if agg_expr is a string as the base SQL expression
+    if isinstance(agg_expr, str):
+        return agg_expr
+
     agg = agg_expr.agg
     para = agg_expr.para
+
     if agg.value == Aggregator.SUM.value:
-        assert isinstance(para, str)
-        return 'SUM(' + para + ')'
-    elif agg.value == Aggregator.DISTRIBUTED_SUM_PROD.value:
+        # para is a single agg_expr
+        return 'SUM(' + agg_to_sql(para) + ')'
+
+    elif agg.value == Aggregator.DISTINCT_COUNT.value:
+        return "COUNT(DISTINCT(" + agg_to_sql(para) + "))"
+
+    elif agg.value == Aggregator.COUNT.value:
+        return "COUNT(" + agg_to_sql(para) + ")"
+
+    elif agg.value == Aggregator.IDENTITY.value or agg.value == Aggregator.IDENTITY_LAMBDA.value:
+        return para
+
+    elif agg.value == Aggregator.PROD.value:
         assert isinstance(para, list)
+        _tmp = ["CAST(" + val + " AS DOUBLE)" for val in para]
+        return "*".join(_tmp)
+
+    elif agg.value == Aggregator.MAX.value:
+        return "MAX(" + agg_to_sql(para) + ")"
+    
+    elif agg.value == Aggregator.ADD.value:
+        # addition has para as a list of abritary length, and add them together
+        return "(" + " + ".join(["(" + agg_to_sql(val) + ")" for val in para]) + ")"
+
+    elif agg.value == Aggregator.SUB.value:
+        # substraction has para as a list of two
+        return "(" + agg_to_sql(para[0]) + ") - (" + agg_to_sql(para[1]) + ")"
+
+    elif agg.value == Aggregator.DIV.value:
+        # division has para as a list of two
+        return "(" + agg_to_sql(para[0]) + ") / (" + agg_to_sql(para[1]) + ")"
+    
+    # TODO: use addition and product to implement distributed sum product
+    elif agg.value == Aggregator.DISTRIBUTED_SUM_PROD.value:
         # para structure: [[sum_column and list of annotated columns in other relations],[...]]
         # example para: [[R1.s, R2.c, R3.c], [R2.s, R1.c, R3.c], [R3.s, R1.c, R2.c]]
         _tmp = ['*'.join(elem) for elem in para]
         # expected: SUM(R1.s*R2.c*R3.c + R2.s*R1.c*R3.c + R3.s*R1.c*R2.c)
         return 'SUM(' + '+'.join(_tmp) + ')'
+
     elif agg.value == Aggregator.SUM_PROD.value:
         assert isinstance(para, dict)
         _tmp = [key + "." + value for key, value in para.items()]
         return "SUM(" + "*".join(_tmp) + ")"
-    elif agg.value == Aggregator.DISTINCT_COUNT.value:
-        assert isinstance(para, str)
-        return "COUNT(DISTINCT(" + para + "))"
-    elif agg.value == Aggregator.COUNT.value:
-        assert isinstance(para, str)
-        return "COUNT(" + para + ")"
-    elif agg.value == Aggregator.IDENTITY.value or agg.value == Aggregator.IDENTITY_LAMBDA.value:
-        return str(para)
-    elif agg.value == Aggregator.PROD.value:
-        assert isinstance(para, list)
-        _tmp = ["CAST(" + val + " AS DOUBLE)" for val in para]
-        return "*".join(_tmp)
-    elif agg.value == Aggregator.SUB.value:
-        assert isinstance(para, tuple)
-        return str(para[0]) + " - (" + str(para[1]) + ")"
-    elif agg.value == Aggregator.DIV.value:
-        assert isinstance(para, tuple)
-        return str(para[0]) + " / (" + str(para[1]) + ")"
-    elif agg.value == Aggregator.MAX.value:
-        assert isinstance(para, str)
-        return 'MAX(' + para + ')'
+    
     else:
         raise Exception("Unsupported Semiring Expression")
 
@@ -63,8 +83,11 @@ def is_agg(agg):
         return True
     return False
 
-Annotation = Enum('NULL', 'NULL NOT_NULL NOT_GREATER GREATER DISTINCT NOT_DISTINCT IN NOT_IN')
+
+Annotation = Enum(
+    'NULL', 'NULL NOT_NULL NOT_GREATER GREATER DISTINCT NOT_DISTINCT IN NOT_IN')
 Message = Enum('Message', 'IDENTITY SELECTION FULL UNDECIDED')
+
 
 def parse_ann(annotations: dict, prepend_relation=False):
     select_conds = []

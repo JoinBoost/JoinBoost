@@ -329,8 +329,7 @@ class JoinGraph:
 
         spja_data = SPJAData(
             aggregate_expressions={'max_count': ('count', Aggregator.MAX)},
-            from_tables=[
-                '(' + multiplicity + ')'],
+            from_tables=[multiplicity],
             )
 
         res = self.exe.execute_spja_query(spja_data, mode=ExecuteMode.EXECUTE)

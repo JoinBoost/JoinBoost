@@ -862,11 +862,12 @@ class PandasExecutor(DuckdbExecutor):
     ):
         intermediates = {}
 
-        for i, table in enumerate(spja_data.from_tables):
-            # if table name is surrounded by parentheses, remove them
-            # this is required for compatibility in nested queries across duckdb and pandas
-            if table.startswith("(") and table.endswith(")"):
-                spja_data.from_tables[i] = table[1:-1]
+        print(spja_data)
+        # for i, table in enumerate(spja_data.from_tables):
+        #     # if table name is surrounded by parentheses, remove them
+        #     # this is required for compatibility in nested queries across duckdb and pandas
+        #     if table.startswith("(") and table.endswith(")"):
+        #         spja_data.from_tables[i] = table[1:-1]
                 
         for table in spja_data.from_tables:
             intermediates[table] = self.table_registry[table]
