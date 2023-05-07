@@ -118,40 +118,39 @@ Message = Enum('Message', 'IDENTITY SELECTION FULL UNDECIDED')
 
 # refactor the codes to make it more readable
 
-def parse_ann(annotations: dict, qualified=True):
+def parse_ann(selectionExpressions, qualified=True):
     select_conds = []
+    print("selectionExpressions: ", selectionExpressions)
 
-    for r_name, annotations in annotations.items():
-        
-        for ann in annotations:
-            if qualified:
-                attr = str(ann[0])
-            else:
-                attr = ann[0].attribute()
-            if ann[1] == SELECTION.IN:
-                assert isinstance(ann[2], list)
-                _tmp = ["'" + str(ele) + "'" for ele in ann[2]]
-                select_conds.append(attr + " in (" + ",".join(_tmp) + ")")
-            elif ann[1] == SELECTION.NOT_IN:
-                assert isinstance(ann[2], list)
-                _tmp = ["'" + str(ele) + "'" for ele in ann[2]]
-                select_conds.append(attr + " not in (" + ",".join(_tmp) + ")")
-            elif ann[1] == SELECTION.NOT_DISTINCT:
-                select_conds.append(attr + " IS NOT DISTINCT FROM '" + str(ann[2]) + "'")
-            elif ann[1] == SELECTION.DISTINCT:
-                select_conds.append(attr + " IS DISTINCT FROM '" + str(ann[2]) + "'")
-            elif ann[1] == SELECTION.EQUAL:
-                select_conds.append(attr + " == '" + str(ann[2]) + "'")
-            elif ann[1] == SELECTION.NOT_EQUAL:
-                select_conds.append(attr + " != '" + str(ann[2]) + "'")
-            elif ann[1] == SELECTION.NOT_GREATER:
-                select_conds.append(attr + " <= " + str(ann[2]))
-            elif ann[1] == SELECTION.GREATER:
-                select_conds.append(attr + " > " + str(ann[2]))
-            elif ann[1] == SELECTION.NULL:
-                select_conds.append(attr + " != " + attr)
-            elif ann[1] == SELECTION.NOT_NULL:
-                select_conds.append(attr + " == " + attr)
-            else:
-                raise Exception("Unsupported Selection Expression")
+    for ann in selectionExpressions:
+        if qualified:
+            attr = str(ann[0])
+        else:
+            attr = ann[0].attribute()
+        if ann[1] == SELECTION.IN:
+            assert isinstance(ann[2], list)
+            _tmp = ["'" + str(ele) + "'" for ele in ann[2]]
+            select_conds.append(attr + " in (" + ",".join(_tmp) + ")")
+        elif ann[1] == SELECTION.NOT_IN:
+            assert isinstance(ann[2], list)
+            _tmp = ["'" + str(ele) + "'" for ele in ann[2]]
+            select_conds.append(attr + " not in (" + ",".join(_tmp) + ")")
+        elif ann[1] == SELECTION.NOT_DISTINCT:
+            select_conds.append(attr + " IS NOT DISTINCT FROM '" + str(ann[2]) + "'")
+        elif ann[1] == SELECTION.DISTINCT:
+            select_conds.append(attr + " IS DISTINCT FROM '" + str(ann[2]) + "'")
+        elif ann[1] == SELECTION.EQUAL:
+            select_conds.append(attr + " == '" + str(ann[2]) + "'")
+        elif ann[1] == SELECTION.NOT_EQUAL:
+            select_conds.append(attr + " != '" + str(ann[2]) + "'")
+        elif ann[1] == SELECTION.NOT_GREATER:
+            select_conds.append(attr + " <= " + str(ann[2]))
+        elif ann[1] == SELECTION.GREATER:
+            select_conds.append(attr + " > " + str(ann[2]))
+        elif ann[1] == SELECTION.NULL:
+            select_conds.append(attr + " != " + attr)
+        elif ann[1] == SELECTION.NOT_NULL:
+            select_conds.append(attr + " == " + attr)
+        else:
+            raise Exception("Unsupported Selection Expression")
     return select_conds

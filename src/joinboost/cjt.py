@@ -27,11 +27,16 @@ class CJT(JoinGraph):
     def get_parsed_annotations(self, table):
         if table not in self.annotations:
             return []
-        return parse_ann({table: self.annotations[table]})
+        return parse_ann(self.annotations[table])
     
-    # not qualified becuase the join table is different from orginal table
+    # not qualified by default becuase the join table is different from orginal table
     def get_all_parsed_annotations(self, qualified: bool = False):
-        return parse_ann(self.annotations, qualified)
+        # self.annotations is a dict of selectionExpressions, and the key is the table name
+        list_of_ann = []
+        for _, value in self.annotations.items():
+            list_of_ann.extend(value)
+
+        return parse_ann(list_of_ann, qualified)
 
     def add_annotations(self, r_name: str, annotation: str):
         if r_name not in self.annotations:
