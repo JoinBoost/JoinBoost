@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<style>
+    .flex-container {
+      display: flex;
+    }
+
+    .links line {
+        stroke: #aaa;
+        stroke-width: 2px;
+    }
+    .links line.highlight{
+        stroke: black;
+        stroke-width: 4px;
+    }
+    .links line.clickable_edge  {
+        opacity: 0;
+        stroke-width: 20px;
+    }
+    .links line.clickable_edge.highlight  {
+        opacity: 0;
+        stroke-width: 22px;
+    }
+
+    .markers polyline {
+      fill: none;
+      stroke: #aaa;
+      stroke-width: 2px;
+    }
+
+    .markers polyline.highlight {
+        fill: none;
+        stroke: black;
+        stroke-width: 4px;
+    }
+
+    .nodes circle {
+        fill: #bbb;
+    }
+
+    .nodes circle.highlight {
+        fill: black;
+    }
+
+    .relation {
+        background-color: #a7b7e3;
+        margin: 6px 6px;
+        padding: 3px 3px;
+        border-radius: 3px ;
+    }
+
+    .relation:hover {
+        background-color: #96a4c9;
+    }
+
+    .relationName {
+        display: flex;
+        margin: 5px 5px;
+        font-weight: bold;
+    }
+
+    .attribute {
+        display: flex;
+        background-color: white;
+        border-radius: 3px ;
+        margin: 6px 8px;
+        padding: 3px 10px;
+        display: none;
+    }
+
+    .attribute.expanded {
+        display: block;
+    }
+
+    .attribute:hover {
+        background-color: #dfdfdf;
+    }
+
+
+    .attribute.join_keys {
+        background-color: #d9f7da;
+    }
+
+    .attribute.join_keys:hover {
+        background-color: #b6ddb8;
+    }
+
+    .attribute.join_keys.highlight {
+        outline: 3px solid #499568;
+    }
+
+    .attribute.measurements {
+        background-color: #ffd9ea;
+    }
+    .attribute.measurements.highlight {
+        outline: 3px solid #a16e76;
+    }
+
+    .attribute.measurements:hover {
+        background-color: #cd97af;
+    }
+
+    div.scroll {
+        overflow-x: hidden;
+        overflow-y: auto;
+        text-align:justify;
+    }
+
+    /* custom scrollbar */
+    ::-webkit-scrollbar {
+      width: 15px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background-color: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background-color: #d6dee1;
+      border-radius: 20px;
+      border: solid transparent;
+      background-clip: content-box;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background-color: #a8bbbf;
+    }
+
+</style>
+<div class="flex-container" style="font-family:sans-serif;font-size:12px;">
+    <div id="session{{session_id}}schema" class="scroll"  style="background-color:#38425D;width:220px;height:100vh"></div>
+    <div><svg id="session{{session_id}}" width="600" height="600"></svg></div>
+</div>
+<script src="https://d3js.org/d3.v5.min.js"></script>
+<script>
+
+    graph = {
+        "nodes": {{nodes}},
+        "links": {{links}}
+    }
+    
+    console.log(graph)
+
+    // height and width of the whole visualization
+    var svg = d3.select("#session{{session_id}}")
+    svg.on("mousedown", function() {
+        //reset all highlighting if background is clicked
+        unHighlightGraph();
+    })
+    var width = +svg.attr("width")
+    var height = +svg.attr("height");
+
+
+    // attributes for Join Graph
+    var circleRadius = 30
+    var linkDistance = 120
+
+    var triangleBase = 15
+    var triangleHeight =13
+    //svg elements can be clipped and marker defs are rendered in the corner for some reason
+    //this offset will move it out of the corner
+    var verticalOffset = 5
+
+    // this is to make the edges a bit longer.
+    var edgeLengthModifier = 3
+
+    var defs = svg.append('defs')
+
+    defs.append('marker')
+        .attr('id','arrowHead').attr('markerWidth','30').attr('markerHeight','30')
+        .attr('refX', circleRadius + triangleHeight-3).attr('refY',triangleBase/2 + verticalOffset)
+        .attr('orient', 'auto-start-reverse')
+        .attr('class','markers')
+        .attr('markerUnits', 'userSpaceOnUse')
+        .append('polyline')
+        // triangle ArrowHead
+        .attr('transform', `translate(0,${verticalOffset})`)
+        .attr('points',`0 ${triangleBase/2}, ${triangleHeight +edgeLengthModifier} 0, 0 ${triangleBase/2}, ${triangleHeight +edgeLengthModifier} ${triangleBase}`)
+        // .attr('points',`0 0, ${triangleHeight} ${triangleBase/2}, 0 ${triangleBase}`)
+
+    defs .append('marker')
+        .attr('id','arrowHeadHighlight').attr('markerWidth','100px').attr('markerHeight','100px')
+        .attr('refX', circleRadius + triangleHeight-3).attr('refY',triangleBase/2 + verticalOffset)
+        .attr('orient', 'auto-start-reverse').attr('class', 'markers highlight')
+        .attr('markerUnits', 'userSpaceOnUse')
+        .attr('transform', `translate(0,${verticalOffset})`)
+        .append('polyline')
+        .attr('class', 'markers highlight')
+        // triangle ArrowHead
+        .attr('transform', `translate(0,${verticalOffset})`)
+        .attr('points',`0 ${triangleBase/2}, ${triangleHeight +edgeLengthModifier} 0, 0 ${triangleBase/2}, ${triangleHeight +edgeLengthModifier} ${triangleBase}`)
+
+
+    var schemaArea = d3.select("#session{{session_id}}schema")
+
+    var trueTypeOf = (obj) => Object.prototype.toString.call(obj).slice(8, -1).toLowerCase()
+
+    var schema = schemaArea
+        .selectAll("div")
+        .data(graph.nodes)
+        .enter()
+        .append("div")
+        .attr('class', 'relation')
+        .attr('id', (d)=>{return 'schema_' + d.name;})
+        .on("click", function (d) {
+            d3.select(this)
+            .selectAll("span")
+            .classed('expanded', function() {return !d3.select(this).classed("expanded");})
+        });
+
+    schema
+        .append("text")
+        .attr('class', 'relationName')
+        .text((d)=>{return d.id ;})
+
+    schema
+        .append("div")
+        .selectAll("span")
+        .data((d)=>{return d.measurements;})
+        .enter()
+        .append("span")
+        .attr('id', (d)=>{return 'attribute_' + d.name;})
+        .attr('class', 'attribute measurements')
+        .text((d)=>{return d.name;})
+        .on("click", function (d) {
+            d3.event.stopPropagation();
+            unHighlightGraph()
+            unHighlightSchema()
+            d3.select(this).classed('highlight',true)
+            d.edges.map((e) => highlightRelationEdge(e.left_rel, e.right_rel, e.color))
+            d.relations.map((r) => highlightRelationNode(r.name, r.color, r.text))
+        });
+
+    schema
+        .append("div")
+        .selectAll("span")
+        .data((d)=>{return d.join_keys;})
+        .enter()
+        .append("span")
+        .attr('id', (d)=>{return 'attribute_' + d;})
+        .attr('class', 'attribute join_keys')
+        .text((d)=>{return d;})
+        .on("click", function (d) {
+            d3.event.stopPropagation();
+        });
+
+    schema
+        .append("div")
+        .selectAll("span")
+        .data((d)=>{return d.attributes;})
+        .enter()
+        .append("span")
+        .attr('id', (d)=>{return 'attribute_' + d;})
+        .attr('class', 'attribute')
+        .text((d)=>{return d;})
+        .on("click", function (d) {
+            d3.event.stopPropagation();
+        });
+
+    var simulation = d3.forceSimulation()
+        .force("link", d3.forceLink().id((d)=>{return d.id;}))
+        .force("charge", d3.forceManyBody().strength(-280))
+        .force("center", d3.forceCenter(width / 2, height / 2));
+
+
+    //list of link containers
+    var linkContainers = svg.append('g').attr('class', 'links')
+        .selectAll("g")
+        .data(graph.links)
+        .enter()
+        .append("g")
+
+    var edgeDragEvent = d3.drag()
+        .on("start", dragstarted)
+        .on("drag", dragged)
+        .on("end", (d,i,nodes) => {
+            unHighlight();
+            dragended(d,i,nodes);
+            highlightRelationAttribute(d.source.id, d.right_keys)
+            highlightRelationAttribute(d.target.id, d.left_keys)
+            highlightRelationNode(d.source.id)
+            highlightRelationSchema(d.source.id)
+            highlightRelationNode(d.target.id)
+            highlightRelationSchema(d.target.id)
+            highlightRelationEdge(d.source.id, d.target.id);
+        })
+
+    var link = linkContainers
+        .append("line")
+        .attr('id', (d)=>{return "edge_" + d.source + "-" + d.target;})
+        .attr('marker-end', function(d) { if (d.multiplicity[1]==='M') return 'url(#arrowHead)'; else return '';})
+        .attr('marker-start', function(d) { if (d.multiplicity[0]==='M') return 'url(#arrowHead)'; else return '';})
+        .call(edgeDragEvent);
+
+    var clickableLinks = linkContainers
+        .append('line')
+        .attr('id', (d) => {return 'clickable_edge_' + d.source + '_' + d.target})
+        .attr('x1', function(d){return d.source.x;})
+        .attr('y1', function(d){return d.source.y;})
+        .attr('x2', function(d){return d.target.x;})
+        .attr('y2', function(d){return d.target.y;})
+        .attr('class', 'clickable_edge')
+        .call(edgeDragEvent)
+
+    var sourceLinkTexts = linkContainers
+        .append('text')
+        .attr('x',(d)=>{return d.source.x;})
+        .attr('y',(d)=>{return d.source.y;})
+        .text((d, i)=>{return 'Missing: ' + d.missing.toString();})
+        .call(edgeDragEvent)
+
+    /*
+     var destLinkTexts = linkContainers
+         .append('text')
+         .attr('x', (d)=>{return d.target.x;})
+         .attr('y', (d)=>{return d.target.y;})
+         .text(function (d, i) {
+             return d.multiplicity[1];
+         })
+         */
+
+
+    //list of node containers
+    var dataEnter = svg
+        .append("g")
+        .selectAll("g")
+        .data(graph.nodes)
+        .enter()
+        .append("g")
+        .attr("class", "nodes")
+        .attr('id', (d)=>{return 'node_container_' + d.id});
+
+    var nodeDragEvent = d3.drag()
+        .on("start", dragstarted)
+        .on("drag", dragged)
+        .on("end", (d,i,nodes) => {
+            unHighlight();
+            dragended(d,i,nodes);
+            highlightRelationNode(d.id);
+            highlightRelationSchema(d.id);
+        })
+
+    var node = dataEnter.append("circle")
+        .attr('id', (d)=>{return "circle_" + d.id;})
+        .attr("r", circleRadius)
+        .call(nodeDragEvent);
+
+    var nodeText = dataEnter.append("text")
+        .attr("dy", "1em")
+        .attr('fill', 'white')
+        .text((d)=>{return d.name;})
+        .call(nodeDragEvent);
+
+    var nodeAboveText = dataEnter.append("text")
+        .attr('id', (d)=>{return "circleText_" + d.id;})
+        .attr("dy", -circleRadius)
+        .attr('fill', 'black')
+        .call(nodeDragEvent)
+
+
+    nodeAboveText.style('font-family','cursive');
+
+
+
+    simulation
+        .nodes(graph.nodes)
+        .on("tick", ticked);
+
+    simulation.force("link")
+        .links(graph.links)
+        .distance(linkDistance);
+
+    function ticked() {
+        // make sure that all the links are within boundry
+        link.attr("x1", (d)=>{
+                nodeX = Math.max(circleRadius, Math.min(width-circleRadius, d.source.x))
+                return Math.max(0, Math.min(width, nodeX));
+            })
+            .attr("y1", (d)=>{
+                nodeY = Math.max(circleRadius, Math.min(height-circleRadius, d.source.y))
+                return Math.max(0, Math.min(height, nodeY));
+            })
+            .attr("x2", (d)=>{
+                nodeX = Math.max(circleRadius, Math.min(width-circleRadius, d.target.x))
+                return Math.max(0, Math.min(width, nodeX));
+            })
+            .attr("y2", (d)=>{
+                nodeY = Math.max(circleRadius, Math.min(height-circleRadius, d.target.y))
+                return Math.max(0, Math.min(height, nodeY));
+            });
+
+        clickableLinks.attr("x1", (d)=>{
+                nodeX = Math.max(circleRadius, Math.min(width-circleRadius, d.source.x))
+                return Math.max(0, Math.min(width, nodeX));
+            })
+            .attr("y1", (d)=>{
+                nodeY = Math.max(circleRadius, Math.min(height-circleRadius, d.source.y))
+                return Math.max(0, Math.min(height, nodeY));
+            })
+            .attr('x2', (d)=>{
+                nodeX = Math.max(circleRadius, Math.min(width-circleRadius, d.target.x))
+                return Math.max(0, Math.min(width, nodeX));
+            })
+            .attr('y2', (d)=>{
+                nodeY = Math.max(circleRadius, Math.min(height-circleRadius, d.target.y))
+                return Math.max(0, Math.min(height, nodeY));
+            });
+
+        // // for the texts on the link
+        sourceLinkTexts
+            .attr('x', function(d) {
+                return Math.max(0, Math.min(width,d.source.x + (d.target.x - d.source.x) / 2 - this.getBBox().width/2))
+              })
+            .attr('y', (d)=>{return Math.max(0, Math.min(height, d.source.y + (d.target.y - d.source.y)/2))});
+
+        // destLinkTexts
+        //     .attr('x', (d)=>{return Math.max(0, Math.min(width,d.source.x + 3 * (d.target.x - d.source.x) / 5))})
+        //     .attr('y', (d)=>{return Math.max(0, Math.min(height, d.source.y + 3 * (d.target.y - d.source.y) / 5))});
+
+        node
+            .attr("transform", (d)=>{return "translate(" + Math.max(circleRadius, Math.min(width-circleRadius, d.x)) +
+                                    ", " + Math.max(circleRadius, Math.min(height-circleRadius, d.y)) + ")";});
+        nodeAboveText
+            .attr("x", function (d) {return Math.max(circleRadius/2, Math.min(width-circleRadius/2, d.x - this.getBBox().width / 2))})
+            .attr("y", function (d) {return Math.max(circleRadius/2, Math.min(height-circleRadius/2, d.y - this.getBBox().height / 2 ))});
+
+        nodeText
+            .attr("x", function (d) {
+              nodeX = Math.max(circleRadius, Math.min(width-circleRadius, d.x))
+              return Math.max(0, Math.min(width, nodeX - this.getBBox().width / 2))})
+            .attr("y", function (d) {
+              nodeY = Math.max(circleRadius, Math.min(height-circleRadius, d.y))
+              return Math.max(0, Math.min(height, nodeY - this.getBBox().height / 2 ))});
+
+    }
+
+    function unHighlightGraph() {
+        node
+           .classed('highlight',false)
+           .style('color', null)
+
+        link
+            .classed('highlight',false)
+            .attr('marker-end', function(d) { if (d.multiplicity[1]==='M') return 'url(#arrowHead)'; else return '';})
+           .attr('marker-start', function(d) { if (d.multiplicity[0]==='M') return 'url(#arrowHead)'; else return '';})
+            .style('color', null)
+
+        clickableLinks.classed('highlight',false);
+
+        nodeAboveText
+            .text("")
+    }
+
+    function unHighlightSchema() {
+        schemaArea.selectAll("span")
+            .classed('highlight',false)
+
+    }
+
+    function unExpandSchema() {
+        schemaArea.selectAll("span")
+            .classed('expanded',false)
+    }
+
+    function unHighlight() {
+        unHighlightSchema()
+        unExpandSchema()
+        unHighlightGraph()
+    }
+
+    function highlightRelationSchema(relation) {
+        // highlight schema
+        schema = schemaArea.select("#schema_" + relation)
+        schema
+          .selectAll('div')
+          .selectAll('span')
+          .classed('expanded',true)
+
+        // flash schema
+        schema
+          .transition()
+          .duration(0)
+          .style("opacity", 0)
+          .transition()
+          .duration(2000)
+          .style("opacity", 100);
+    }
+
+    function highlightRelationNode(relation, color=null, text="") {
+        // highlight node
+        svg.select("#circle_" + relation)
+           .classed('highlight',true)
+           .style('color', color)
+
+        svg.select("#circleText_" + relation)
+           .text(text)
+    }
+
+    function highlightRelationEdge(soruceRelation, targetRelation, color=null) {
+        svg.select("#edge_" + soruceRelation + "-" + targetRelation)
+           .classed('highlight',true)
+           .attr('marker-end', function(d) { if (d.multiplicity[1]==='M') return 'url(#arrowHeadHighlight)'; else return '';})
+           .attr('marker-start', function(d) { if (d.multiplicity[0]==='M') return 'url(#arrowHeadHighlight)'; else return '';})
+           .style('color', color)
+        svg.select("#clickable_edge_" + soruceRelation + "_" + targetRelation)
+            .classed('highlight',true)
+    }
+
+    function highlightRelationAttribute(relation, attribute) {
+        schemaArea
+            .select("#schema_" + relation)
+            .select("#attribute_" + attribute)
+            .classed('highlight',true)
+    }
+
+    function dragstarted(d, i, nodes) {
+        if (!d3.event.active) simulation.alphaTarget(0.3).restart();
+    }
+
+    function dragged(d, i) {
+        d.fx = d3.event.x;
+        d.fy = d3.event.y;
+    }
+
+    function dragended(d) {
+        if (!d3.event.active) simulation.alphaTarget(0);
+        d.fx = null;
+        d.fy = null;
+    }
+</script>
