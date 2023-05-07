@@ -2,10 +2,8 @@ from enum import Enum
 
 # TODO: make aggregator class (like operator in database), so we can do simple composition and optimization
 Aggregator = Enum('Aggregator', 'SUM MAX MIN SUB SUM_PROD DISTRIBUTED_SUM_PROD PROD DIV COUNT DISTINCT_COUNT IDENTITY IDENTITY_LAMBDA')
-Annotation = Enum('NULL', 'NULL NOT_NULL NOT_GREATER GREATER DISTINCT NOT_DISTINCT IN NOT_IN')
-Message = Enum('Message', 'IDENTITY SELECTION FULL UNDECIDED')
 
-def parse_agg(agg, para):
+def agg_to_sql(agg, para):
     if agg.value == Aggregator.SUM.value:
         assert isinstance(para, str)
         return 'SUM(' + para + ')'
@@ -34,10 +32,10 @@ def parse_agg(agg, para):
         return "*".join(_tmp)
     elif agg.value == Aggregator.SUB.value:
         assert isinstance(para, tuple)
-        return str(para[0]) + " - " + str(para[1])
+        return str(para[0]) + " - (" + str(para[1]) + ")"
     elif agg.value == Aggregator.DIV.value:
         assert isinstance(para, tuple)
-        return str(para[0]) + ' / ' + str(para[1])
+        return str(para[0]) + " / (" + str(para[1]) + ")"
     elif agg.value == Aggregator.MAX.value:
         assert isinstance(para, str)
         return 'MAX(' + para + ')'
@@ -59,6 +57,8 @@ def is_agg(agg):
         return True
     return False
 
+Annotation = Enum('NULL', 'NULL NOT_NULL NOT_GREATER GREATER DISTINCT NOT_DISTINCT IN NOT_IN')
+Message = Enum('Message', 'IDENTITY SELECTION FULL UNDECIDED')
 
 def parse_ann(annotations: dict, prepend_relation=False):
     select_conds = []

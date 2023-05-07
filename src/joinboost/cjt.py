@@ -258,6 +258,7 @@ class CJT(JoinGraph):
         # copy the rest attributes
         for attr in self.get_useful_attributes(self.target_relation):
             lift_exp[attr] = (attr, Aggregator.IDENTITY)
+        
         spja_data = SPJAData(
             aggregate_expressions=lift_exp, from_tables=[self.target_relation]
         )

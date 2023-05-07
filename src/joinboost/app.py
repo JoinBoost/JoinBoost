@@ -5,7 +5,7 @@ from .preprocessor import Preprocessor, RenameStep
 from .executor import SPJAData, PandasExecutor, ExecuteMode
 from .joingraph import JoinGraph
 from .semiring import *
-from .aggregator import Aggregator, Annotation, Message
+from .aggregator import Aggregator, Annotation, Message, agg_to_sql
 from .cjt import CJT
 from queue import PriorityQueue
 import numpy as np
@@ -23,8 +23,11 @@ class DummyModel(App):
         self.semi_ring = varSemiRing()
         self.prefix = "joinboost_tmp_"
         self.model_def = []
-    
+        
     def fit(self, jg: JoinGraph):
+        self._fit(jg)
+    
+    def _fit(self, jg: JoinGraph):
         jg._preprocess()
 
         # get the gradient and hessian
@@ -64,9 +67,11 @@ class DecisionTree(DummyModel):
         self.debug = debug
         self.preprocessor = Preprocessor()
 
-    def fit(self, jg: JoinGraph):
+    def _fit(self, jg: JoinGraph):
         jg._preprocess()
-            
+        
+        
+        # First, we run preprocess to rename reserved column name
         # Create views for tables having conflicting column names with reserved words.
         g, h = self.semi_ring.get_columns_name()
 
@@ -79,11 +84,13 @@ class DecisionTree(DummyModel):
         self.cjt = CJT(semi_ring=self.semi_ring, join_graph=jg)
         self.create_sample()
 
-        super().fit(jg)
-
-        exp = self.cjt.target_var + "- (" + str(self.constant_) + ")"
-        if isinstance(self.cjt.exe, PandasExecutor):
-            exp = lambda row: row[self.cjt.target_var] - self.constant_
+        super()._fit(jg)
+        
+        # substracting the target variable by means
+        exp = agg_to_sql(Aggregator.SUB, (self.cjt.target_var, str(self.constant_)))
+        
+#         if isinstance(self.cjt.exe, PandasExecutor):
+#             exp = lambda row: row[self.cjt.target_var] - self.constant_
 
         self.cjt.lift(exp)
         self.semi_ring.set_semi_ring(0, self.count_)
@@ -539,8 +546,8 @@ class GradientBoosting(DecisionTree):
         super().__init__(max_leaves, learning_rate, max_depth, debug=debug)
         self.iteration = iteration
 
-    def fit(self, jg: JoinGraph):
-        super().fit(jg)
+    def _fit(self, jg: JoinGraph):
+        super()._fit(jg)
 
         for _ in range(self.iteration - 1):
             self.train_one()
@@ -575,7 +582,7 @@ class RandomForest(DecisionTree):
         self.iteration = iteration
         self.learning_rate = 1 / iteration
 
-    def fit(self, jg: JoinGraph):
+    def _fit(self, jg: JoinGraph):
 
         for _ in range(self.iteration):
-            super().fit(jg)
+            super()._fit(jg)

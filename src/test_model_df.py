@@ -17,19 +17,16 @@ class TestExecutor(unittest.TestCase):
     def test_synthetic(self):
         join = pd.read_csv("../data/synthetic/RST.csv")
         con = duckdb.connect(database=":memory:")
+        con.execute("CREATE TABLE test AS SELECT * FROM '../data/synthetic/RST.csv'")
+        
         x = ["A", "B", "D", "E", "F"]
         y = "H"
 
         exe = PandasExecutor(con, debug=False)
-        # exe = DuckdbExecutor(con, debug=False)
 
         dataset = JoinGraph(exe=exe)
-        dataset.add_relation(
-            "R", ["B", "D"], y="H", relation_address="../data/synthetic/R.csv"
-        )
-        dataset.add_relation(
-            "S", ["A", "E"], relation_address="../data/synthetic/S.csv"
-        )
+        dataset.add_relation("R", ["B", "D"], y="H", relation_address="../data/synthetic/R.csv")
+        dataset.add_relation("S", ["A", "E"], relation_address="../data/synthetic/S.csv")
         dataset.add_relation("T", ["F"], relation_address="../data/synthetic/T.csv")
         dataset.add_join("R", "S", ["A"], ["A"])
         dataset.add_join("R", "T", ["B"], ["B"])
@@ -57,7 +54,7 @@ class TestExecutor(unittest.TestCase):
                 self.assertTrue(abs(gb.model_def[i][j][0] - expected_model_def[j][0]) < 1e-3)
                 print(gb.model_def[i][j])
 
-        # self.assertTrue(abs(gb.compute_rmse("test")[0] - math.sqrt(mse)) < 1e-3)
+#         self.assertTrue(abs(gb.compute_rmse("test")[0] - math.sqrt(mse)) < 1e-3)
 
     def test_favorita(self):
         con = duckdb.connect(database=":memory:")
@@ -128,7 +125,7 @@ class TestExecutor(unittest.TestCase):
         clf = DecisionTreeRegressor(max_depth=depth)
         clf = clf.fit(data[x], data[y])
         expected_model_def = [
-            [(-2337.9228084177735, ['f4 > 496', 'f5 <= 553', 'f3 <= 475']), (
+        [(-2337.9228084177735, ['f4 > 496', 'f5 <= 553', 'f3 <= 475']), (
         -7160.971070371713, ['f4 > 496', 'f5 <= 553', 'f3 > 475']), (
         -2060.958149762831, ['f4 <= 496', 'f5 <= 557', 'f3 > 475']), (
         -1953.1974409598786, ['f4 > 496', 'f5 > 553', 'f3 > 450']), (

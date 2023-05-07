@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from dataclasses import dataclass, field
 from typing import Optional, Any, List
+import types
 
 import pandas as pd
 
@@ -262,26 +263,6 @@ class Executor(ABC):
 
         """
 
-    def _check_mode(self, mode: ExecuteMode):
-        """
-        Check if the given mode is supported by the executor.
-
-        Parameters
-        ----------
-        mode: ExecuteMode
-            The mode to check.
-
-        Raises
-        -------
-        ValueError
-            If the mode is not supported.
-
-        """
-        if not isinstance(mode, ExecuteMode):
-            raise ValueError(
-                f"mode parameter {mode} must be an instance of ExecuteMode."
-            )
-
     def set_query(self, param, set_left, set_right):
         pass
 
@@ -347,11 +328,12 @@ class DuckdbExecutor(Executor):
     def add_table(self, table: str, table_address):
         if table_address is None:
             raise ExecutorException("Please pass in the csv file location")
-        self.conn.execute(f"CREATE TABLE IF NOT EXISTS {table} AS SELECT * FROM '{table_address}'")
+        self.conn.execute(
+            f"CREATE TABLE IF NOT EXISTS {table} AS SELECT * FROM '{table_address}'"
+        )
 
     def set_query(self, operation, expr1, expr2):
-        return f'({expr1} {operation} {expr2})'
-
+        return f"({expr1} {operation} {expr2})"
 
     # {case: value} operator {case: value} ...
     def case_query(
@@ -495,8 +477,6 @@ class DuckdbExecutor(Executor):
     def execute_spja_query(
         self, spja_data: SPJAData, mode: ExecuteMode = ExecuteMode.NESTED_QUERY
     ) -> Any:
-
-        self._check_mode(mode)
 
         if mode == ExecuteMode.WRITE_TO_TABLE:
             return self._spja_query_to_table(spja_data)
@@ -684,15 +664,12 @@ class DuckdbExecutor(Executor):
             The parsed SQL statement for the aggregate expression.
         """
 
-        window_clause = (
-            " OVER joinboost_window " if window_by and is_agg(agg) else ""
-        )
+        window_clause = " OVER joinboost_window " if window_by and is_agg(agg) else ""
         rename_expr = " AS " + target_col if target_col is not None else ""
-        parsed_expression = (
-            parse_agg(agg, para) + window_clause + rename_expr
-        )
+        parsed_expression = agg_to_sql(agg, para) + window_clause + rename_expr
 
         return parsed_expression
+
 
 class SparkExecutor(DuckdbExecutor):
     def add_table(self, table: str, table_address):
@@ -702,14 +679,14 @@ class SparkExecutor(DuckdbExecutor):
         df = self.conn.read.csv(table_address, header=True, inferSchema=True)
         # register the DataFrame as a temporary view
         df.createOrReplaceTempView(table)
-    
+
     def get_schema(self, table: str) -> list:
         # Get the schema of the source_table
         source_table_schema = self.conn.sql(f"DESCRIBE {table}")
 
         # Extract the column names as a list
         return [row.col_name for row in source_table_schema.collect()]
-    
+
     def _execute_query(self, q, collect=True):
         """
         Executes the given SQL query and returns the result.
@@ -732,15 +709,15 @@ class SparkExecutor(DuckdbExecutor):
 
         if self.debug:
             print(elapsed_time)
-            
+
         if self.debug:
             result.show()
-        
+
         if collect:
             return [tuple(row) for row in result.collect()]
         else:
             return result
-    
+
     def _spja_query_to_table(self, spja_data: SPJAData) -> str:
         """
         Executes an SPJA query and stores the results in a new table.
@@ -757,15 +734,14 @@ class SparkExecutor(DuckdbExecutor):
         """
         spja = self.spja_query(spja_data, parenthesize=False)
         name_ = self.get_next_name()
-        
+
         result_df = self._execute_query(spja, collect=False)
 
         # Register the result DataFrame as a new temporary table
         result_df.createOrReplaceTempView(name_)
         return name_
-    
-    
-     # {case: value} operator {case: value} ...
+
+    # {case: value} operator {case: value} ...
     def case_query(
         self,
         from_table: str,
@@ -791,8 +767,7 @@ class SparkExecutor(DuckdbExecutor):
         :param order_by: str, name of the table to be ordered by rowid, defaults to None
         :return: str, name of the new table
         """
-        
-        
+
         # If no table name is provided, generate a new one
         if not table_name:
             view = self.get_next_name()
@@ -813,20 +788,20 @@ class SparkExecutor(DuckdbExecutor):
         # Create the SELECT statement with the CASE statement
         attrs = ",".join(select_attrs)
         sql = (
-              f"SELECT {attrs}, {base_val}"
+            f"SELECT {attrs}, {base_val}"
             + f"{sql_cases}"
             + f"AS {cond_attr} FROM {from_table} "
         )
         if order_by:
             sql += f"ORDER BY {order_by};"
-            
+
         result_df = self._execute_query(sql, collect=False)
 
         # Register the result DataFrame as a new temporary table
         result_df.createOrReplaceTempView(view)
         return view
-    
-    
+
+
 class PandasExecutor(DuckdbExecutor):
     # Because Pandas is not a database, we use a dictionary to store table_name -> dataframe
     table_registry = {}
@@ -856,21 +831,23 @@ class PandasExecutor(DuckdbExecutor):
         df1 = self.table_registry[df1_name]
         df2 = self.table_registry[df2_name]
         # unqualify the column names in both dataframes
-        df1.columns = [col.split('.')[-1] for col in df1.columns]
-        df2.columns = [col.split('.')[-1] for col in df2.columns]
+        df1.columns = [col.split(".")[-1] for col in df1.columns]
+        df2.columns = [col.split(".")[-1] for col in df2.columns]
 
-        if operation == 'UNION':
+        if operation == "UNION":
             df1 = df1.concat(df2, ignore_index=True)
-        elif operation == 'INTERSECT':
-            df1 = df1.merge(df2, how='inner')
-        elif operation == 'EXCEPT':
-            df1 = df1.merge(df2, how='left', indicator=True).query('_merge=="left_only"')\
-                .drop('_merge', axis=1)
+        elif operation == "INTERSECT":
+            df1 = df1.merge(df2, how="inner")
+        elif operation == "EXCEPT":
+            df1 = (
+                df1.merge(df2, how="left", indicator=True)
+                .query('_merge=="left_only"')
+                .drop("_merge", axis=1)
+            )
         else:
             raise ExecutorException("Unsupported set operation!")
         self.table_registry[df1_name] = df1
         return df1_name
-
 
     def get_schema(self, table):
         # unqualify the column names, this is required as duckdb returns unqualified column names
@@ -883,17 +860,14 @@ class PandasExecutor(DuckdbExecutor):
     def execute_spja_query(
         self, spja_data: SPJAData, mode: ExecuteMode = ExecuteMode.NESTED_QUERY
     ):
-
-        self._check_mode(mode)
-
         intermediates = {}
 
         for i, table in enumerate(spja_data.from_tables):
             # if table name is surrounded by parentheses, remove them
             # this is required for compatibility in nested queries across duckdb and pandas
-            if table.startswith('(') and table.endswith(')'):
+            if table.startswith("(") and table.endswith(")"):
                 spja_data.from_tables[i] = table[1:-1]
-
+                
         for table in spja_data.from_tables:
             intermediates[table] = self.table_registry[table]
 
@@ -906,7 +880,6 @@ class PandasExecutor(DuckdbExecutor):
             if "IS NOT DISTINCT FROM" in cond
         ]
         select_conds = self.convert_predicates(spja_data.select_conds)
-
 
         # join_conds are of the form "table1.col1 IS NOT DISTINCT FROM table2.col2".
         # extract the table1.col1 and table2.col2
@@ -946,7 +919,9 @@ class PandasExecutor(DuckdbExecutor):
         )
 
         # drop columns that don't appear in aggregate_expressions
-        final_cols = [col for col in spja_data.aggregate_expressions.keys() if col is not None]
+        final_cols = [
+            col for col in spja_data.aggregate_expressions.keys() if col is not None
+        ]
         df = df[final_cols]
 
         # sort by each column in order_by
@@ -1000,6 +975,8 @@ class PandasExecutor(DuckdbExecutor):
         return df
 
     def apply_group_by_and_agg(self, agg_conditions, df, group_by, window_by):
+        print(agg_conditions)
+
         if len(group_by) > 0:
             # if group_by element is not of the form joinboost_<digit>.col, then unqualify it
             for i, col in enumerate(group_by):
@@ -1016,11 +993,14 @@ class PandasExecutor(DuckdbExecutor):
                         df[col] = 1
 
                 for col in list(agg_conditions.keys()):
-                    if agg_conditions[col].column == '*':
+                    if agg_conditions[col].column == "*":
                         func = agg_conditions[col].aggfunc
                         df[col] = df.apply(func, axis=1)
                         del agg_conditions[col]
-                    elif agg_conditions[col].aggfunc == 'first' and (col == agg_conditions[col].column or col == agg_conditions[col].column.split('.')[-1]):
+                    elif agg_conditions[col].aggfunc == "first" and (
+                        col == agg_conditions[col].column
+                        or col == agg_conditions[col].column.split(".")[-1]
+                    ):
                         del agg_conditions[col]
 
                 if len(agg_conditions) > 0:
@@ -1034,8 +1014,8 @@ class PandasExecutor(DuckdbExecutor):
                     # apply cumulative sum on window_by columns in pandas dataframe
                     df = df.sort_values(window_by)
                     # TODO: remove hack, propagate g_col and h_col instead of hardcoding
-                    df['s'] = df['s'].cumsum()
-                    df['c'] = df['c'].cumsum()
+                    df["s"] = df["s"].cumsum()
+                    df["c"] = df["c"].cumsum()
                 else:
                     # check if column does not exist and create it before applying agg_conditions (for s anc c)
                     for col in agg_conditions.keys():
@@ -1046,16 +1026,28 @@ class PandasExecutor(DuckdbExecutor):
                     for col in list(agg_conditions.keys()):
                         if agg_conditions[col].column == "*":
                             func = agg_conditions[col].aggfunc
-                            df[col] = df.apply(func, axis=1)
+                            print(func)
+                            if isinstance(func, types.LambdaType):
+                                df[col] = df.apply(func, axis=1)
+                            else:
+                                df[col] = df.eval(func)
                             del agg_conditions[col]
-                        elif agg_conditions[col].aggfunc == 'first' and col == agg_conditions[col].column:
+                        elif (
+                            agg_conditions[col].aggfunc == "first"
+                            and col == agg_conditions[col].column
+                        ):
                             del agg_conditions[col]
 
                     if len(agg_conditions) > 0:
-                        df = df.assign(temp=0).groupby('temp').agg(**agg_conditions)\
-                            .reset_index().drop(columns='temp')
+                        df = (
+                            df.assign(temp=0)
+                            .groupby("temp")
+                            .agg(**agg_conditions)
+                            .reset_index()
+                            .drop(columns="temp")
+                        )
                     for col in df.columns:
-                        df = df.rename(columns={col: col.split('.')[-1]})
+                        df = df.rename(columns={col: col.split(".")[-1]})
 
         return df
 
@@ -1265,10 +1257,14 @@ class PandasExecutor(DuckdbExecutor):
             elif agg.value == Aggregator.MIN.value:
                 agg_conditions[target_col] = pd.NamedAgg(column=para, aggfunc="min")
             elif agg.value == Aggregator.IDENTITY.value:
-                if para == '1':
-                    agg_conditions[target_col] = pd.NamedAgg(column='*', aggfunc=lambda x: 1)
-                elif para != '*':
-                    agg_conditions[target_col] = pd.NamedAgg(column=para, aggfunc='first')
+                if para == "1":
+                    agg_conditions[target_col] = pd.NamedAgg(
+                        column="*", aggfunc="1"
+                    )
+                elif para != "*":
+                    agg_conditions[target_col] = pd.NamedAgg(
+                        column=para, aggfunc="first"
+                    )
                 else:
                     pass
             elif agg.value == Aggregator.IDENTITY_LAMBDA.value:
