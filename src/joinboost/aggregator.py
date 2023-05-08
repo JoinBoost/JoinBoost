@@ -122,52 +122,56 @@ SELECTION = Enum(
 
 Message = Enum('Message', 'IDENTITY SELECTION FULL UNDECIDED')
 
-# refactor the codes to make it more readable
+def selection_to_sql(sel, qualified=True):
+    if sel.selection == SELECTION.IN:
+        # the first element in para is the attribute name
+        # the second element in para is the list of values
+        attr, values = sel.para[0], sel.para[1]
+        _tmp = ["'" + str(value) + "'" for value in values]
+        return attr.to_str(qualified) + " IN (" + ",".join(_tmp) + ")"
 
-def parse_ann(selectionExpressions, qualified=True):
-    select_conds = []
-    print("selectionExpressions: ", selectionExpressions)
+    elif sel.selection == SELECTION.NOT_IN:
+        attr, values = sel.para[0], sel.para[1]
+        _tmp = ["'" + str(value) + "'" for value in values]
+        return attr.to_str(qualified) + " NOT IN (" + ",".join(_tmp) + ")"
 
-    for sel in selectionExpressions:
+    elif sel.selection == SELECTION.NOT_DISTINCT:
+        # the first element in para is the attribute name
+        # the second element in para is one value
+        attr, value = sel.para[0], sel.para[1]
+        return attr.to_str(qualified) + " IS NOT DISTINCT FROM '" + str(value) + "'"
+    
+    elif sel.selection == SELECTION.DISTINCT:
+        attr, value = sel.para[0], sel.para[1]
+        return attr.to_str(qualified) + " IS DISTINCT FROM '" + str(value) + "'"
+    
+    elif sel.selection == SELECTION.EQUAL:
+        attr, value = sel.para[0], sel.para[1]
+        return attr.to_str(qualified) + " == '" + str(value) + "'"
+    
+    elif sel.selection == SELECTION.NOT_EQUAL:
+        attr, value = sel.para[0], sel.para[1]
+        return attr.to_str(qualified) + " != '" + str(value) + "'"
+    
+    elif sel.selection == SELECTION.NOT_GREATER:
+        attr, value = sel.para[0], sel.para[1]
+        return attr.to_str(qualified) + " <= '" + str(value) + "'"
+    
+    elif sel.selection == SELECTION.GREATER:
+        attr, value = sel.para[0], sel.para[1]
+        return attr.to_str(qualified) + " > '" + str(value) + "'"
+    
+    elif sel.selection == SELECTION.NULL:
+        attr = sel.para
+        return attr.to_str(qualified) + " IS NULL"
+    
+    elif sel.selection == SELECTION.NOT_NULL:
+        attr = sel.para
+        return attr.to_str(qualified) + " IS NOT NULL"
+    
+    else:
+        raise Exception("Unsupported Selection Expression")
 
-        if sel.selection == SELECTION.IN:
-            # the first element in para is the attribute name
-            # the second element in para is the list of values
-            attr, values = sel.para[0], sel.para[1]
-            _tmp = ["'" + str(value) + "'" for value in values]
-            select_conds.append(attr.to_str(qualified) + " IN (" + ",".join(_tmp) + ")")
 
-        elif sel.selection == SELECTION.NOT_IN:
-            attr, values = sel.para[0], sel.para[1]
-            _tmp = ["'" + str(value) + "'" for value in values]
-            select_conds.append(attr.to_str(qualified) + " NOT IN (" + ",".join(_tmp) + ")")
-
-        elif sel.selection == SELECTION.NOT_DISTINCT:
-            # the first element in para is the attribute name
-            # the second element in para is one value
-            attr, value = sel.para[0], sel.para[1]
-            select_conds.append(attr.to_str(qualified) + " IS NOT DISTINCT FROM '" + str(value) + "'")
-        elif sel.selection == SELECTION.DISTINCT:
-            attr, value = sel.para[0], sel.para[1]
-            select_conds.append(attr.to_str(qualified) + " IS DISTINCT FROM '" + str(value) + "'")
-        elif sel.selection == SELECTION.EQUAL:
-            attr, value = sel.para[0], sel.para[1]
-            select_conds.append(attr.to_str(qualified) + " == '" + str(value) + "'")
-        elif sel.selection == SELECTION.NOT_EQUAL:
-            attr, value = sel.para[0], sel.para[1]
-            select_conds.append(attr.to_str(qualified) + " != '" + str(value) + "'")
-        elif sel.selection == SELECTION.NOT_GREATER:
-            attr, value = sel.para[0], sel.para[1]
-            select_conds.append(attr.to_str(qualified) + " <= '" + str(value) + "'")
-        elif sel.selection == SELECTION.GREATER:
-            attr, value = sel.para[0], sel.para[1]
-            select_conds.append(attr.to_str(qualified) + " > '" + str(value) + "'")
-        elif sel.selection == SELECTION.NULL:
-            attr = sel.para
-            select_conds.append(attr.to_str(qualified) + " IS NULL")
-        elif sel.selection == SELECTION.NOT_NULL:
-            attr = sel.para
-            select_conds.append(attr.to_str(qualified) + " IS NOT NULL")
-        else:
-            raise Exception("Unsupported Selection Expression")
-    return select_conds
+def selections_to_sql(selectionExpressions, qualified=True):
+    return [selection_to_sql(sel, qualified) for sel in selectionExpressions]
