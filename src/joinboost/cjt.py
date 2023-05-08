@@ -24,10 +24,10 @@ class CJT(JoinGraph):
     def get_message(self, from_table: str, to_table: str):
         return self.joins[from_table][to_table]["message"]
 
-    def get_parsed_annotations(self, table):
-        if table not in self.annotations:
-            return []
-        return selections_to_sql(self.annotations[table])
+    def get_annotations(self, table):
+        # return self.annotations[table] if in the dict, otherwise return empty list
+        return self.annotations.get(table, [])
+        # return selections_to_sql(self.annotations[table])
 
     # not qualified by default becuase the join table is different from orginal table
     def get_all_parsed_annotations(self, qualified: bool = False):
@@ -142,8 +142,7 @@ class CJT(JoinGraph):
         spja_data = SPJAData(
             aggregate_expressions=aggregate_expressions,
             from_tables=[m["message"] for m in incoming_messages] + [table],
-            join_conds=join_conds,
-            select_conds=join_conds + self.get_parsed_annotations(table),
+            select_conds=join_conds + self.get_annotations(table) ,
             group_by=[table + "." + attr for attr in group_by],
         )
 
@@ -178,28 +177,16 @@ class CJT(JoinGraph):
             incoming_messages.append(incoming_message)
             if condition == 1:
                 join_conds += [
-                    selection_to_sql(
                         SelectionExpression(SELECTION.NOT_DISTINCT,
                                             (QualifiedAttribute(incoming_message["message"], l_join_keys[i]),
-                                             QualifiedAttribute(table, r_join_keys[i]))))
+                                             QualifiedAttribute(table, r_join_keys[i])))
                     for i in range(len(l_join_keys))
                 ]
             if condition == 2:
                 join_conds += [
-                    selection_to_sql(
                         SelectionExpression(SELECTION.SEMI_JOIN,
                                             ([QualifiedAttribute(table, key) for key in r_join_keys],
-                                             [QualifiedAttribute(incoming_message["message"], key) for key in l_join_keys])))
-                    # "("
-                    # + ",".join([table + "." + key for key in r_join_keys])
-                    # + ") in (SELECT ("
-                    # + ",".join(
-                    #     [incoming_message["message"] +
-                    #         "." + key for key in l_join_keys]
-                    # )
-                    # + ") FROM "
-                    # + incoming_message["message"]
-                    # + ")"
+                                             [QualifiedAttribute(incoming_message["message"], key) for key in l_join_keys]))
                 ]
         return incoming_messages, join_conds
 
@@ -250,7 +237,7 @@ class CJT(JoinGraph):
             aggregate_expressions=aggregation,
             from_tables=[m["message"]
                          for m in incoming_messages] + [from_table],
-            select_conds=join_conds + self.get_parsed_annotations(from_table),
+            select_conds=join_conds + self.get_annotations(from_table),
             group_by=[from_table + "." + attr for attr in l_join_keys],
         )
         message_name = self.exe.execute_spja_query(

@@ -267,7 +267,9 @@ class DecisionTree(DummyModel):
             attr_spja_data = SPJAData(
                 aggregate_expressions={attr: (attr, Aggregator.IDENTITY)},
                 from_tables=[view_ord_by_obj],
-                select_conds=[f"{g_col}/{h_col} <=" + str(obj)],
+                # TODO: the {g_col}/{h_col} should be a qualified attribute 
+                select_conds=[SelectionExpression(SELECTION.NOT_GREATER,(f"{g_col}/{h_col}",str(obj)))]
+                
             )
             attr_view = self.cjt.exe.execute_spja_query(
                 attr_spja_data, mode=ExecuteMode.NESTED_QUERY
@@ -296,7 +298,7 @@ class DecisionTree(DummyModel):
             attr_view_data = SPJAData(
                 aggregate_expressions={attr: (attr, Aggregator.IDENTITY)},
                 from_tables=[view_ord_by_obj],
-                select_conds=[f"{g_col}/{h_col} <=" + str(obj)],
+                select_conds=[SelectionExpression(SELECTION.NOT_GREATER,(f"{g_col}/{h_col}",str(obj)))]
             )
             attr_view = self.cjt.exe.execute_spja_query(
                 attr_view_data, mode=ExecuteMode.NESTED_QUERY
@@ -561,10 +563,10 @@ class GradientBoosting(DecisionTree):
             _, join_conds = cur_cjt._get_income_messages(
                 cur_cjt.target_relation, condition=2
             )
-            join_conds += cur_cjt.get_parsed_annotations(target_relation)
+
             g_col, _ = self.semi_ring.get_columns_name()
             self.cjt.exe.update_query(
-                f"{g_col}={g_col}-({pred})", target_relation, join_conds
+                f"{g_col}={g_col}-({pred})", target_relation, join_conds + cur_cjt.get_annotations(target_relation)
             )
 
 

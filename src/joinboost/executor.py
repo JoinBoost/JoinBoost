@@ -470,8 +470,11 @@ class DuckdbExecutor(Executor):
         """
         self.check_table(table)
         sql = "UPDATE " + table + " SET " + update_expression + " \n"
+
+        [selection_to_sql(cond) for cond in select_conds]
+
         if len(select_conds) > 0:
-            sql += "WHERE " + " AND ".join(select_conds) + "\n"
+            sql += "WHERE " + " AND ".join([selection_to_sql(cond) for cond in select_conds]) + "\n"
         self._execute_query(sql)
 
     def execute_spja_query(
@@ -582,7 +585,7 @@ class DuckdbExecutor(Executor):
         sql += "FROM " + ",".join(spja_data.from_tables) + "\n"
 
         if len(spja_data.select_conds) > 0:
-            sql += "WHERE " + " AND ".join(spja_data.select_conds) + "\n"
+            sql += "WHERE " + " AND ".join([selection_to_sql(cond) for cond in spja_data.select_conds]) + "\n"
         if len(spja_data.window_by) > 0:
             sql += (
                 "WINDOW joinboost_window AS (ORDER BY "
@@ -860,7 +863,7 @@ class PandasExecutor(DuckdbExecutor):
         
         # TODO: may need to execute_spja_query, if the from_tables in spja_table is also a spja_table
         intermediates = {}
-        
+
         for table in spja_data.from_tables:
             intermediates[table] = self.table_registry[table]
 
