@@ -44,9 +44,14 @@ class SelectionExpression:
 
 
 Aggregator = Enum(
-    'Aggregator',  'SUM MAX MIN SUB ADD SUM_PROD DISTRIBUTED_SUM_PROD PROD DIV COUNT DISTINCT_COUNT IDENTITY IDENTITY_LAMBDA SQRT AVG POW')
+    'Aggregator',
+    'SUM MAX MIN COUNT DISTINCT_COUNT AVG SUM_PROD DISTRIBUTED_SUM_PROD PROD '
+    'SUB ADD DIV IDENTITY IDENTITY_LAMBDA SQRT POW CAST'
+)
 
 # TODO: separate the aggregation (MIN/MAX...) from expression (ADD/SUB...)
+
+
 def agg_to_sql(agg_expr):
     # check if agg_expr is a string as the base SQL expression
     if isinstance(agg_expr, str):
@@ -61,7 +66,10 @@ def agg_to_sql(agg_expr):
 
     elif agg.value == Aggregator.DISTINCT_COUNT.value:
         return "COUNT(DISTINCT(" + agg_to_sql(para) + "))"
-
+    
+    elif agg.value == Aggregator.AVG.value:
+        return "AVG(" + agg_to_sql(para) + ")"
+    
     elif agg.value == Aggregator.COUNT.value:
         return "COUNT(" + agg_to_sql(para) + ")"
 
@@ -100,6 +108,19 @@ def agg_to_sql(agg_expr):
         assert isinstance(para, dict)
         _tmp = [key + "." + value for key, value in para.items()]
         return "SUM(" + "*".join(_tmp) + ")"
+    
+    elif agg.value == Aggregator.SQRT.value:
+        return "SQRT(" + agg_to_sql(para) + ")"
+    
+    elif agg.value == Aggregator.POW.value:
+        # the first attribute is the base, the second is the power
+        base, power = para[0], para[1]
+        return "POW(" + agg_to_sql(base) + ", " + agg_to_sql(power) + ")"
+    
+    elif agg.value == Aggregator.CAST.value:
+        # the first attribute is the attribute to be casted, the second is the type
+        attr, type = para[0], para[1]
+        return "CAST(" + agg_to_sql(attr) + " AS " + agg_to_sql(type) + ")"
 
     else:
         raise Exception("Unsupported Semiring Expression")
@@ -151,7 +172,7 @@ def selection_to_sql(sel, qualified=True):
         attr, values = sel.para[0], sel.para[1]
         _tmp = ["'" + str(value) + "'" for value in values]
         return value_to_sql(attr, qualified) + " NOT IN (" + ",".join(_tmp) + ")"
-    
+
     elif sel.selection == SELECTION.SEMI_JOIN:
         # the first element in para is the list of attributes in the left relation
         # the second element in para is the list of attributes in the right relation

@@ -143,7 +143,10 @@ class DecisionTree(DummyModel):
             self.model_def.append(cur_model_def)
 
     def compute_rmse(self, test_table: str):
-        target = self.cjt.target_var
+        # The challenge is that the original target name may be renamed
+        # during preprocessing. We need to get the original target name
+        # target = self.cjt.target_var
+        target = self.preprocessor.get_original_target_name()
 
         # TODO: refactor
         view = self.cjt.exe.case_query(
