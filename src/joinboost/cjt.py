@@ -28,7 +28,7 @@ class CJT(JoinGraph):
         if table not in self.annotations:
             return []
         return selections_to_sql(self.annotations[table])
-    
+
     # not qualified by default becuase the join table is different from orginal table
     def get_all_parsed_annotations(self, qualified: bool = False):
         # self.annotations is a dict of selectionExpressions, and the key is the table name
@@ -56,7 +56,8 @@ class CJT(JoinGraph):
 
     def copy_cjt(self, semi_ring: SemiRing):
         annotations = copy.deepcopy(self.annotations)
-        c_cjt = CJT(semi_ring=semi_ring, join_graph=self, annotations=annotations)
+        c_cjt = CJT(semi_ring=semi_ring, join_graph=self,
+                    annotations=annotations)
         return c_cjt
 
     def get_root_neighbors(self):
@@ -135,7 +136,8 @@ class CJT(JoinGraph):
         cols = self.semi_ring.get_columns_name()
         aggregate_expressions = self.semi_ring.col_sum(cols)
         for attr in group_by:
-            aggregate_expressions[attr] = (table + "." + attr, Aggregator.IDENTITY)
+            aggregate_expressions[attr] = (
+                table + "." + attr, Aggregator.IDENTITY)
 
         spja_data = SPJAData(
             aggregate_expressions=aggregate_expressions,
@@ -171,32 +173,33 @@ class CJT(JoinGraph):
                     continue
 
             # get the join conditions between from_table and incoming_message
-            l_join_keys, r_join_keys = self.get_join_keys(neighbour_table, table)
+            l_join_keys, r_join_keys = self.get_join_keys(
+                neighbour_table, table)
             incoming_messages.append(incoming_message)
             if condition == 1:
                 join_conds += [
-                    # SelectionExpression(SELECTION.NOT_DISTINCT,
-                    #                     (QualifiedAttribute(incoming_message["message"],l_join_keys[i]), attrs))
-                    incoming_message["message"]
-                    + "."
-                    + l_join_keys[i]
-                    + " IS NOT DISTINCT FROM "
-                    + table
-                    + "."
-                    + r_join_keys[i]
+                    selection_to_sql(
+                        SelectionExpression(SELECTION.NOT_DISTINCT,
+                                            (QualifiedAttribute(incoming_message["message"], l_join_keys[i]),
+                                             QualifiedAttribute(table, r_join_keys[i]))))
                     for i in range(len(l_join_keys))
                 ]
             if condition == 2:
                 join_conds += [
-                    "("
-                    + ",".join([table + "." + key for key in r_join_keys])
-                    + ") in (SELECT ("
-                    + ",".join(
-                        [incoming_message["message"] + "." + key for key in l_join_keys]
-                    )
-                    + ") FROM "
-                    + incoming_message["message"]
-                    + ")"
+                    selection_to_sql(
+                        SelectionExpression(SELECTION.SEMI_JOIN,
+                                            ([QualifiedAttribute(table, key) for key in r_join_keys],
+                                             [QualifiedAttribute(incoming_message["message"], key) for key in l_join_keys])))
+                    # "("
+                    # + ",".join([table + "." + key for key in r_join_keys])
+                    # + ") in (SELECT ("
+                    # + ",".join(
+                    #     [incoming_message["message"] +
+                    #         "." + key for key in l_join_keys]
+                    # )
+                    # + ") FROM "
+                    # + incoming_message["message"]
+                    # + ")"
                 ]
         return incoming_messages, join_conds
 
@@ -220,7 +223,8 @@ class CJT(JoinGraph):
             )
 
         # join with incoming messages
-        incoming_messages, join_conds = self._get_income_messages(from_table, to_table)
+        incoming_messages, join_conds = self._get_income_messages(
+            from_table, to_table)
 
         # assume fact table. Relax it for many-to-many!!
         if m_type == Message.UNDECIDED:
@@ -237,13 +241,15 @@ class CJT(JoinGraph):
 
         # compute aggregation
         cols = self.semi_ring.get_columns_name()
-        aggregation = self.semi_ring.col_sum(cols) if m_type == Message.FULL else {}
+        aggregation = self.semi_ring.col_sum(
+            cols) if m_type == Message.FULL else {}
         for attr in l_join_keys:
             aggregation[attr] = (from_table + "." + attr, Aggregator.IDENTITY)
 
         spja_data = SPJAData(
             aggregate_expressions=aggregation,
-            from_tables=[m["message"] for m in incoming_messages] + [from_table],
+            from_tables=[m["message"]
+                         for m in incoming_messages] + [from_table],
             select_conds=join_conds + self.get_parsed_annotations(from_table),
             group_by=[from_table + "." + attr for attr in l_join_keys],
         )
@@ -266,7 +272,7 @@ class CJT(JoinGraph):
         # copy the rest attributes
         for attr in self.get_useful_attributes(self.target_relation):
             lift_exp[attr] = (attr, Aggregator.IDENTITY)
-        
+
         spja_data = SPJAData(
             aggregate_expressions=lift_exp, from_tables=[self.target_relation]
         )
