@@ -881,26 +881,18 @@ class PandasExecutor(DuckdbExecutor):
         # extract the table1.col1 and table2.col2
         join_conds = [re.findall(r"(\w+\.\w+)", cond) for cond in join_conds]
 
-        # filter list of tables that don't have any join conditions
-        tables_to_join = [
-            table
-            for table in spja_data.from_tables
-            if any(
-                [
-                    cond[0].startswith(table) or cond[1].startswith(table)
-                    for cond in join_conds
-                ]
-            )
-        ]
-
         df = list(from_dfs.values())[0]
 
         if len(join_conds) > 0:
+            # df = self.execute_join(
+            #     from_dfs,
+            #     SPJAData.join_conds
+            # )
+
             df = self.execute_join(
                 from_dfs,
                 join_conds,
-                spja_data.join_type,
-                tables_to_join,
+                SPJAData.join_type
             )
 
         # filter by select_conds
@@ -908,13 +900,12 @@ class PandasExecutor(DuckdbExecutor):
             converted_select_conds = " and ".join(select_conds)
             df = df.query(converted_select_conds)
         
-        # final removal of all qualification of columns
+        # removal of all qualification of columns
         if df is not None:
             for col in df.columns:
                 df = df.rename(columns={col: col.split(".")[-1]})
             # if there are duplicate columns, drop them
             df = df.loc[:, ~df.columns.duplicated()]
-        print(df)
 
 
         # group by and aggregate
@@ -1055,9 +1046,63 @@ class PandasExecutor(DuckdbExecutor):
 
         return df
 
+    # def execute_join(self, df_to_join, join_conds):
+    #     # Step 1: Extract all join keys for each pair of dataframes
+    #     join_conditions = {}
+    #     for sel in join_conds:
+    #         left_attr, right_attr = sel.para[0], sel.para[1]
+    #         left_table, right_table = left_attr.table(), right_attr.table()
+    #         left_attribute_name, right_attribute_name = value_to_sql(left_attr, False), value_to_sql(right_attr, False)
+
+    #         key = tuple(sorted((left_table, right_table)))
+    #         if key not in join_conditions:
+    #             join_conditions[key] = {'left_table': left_table, 'right_table': right_table, 'left_keys': [], 'right_keys': []}
+
+    #         if left_table == join_conditions[key]['left_table']:
+    #             join_conditions[key]['left_keys'].append(left_attribute_name)
+    #             join_conditions[key]['right_keys'].append(right_attribute_name)
+    #         else:
+    #             join_conditions[key]['left_keys'].append(right_attribute_name)
+    #             join_conditions[key]['right_keys'].append(left_attribute_name)
+
+    #     # Step 2: Implement a simple query optimizer to decide the join order
+    #     def simple_query_optimizer(join_conditions):
+    #         # This is a simple example; you can implement more advanced optimization techniques if needed.
+    #         return sorted(join_conditions.values(), key=lambda x: (x['left_table'], x['right_table']))
+
+    #     optimized_join_order = simple_query_optimizer(join_conditions)
+
+    #     # Step 3: Join all dataframes together using Pandas merge function
+    #     result = None
+    #     for join_cond in optimized_join_order:
+    #         left_table = df_to_join[join_cond['left_table']]
+    #         right_table = df_to_join[join_cond['right_table']]
+
+    #         # TODO: quite hacky, but works for now
+    #         def remove_table_prefix(column_name):
+    #             return column_name.split(".")[-1]
+            
+    #         print("left_table", left_table.columns, "right_table", right_table.columns, "join_cond", join_cond)
+
+
+    #         left_table.columns = [remove_table_prefix(col) for col in left_table.columns]
+    #         right_table.columns = [remove_table_prefix(col) for col in right_table.columns]
+
+    #         # Rename duplicate columns in the right table to match the left table
+    #         for left_key, right_key in zip(join_cond['left_keys'], join_cond['right_keys']):
+    #             if left_key != right_key:
+    #                 right_table = right_table.rename(columns={right_key: left_key})
+
+    #         if result is None:
+    #             result = pd.merge(left_table, right_table, on=join_cond['left_keys'])
+    #         else:
+    #             result = pd.merge(result, right_table, on=join_cond['left_keys'])
+
+    #     return result
+
     # computes join or cross (if no join condition) between all tables.
     def execute_join(
-        self, intermediates, join_conds, join_type, tables_to_join
+        self, intermediates, join_conds, join_type
     ):
         df = None
 
@@ -1072,7 +1117,7 @@ class PandasExecutor(DuckdbExecutor):
         # sort tables_to_join by the number of times their respective columns appear in join_conds.
         # TODO: this is a hacky way to avoid duplicate joining between tables.
         tables_to_join = sorted(
-            tables_to_join,
+            intermediates,
             key=lambda x: len(
                 [col for col in intermediates[x].columns if col in temp_join_conds]
             ),
