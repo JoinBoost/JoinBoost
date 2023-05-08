@@ -175,6 +175,8 @@ class CJT(JoinGraph):
             incoming_messages.append(incoming_message)
             if condition == 1:
                 join_conds += [
+                    # SelectionExpression(SELECTION.NOT_DISTINCT,
+                    #                     (QualifiedAttribute(incoming_message["message"],l_join_keys[i]), attrs))
                     incoming_message["message"]
                     + "."
                     + l_join_keys[i]

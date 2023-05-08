@@ -122,52 +122,63 @@ SELECTION = Enum(
 
 Message = Enum('Message', 'IDENTITY SELECTION FULL UNDECIDED')
 
+
+def value_to_sql(value, qualified=True):
+    # if it is  a qualified attribute, return the attribute name
+    if isinstance(value, QualifiedAttribute):
+        return value.to_str(qualified)
+    # if it is a string, return the string with quotes
+    elif isinstance(value, str):
+        return value 
+    else:
+        raise Exception("Unsupported value type")
+
 def selection_to_sql(sel, qualified=True):
     if sel.selection == SELECTION.IN:
         # the first element in para is the attribute name
         # the second element in para is the list of values
         attr, values = sel.para[0], sel.para[1]
         _tmp = ["'" + str(value) + "'" for value in values]
-        return attr.to_str(qualified) + " IN (" + ",".join(_tmp) + ")"
+        return value_to_sql(attr, qualified) + " IN (" + ",".join(_tmp) + ")"
 
     elif sel.selection == SELECTION.NOT_IN:
         attr, values = sel.para[0], sel.para[1]
         _tmp = ["'" + str(value) + "'" for value in values]
-        return attr.to_str(qualified) + " NOT IN (" + ",".join(_tmp) + ")"
+        return value_to_sql(attr, qualified) + " NOT IN (" + ",".join(_tmp) + ")"
 
     elif sel.selection == SELECTION.NOT_DISTINCT:
-        # the first element in para is the attribute name
-        # the second element in para is one value
-        attr, value = sel.para[0], sel.para[1]
-        return attr.to_str(qualified) + " IS NOT DISTINCT FROM '" + str(value) + "'"
+        # the first element in para is the attribute name/one value
+        # the second element in para is the attribute name/one value
+        attr1, attr2 = sel.para[0], sel.para[1]
+        return value_to_sql(attr1, qualified) + " IS NOT DISTINCT FROM " + value_to_sql(attr2, qualified)
     
     elif sel.selection == SELECTION.DISTINCT:
-        attr, value = sel.para[0], sel.para[1]
-        return attr.to_str(qualified) + " IS DISTINCT FROM '" + str(value) + "'"
+        attr1, attr2 = sel.para[0], sel.para[1]
+        return value_to_sql(attr1, qualified) + " IS DISTINCT FROM " + value_to_sql(attr2, qualified)
     
     elif sel.selection == SELECTION.EQUAL:
-        attr, value = sel.para[0], sel.para[1]
-        return attr.to_str(qualified) + " == '" + str(value) + "'"
+        attr1, attr2 = sel.para[0], sel.para[1]
+        return value_to_sql(attr1, qualified) + " = " + value_to_sql(attr2, qualified)
     
     elif sel.selection == SELECTION.NOT_EQUAL:
-        attr, value = sel.para[0], sel.para[1]
-        return attr.to_str(qualified) + " != '" + str(value) + "'"
+        attr1, attr2 = sel.para[0], sel.para[1]
+        return value_to_sql(attr1, qualified) + " != " + value_to_sql(attr2, qualified)
     
     elif sel.selection == SELECTION.NOT_GREATER:
-        attr, value = sel.para[0], sel.para[1]
-        return attr.to_str(qualified) + " <= '" + str(value) + "'"
+        attr1, attr2 = sel.para[0], sel.para[1]
+        return value_to_sql(attr1, qualified) + " <= " + value_to_sql(attr2, qualified)
     
     elif sel.selection == SELECTION.GREATER:
-        attr, value = sel.para[0], sel.para[1]
-        return attr.to_str(qualified) + " > '" + str(value) + "'"
+        attr1, attr2 = sel.para[0], sel.para[1]
+        return value_to_sql(attr1, qualified) + " > " + value_to_sql(attr2, qualified)
     
     elif sel.selection == SELECTION.NULL:
         attr = sel.para
-        return attr.to_str(qualified) + " IS NULL"
+        return value_to_sql(attr, qualified) + " IS NULL"
     
     elif sel.selection == SELECTION.NOT_NULL:
         attr = sel.para
-        return attr.to_str(qualified) + " IS NOT NULL"
+        return value_to_sql(attr, qualified) + " IS NOT NULL"
     
     else:
         raise Exception("Unsupported Selection Expression")
