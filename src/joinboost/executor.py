@@ -893,21 +893,29 @@ class PandasExecutor(DuckdbExecutor):
             )
         ]
 
-        # subtract tables_to_join from from_tables to get the tables that don't have any join conditions
-        tables_to_cross = list(set(spja_data.from_tables) - set(tables_to_join))
+        df = list(from_dfs.values())[0]
 
-        df = self.execute_join(
-            from_dfs,
-            join_conds,
-            spja_data.join_type,
-            tables_to_cross,
-            tables_to_join,
-        )
+        if len(join_conds) > 0:
+            df = self.execute_join(
+                from_dfs,
+                join_conds,
+                spja_data.join_type,
+                tables_to_join,
+            )
 
         # filter by select_conds
         if len(select_conds) > 0:
             converted_select_conds = " and ".join(select_conds)
             df = df.query(converted_select_conds)
+        
+        # final removal of all qualification of columns
+        if df is not None:
+            for col in df.columns:
+                df = df.rename(columns={col: col.split(".")[-1]})
+            # if there are duplicate columns, drop them
+            df = df.loc[:, ~df.columns.duplicated()]
+        print(df)
+
 
         # group by and aggregate
         df = self.apply_group_by_and_agg(
@@ -1049,18 +1057,10 @@ class PandasExecutor(DuckdbExecutor):
 
     # computes join or cross (if no join condition) between all tables.
     def execute_join(
-        self, intermediates, join_conds, join_type, tables_to_cross, tables_to_join
+        self, intermediates, join_conds, join_type, tables_to_join
     ):
         df = None
-        # handle cross joins
-        if len(tables_to_cross) > 0:
-            for table in tables_to_cross:
-                if df is None:
-                    df = intermediates[table]
-                else:
-                    df = df.merge(
-                        intermediates[table], how="cross", suffixes=("", "_drop")
-                    ).filter(regex="^(?!.*_drop)")
+
 
         # unqualify all join conditions
         temp_join_conds = [
@@ -1099,12 +1099,7 @@ class PandasExecutor(DuckdbExecutor):
                 # if there are duplicate columns, drop them
                 df = df.loc[:, ~df.columns.duplicated()]
 
-        # final removal of all qualification of columns
-        if df is not None:
-            for col in df.columns:
-                df = df.rename(columns={col: col.split(".")[-1]})
-            # if there are duplicate columns, drop them
-            df = df.loc[:, ~df.columns.duplicated()]
+        
         return df
 
     # Merges tables based on join conditions regardless of whether the join condition is on the left or right table
