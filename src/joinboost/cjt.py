@@ -142,7 +142,8 @@ class CJT(JoinGraph):
         spja_data = SPJAData(
             aggregate_expressions=aggregate_expressions,
             from_tables=[m["message"] for m in incoming_messages] + [table],
-            select_conds=join_conds + self.get_annotations(table) ,
+            join_conds=join_conds,
+            select_conds=self.get_annotations(table),
             group_by=[table + "." + attr for attr in group_by],
         )
 
@@ -177,16 +178,16 @@ class CJT(JoinGraph):
             incoming_messages.append(incoming_message)
             if condition == 1:
                 join_conds += [
-                        SelectionExpression(SELECTION.NOT_DISTINCT,
-                                            (QualifiedAttribute(incoming_message["message"], l_join_keys[i]),
-                                             QualifiedAttribute(table, r_join_keys[i])))
+                    SelectionExpression(SELECTION.NOT_DISTINCT,
+                                        (QualifiedAttribute(incoming_message["message"], l_join_keys[i]),
+                                         QualifiedAttribute(table, r_join_keys[i])))
                     for i in range(len(l_join_keys))
                 ]
             if condition == 2:
                 join_conds += [
-                        SelectionExpression(SELECTION.SEMI_JOIN,
-                                            ([QualifiedAttribute(table, key) for key in r_join_keys],
-                                             [QualifiedAttribute(incoming_message["message"], key) for key in l_join_keys]))
+                    SelectionExpression(SELECTION.SEMI_JOIN,
+                                        ([QualifiedAttribute(table, key) for key in r_join_keys],
+                                         [QualifiedAttribute(incoming_message["message"], key) for key in l_join_keys]))
                 ]
         return incoming_messages, join_conds
 
@@ -237,7 +238,8 @@ class CJT(JoinGraph):
             aggregate_expressions=aggregation,
             from_tables=[m["message"]
                          for m in incoming_messages] + [from_table],
-            select_conds=join_conds + self.get_annotations(from_table),
+            join_conds=join_conds,
+            select_conds=self.get_annotations(from_table),
             group_by=[from_table + "." + attr for attr in l_join_keys],
         )
         message_name = self.exe.execute_spja_query(

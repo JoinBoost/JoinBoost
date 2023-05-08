@@ -471,8 +471,6 @@ class DuckdbExecutor(Executor):
         self.check_table(table)
         sql = "UPDATE " + table + " SET " + update_expression + " \n"
 
-        [selection_to_sql(cond) for cond in select_conds]
-
         if len(select_conds) > 0:
             sql += "WHERE " + " AND ".join([selection_to_sql(cond) for cond in select_conds]) + "\n"
         self._execute_query(sql)
@@ -584,8 +582,8 @@ class DuckdbExecutor(Executor):
         sql = "SELECT " + ", ".join(parsed_aggregate_expressions) + "\n"
         sql += "FROM " + ",".join(spja_data.from_tables) + "\n"
 
-        if len(spja_data.select_conds) > 0:
-            sql += "WHERE " + " AND ".join([selection_to_sql(cond) for cond in spja_data.select_conds]) + "\n"
+        if len(spja_data.select_conds) > 0 or len(spja_data.join_conds) > 0:
+            sql += "WHERE " + " AND ".join([selection_to_sql(cond) for cond in spja_data.select_conds + spja_data.join_conds]) + "\n"
         if len(spja_data.window_by) > 0:
             sql += (
                 "WINDOW joinboost_window AS (ORDER BY "
@@ -862,20 +860,22 @@ class PandasExecutor(DuckdbExecutor):
     ):
         
         # TODO: may need to execute_spja_query, if the from_tables in spja_table is also a spja_table
-        intermediates = {}
+        from_dfs = {}
 
         for table in spja_data.from_tables:
-            intermediates[table] = self.table_registry[table]
+            from_dfs[table] = self.table_registry[table]
 
         agg_conditions = self.convert_agg_conditions(spja_data.aggregate_expressions)
+
+        sqls = selections_to_sql(spja_data.select_conds + spja_data.join_conds)
 
         # search select_conds for join_conditions that are of the form "table1.col1 IS NOT DISTINCT FROM table2.col2"
         join_conds = [
             re.findall(r"(\w+\.\w+ IS NOT DISTINCT FROM \w+\.\w+)", cond)[0]
-            for cond in spja_data.select_conds
+            for cond in sqls
             if "IS NOT DISTINCT FROM" in cond
         ]
-        select_conds = self.convert_predicates(spja_data.select_conds)
+        select_conds = self.convert_predicates(sqls)
 
         # join_conds are of the form "table1.col1 IS NOT DISTINCT FROM table2.col2".
         # extract the table1.col1 and table2.col2
@@ -896,8 +896,8 @@ class PandasExecutor(DuckdbExecutor):
         # subtract tables_to_join from from_tables to get the tables that don't have any join conditions
         tables_to_cross = list(set(spja_data.from_tables) - set(tables_to_join))
 
-        df = self.join(
-            intermediates,
+        df = self.execute_join(
+            from_dfs,
             join_conds,
             spja_data.join_type,
             tables_to_cross,
@@ -1048,7 +1048,7 @@ class PandasExecutor(DuckdbExecutor):
         return df
 
     # computes join or cross (if no join condition) between all tables.
-    def join(
+    def execute_join(
         self, intermediates, join_conds, join_type, tables_to_cross, tables_to_join
     ):
         df = None
