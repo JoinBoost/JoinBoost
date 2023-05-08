@@ -129,10 +129,11 @@ class DecisionTree(DummyModel):
         if not self.debug:
             self._clean_messages()
 
-    def _build_model(self):
+    def _build_model(self, qualified=False):
         cur_model_def = []
         for cur_cjt in self.leaf_nodes:
-            annotations = cur_cjt.get_all_parsed_annotations()
+            list_of_ann = cur_cjt.get_all_parsed_annotations()
+            annotations = selections_to_sql(list_of_ann, qualified=qualified)
             g, h = cur_cjt.get_semi_ring().get_value()
 
             pred = float(g / h) * self.learning_rate
@@ -142,7 +143,7 @@ class DecisionTree(DummyModel):
             self.model_def.append(cur_model_def)
 
     def compute_rmse(self, test_table: str):
-        target = self.preprocessor.get_original_target_name()
+        target = self.cjt.target_var
 
         # TODO: refactor
         view = self.cjt.exe.case_query(
@@ -394,7 +395,7 @@ class DecisionTree(DummyModel):
                     view_to_max = absoprtion_view
 
                 # check if executor is of type PandasExecutor or DuckdbExecutor
-                # TODO: move this logic somewhere else
+                # TODO: express this logic using recursive aggregation
                 if isinstance(self.cjt.exe, PandasExecutor):
                     func = (
                         lambda row: (row[f"{g_col}"] / row[f"{h_col}"])

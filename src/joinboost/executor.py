@@ -335,7 +335,6 @@ class DuckdbExecutor(Executor):
     def set_query(self, operation, expr1, expr2):
         return f"({expr1} {operation} {expr2})"
 
-    # {case: value} operator {case: value} ...
     def case_query(
         self,
         from_table: str,
@@ -345,31 +344,7 @@ class DuckdbExecutor(Executor):
         case_definitions: list,
         select_attrs: list = [],
         table_name: str = None,
-        order_by: str = None,
     ):
-        """
-        Executes a SQL query with a CASE statement to perform tree-model prediction.
-        Each CASE represents a tree and each WHEN within a CASE represents a leaf.
-
-        :param from_table: str, name of the source table
-        :param operator: str, the operator used to combine predictions
-        :param cond_attr: str, name of the column used in the conditions of the case statement
-        :param base_val: int, base value for the entire tree-model
-        :param case_definitions: list, a list of lists containing the (leaf prediction, leaf predicates) for each tree.
-        :param select_attrs: list, list of attributes to be selected, defaults to empty
-        :param table_name: str, name of the new table, defaults to None
-        :param order_by: str, name of the table to be ordered by rowid, defaults to None
-        :return: str, name of the new table
-        """
-
-        # If no select attributes are provided, retrieve all columns
-        # except the one used in the conditions of the case statement
-        if not select_attrs:
-            attrs = self._execute_query("PRAGMA table_info(" + from_table + ")")
-            for attr in attrs:
-                if attr != cond_attr:
-                    select_attrs.append(attr[1])
-
         # If no table name is provided, generate a new one
         if not table_name:
             view = self.get_next_name()
@@ -395,35 +370,10 @@ class DuckdbExecutor(Executor):
             + f"{sql_cases}"
             + f"AS {cond_attr} FROM {from_table} "
         )
-        if order_by:
-            sql += f"ORDER BY {order_by};"
         self._execute_query(sql)
         print(view)
         return view
-
-    # Write a method that can generate a function based on the case definitions
-    # The function will take in a row and return a value
-    # This function can be used to generate a new column
-    # This function will not use SQL or the database and instead will be run in pandas dataframes
-    # def case_function(self, from_table: str, operator: str, cond_attr: str, base_val: str,
-    #                  case_definitions: list, select_attrs: list = [], table_name: str = None):
-    #
-    #     def case_function(row):
-    #         result = base_val
-    #         predicates = []
-    #         for case_definition in case_definitions:
-    #
-    #             for val, conds in case_definition:
-    #                 # each cond in conds is a string of the form "attr =/>=/</<=/> val"
-    #                 # we need to split this string and then check if the row[attr] satisfies the condition
-    #                 temp = []
-    #                 for i, cond in enumerate(conds):
-    #                     attr, op, val = cond.split()
-    #                     temp += ["row['" + attr + "'] " + op + " " + val]
-    #                 val + " if  (" + " and ".join(temp) + ") else 0"
-    #
-    #         return result
-
+    
     def check_table(self, table):
         """
         Check if a table is a user table.

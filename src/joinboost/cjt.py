@@ -27,16 +27,14 @@ class CJT(JoinGraph):
     def get_annotations(self, table):
         # return self.annotations[table] if in the dict, otherwise return empty list
         return self.annotations.get(table, [])
-        # return selections_to_sql(self.annotations[table])
-
-    # not qualified by default becuase the join table is different from orginal table
-    def get_all_parsed_annotations(self, qualified: bool = False):
+    
+    def get_all_parsed_annotations(self):
         # self.annotations is a dict of selectionExpressions, and the key is the table name
         list_of_ann = []
         for _, value in self.annotations.items():
             list_of_ann.extend(value)
 
-        return selections_to_sql(list_of_ann, qualified)
+        return list_of_ann
 
     def add_annotations(self, r_name: str, annotation: str):
         if r_name not in self.annotations:

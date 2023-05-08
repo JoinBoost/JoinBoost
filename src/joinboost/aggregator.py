@@ -44,7 +44,7 @@ class SelectionExpression:
 
 
 Aggregator = Enum(
-    'Aggregator', 'SUM MAX MIN SUB ADD SUM_PROD DISTRIBUTED_SUM_PROD PROD DIV COUNT DISTINCT_COUNT IDENTITY IDENTITY_LAMBDA')
+    'Aggregator',  'SUM MAX MIN SUB ADD SUM_PROD DISTRIBUTED_SUM_PROD PROD DIV COUNT DISTINCT_COUNT IDENTITY IDENTITY_LAMBDA SQRT AVG POW')
 
 # TODO: separate the aggregation (MIN/MAX...) from expression (ADD/SUB...)
 def agg_to_sql(agg_expr):
