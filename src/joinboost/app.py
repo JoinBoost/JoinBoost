@@ -139,9 +139,8 @@ class DecisionTree(DummyModel):
             if annotations:
                 cur_model_def.append((pred, annotations))
 
-        if cur_model_def:
-            # note that gradient boosting has multiple decision trees
-            self.model_def.append(AggExpression(Aggregator.CASE, cur_model_def))
+        # note that gradient boosting has multiple decision trees
+        self.model_def.append(AggExpression(Aggregator.CASE, cur_model_def))
 
     # TODO: remove the codes and rewrite test cases
     def _build_model_legacy(self, qualified=False):

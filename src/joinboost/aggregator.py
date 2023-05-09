@@ -127,6 +127,11 @@ def agg_to_sql(agg_expr, qualified=True):
         # the para is a list of (value, condition) pairs
         # the condition is a list of SelectionExpression, that are to be ANDed together
         cases = []
+
+        # if there is no condition, return 0
+        if len(para) == 0:
+            return "0"
+
         for val, cond in para:
             conds = " AND ".join([selection_to_sql(c, qualified) for c in cond])
             cases.append(f" WHEN {conds} THEN CAST({val} AS DOUBLE)")

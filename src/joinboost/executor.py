@@ -351,6 +351,9 @@ class DuckdbExecutor(Executor):
             view = self.get_next_name()
         else:
             view = table_name
+        
+        # for gradient boosting, the prediction is the base_val plus the sum of the tree predictions
+        pred_agg = AggExpression(Aggregator.ADD, [base_val] + case_definitions)
 
         # Prepare the case statement using the provided operator
         cases = []
@@ -363,12 +366,14 @@ class DuckdbExecutor(Executor):
             cases.append(agg_to_sql(case, qualified= False))
         sql_cases = f"{operator}".join(cases)
 
+
+        
+
         # Create the SELECT statement with the CASE statement
         attrs = ",".join(select_attrs)
         sql = (
             f"CREATE OR REPLACE TABLE {view} AS\n"
-            + f"SELECT {attrs}, {base_val} {operator}"
-            + f"{sql_cases}"
+            + f"SELECT {attrs}, {agg_to_sql(pred_agg, qualified= False)} "
             + f"AS {cond_attr} FROM {from_table} "
         )
 
