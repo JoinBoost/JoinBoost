@@ -25,11 +25,11 @@ class Preprocessor:
         for step in self.steps:
             self.histories.append(step.apply(joingraph))
 
-    def reapply_preprocessing(self):
+    def reapply_preprocessing(self, joingraph: JoinGraph):
         # reapply the preprocess steps according to the history
         for i in range(len(self.steps)):
             history = self.histories[i]
-            step.reapply(joingraph, history)
+            self.step.reapply(joingraph, history)
 
     def get_history(self):
         # records the history of preprocess

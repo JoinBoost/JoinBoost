@@ -35,7 +35,8 @@ class TestExecutor(unittest.TestCase):
         gb = DecisionTree(learning_rate=1, max_leaves=2**depth, max_depth=depth)
 
         gb.fit(dataset)
-
+        gb._build_model_legacy()
+        
         clf = DecisionTreeRegressor(max_depth=depth)
         clf = clf.fit(join[x], join[y])
         mse = mean_squared_error(join[y], clf.predict(join[x]))
@@ -120,6 +121,7 @@ class TestExecutor(unittest.TestCase):
         reg = DecisionTree(learning_rate=1, max_leaves=2**depth, max_depth=depth)
 
         reg.fit(dataset)
+        reg._build_model_legacy()
 
         data = pd.read_csv("../data/favorita/train_small.csv")
         clf = DecisionTreeRegressor(max_depth=depth)
@@ -224,6 +226,7 @@ class TestExecutor(unittest.TestCase):
         )
 
         reg.fit(dataset)
+        reg._build_model_legacy()
 
         clf = DecisionTreeRegressor(max_depth=depth)
         clf = clf.fit(data[x], data[y])

@@ -353,20 +353,20 @@ class DuckdbExecutor(Executor):
 
         # Prepare the case statement using the provided operator
         cases = []
-        for case_definition in case_definitions:
-            sql_case = f"{operator}\nCASE\n"
-            for val, cond in case_definition:
-                conds = " AND ".join(cond)
-                sql_case += f" WHEN {conds} THEN CAST({val} AS DOUBLE)\n"
-            sql_case += "ELSE 0 END\n"
-            cases.append(sql_case)
-        sql_cases = "".join(cases)
+        for case in case_definitions:
+            # sql_case = f"\nCASE\n"
+            # for val, cond in case_definition:
+            #     conds = " AND ".join(cond)
+            #     sql_case += f" WHEN {conds} THEN CAST({val} AS DOUBLE)\n"
+            # sql_case += "ELSE 0 END\n"
+            cases.append(agg_to_sql(case, qualified= False))
+        sql_cases = f"{operator}".join(cases)
 
         # Create the SELECT statement with the CASE statement
         attrs = ",".join(select_attrs)
         sql = (
             f"CREATE OR REPLACE TABLE {view} AS\n"
-            + f"SELECT {attrs}, {base_val}"
+            + f"SELECT {attrs}, {base_val} {operator}"
             + f"{sql_cases}"
             + f"AS {cond_attr} FROM {from_table} "
         )
@@ -727,14 +727,14 @@ class SparkExecutor(DuckdbExecutor):
 
         # Prepare the case statement using the provided operator
         cases = []
-        for case_definition in case_definitions:
-            sql_case = f"{operator}\nCASE\n"
-            for val, cond in case_definition:
-                conds = " AND ".join(cond)
-                sql_case += f" WHEN {conds} THEN CAST({val} AS DOUBLE)\n"
-            sql_case += "ELSE 0 END\n"
-            cases.append(sql_case)
-        sql_cases = "".join(cases)
+        for case in case_definitions:
+            # sql_case = f"\nCASE\n"
+            # for val, cond in case_definition:
+            #     conds = " AND ".join(cond)
+            #     sql_case += f" WHEN {conds} THEN CAST({val} AS DOUBLE)\n"
+            # sql_case += "ELSE 0 END\n"
+            cases.append(agg_to_sql(case, qualified= False))
+        sql_cases = f"{operator}".join(cases)
 
         # Create the SELECT statement with the CASE statement
         attrs = ",".join(select_attrs)

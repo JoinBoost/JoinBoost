@@ -46,13 +46,14 @@ class SelectionExpression:
 Aggregator = Enum(
     'Aggregator',
     'SUM MAX MIN COUNT DISTINCT_COUNT AVG SUM_PROD DISTRIBUTED_SUM_PROD PROD '
-    'SUB ADD DIV IDENTITY IDENTITY_LAMBDA SQRT POW CAST'
+    'SUB ADD DIV IDENTITY IDENTITY_LAMBDA SQRT POW CAST '
+    'CASE'
 )
 
 # TODO: separate the aggregation (MIN/MAX...) from expression (ADD/SUB...)
 
 
-def agg_to_sql(agg_expr):
+def agg_to_sql(agg_expr, qualified=True):
     # check if agg_expr is a string as the base SQL expression
     if isinstance(agg_expr, str):
         return agg_expr
@@ -62,16 +63,16 @@ def agg_to_sql(agg_expr):
 
     if agg.value == Aggregator.SUM.value:
         # para is a single agg_expr
-        return 'SUM(' + agg_to_sql(para) + ')'
+        return 'SUM(' + agg_to_sql(para, qualified) + ')'
 
     elif agg.value == Aggregator.DISTINCT_COUNT.value:
-        return "COUNT(DISTINCT(" + agg_to_sql(para) + "))"
+        return "COUNT(DISTINCT(" + agg_to_sql(para, qualified) + "))"
     
     elif agg.value == Aggregator.AVG.value:
-        return "AVG(" + agg_to_sql(para) + ")"
+        return "AVG(" + agg_to_sql(para, qualified) + ")"
     
     elif agg.value == Aggregator.COUNT.value:
-        return "COUNT(" + agg_to_sql(para) + ")"
+        return "COUNT(" + agg_to_sql(para, qualified) + ")"
 
     elif agg.value == Aggregator.IDENTITY.value or agg.value == Aggregator.IDENTITY_LAMBDA.value:
         return para
@@ -82,19 +83,19 @@ def agg_to_sql(agg_expr):
         return "*".join(_tmp)
 
     elif agg.value == Aggregator.MAX.value:
-        return "MAX(" + agg_to_sql(para) + ")"
+        return "MAX(" + agg_to_sql(para, qualified) + ")"
 
     elif agg.value == Aggregator.ADD.value:
         # addition has para as a list of abritary length, and add them together
-        return "(" + " + ".join(["(" + agg_to_sql(val) + ")" for val in para]) + ")"
+        return "(" + " + ".join(["(" + agg_to_sql(val, qualified) + ")" for val in para]) + ")"
 
     elif agg.value == Aggregator.SUB.value:
         # substraction has para as a list of two
-        return "(" + agg_to_sql(para[0]) + ") - (" + agg_to_sql(para[1]) + ")"
+        return "(" + agg_to_sql(para[0], qualified) + ") - (" + agg_to_sql(para[1], qualified) + ")"
 
     elif agg.value == Aggregator.DIV.value:
         # division has para as a list of two
-        return "(" + agg_to_sql(para[0]) + ") / (" + agg_to_sql(para[1]) + ")"
+        return "(" + agg_to_sql(para[0], qualified) + ") / (" + agg_to_sql(para[1], qualified) + ")"
 
     # TODO: use addition and product to implement distributed sum product
     elif agg.value == Aggregator.DISTRIBUTED_SUM_PROD.value:
@@ -110,18 +111,26 @@ def agg_to_sql(agg_expr):
         return "SUM(" + "*".join(_tmp) + ")"
     
     elif agg.value == Aggregator.SQRT.value:
-        return "SQRT(" + agg_to_sql(para) + ")"
+        return "SQRT(" + agg_to_sql(para, qualified) + ")"
     
     elif agg.value == Aggregator.POW.value:
         # the first attribute is the base, the second is the power
         base, power = para[0], para[1]
-        return "POW(" + agg_to_sql(base) + ", " + agg_to_sql(power) + ")"
+        return "POW(" + agg_to_sql(base, qualified) + ", " + agg_to_sql(power, qualified) + ")"
     
     elif agg.value == Aggregator.CAST.value:
         # the first attribute is the attribute to be casted, the second is the type
         attr, type = para[0], para[1]
-        return "CAST(" + agg_to_sql(attr) + " AS " + agg_to_sql(type) + ")"
-
+        return "CAST(" + agg_to_sql(attr, qualified) + " AS " + agg_to_sql(type, qualified) + ")"
+    
+    elif agg.value == Aggregator.CASE.value:
+        # the para is a list of (value, condition) pairs
+        # the condition is a list of SelectionExpression, that are to be ANDed together
+        cases = []
+        for val, cond in para:
+            conds = " AND ".join([selection_to_sql(c, qualified) for c in cond])
+            cases.append(f" WHEN {conds} THEN CAST({val} AS DOUBLE)")
+        return f"CASE {' '.join(cases)} ELSE 0 END\n"
     else:
         raise Exception("Unsupported Semiring Expression")
 

@@ -129,13 +129,28 @@ class DecisionTree(DummyModel):
         if not self.debug:
             self._clean_messages()
 
-    def _build_model(self, qualified=False):
+    def _build_model(self):
+        cur_model_def = []
+        for cur_cjt in self.leaf_nodes:
+            annotations = cur_cjt.get_all_parsed_annotations()
+            # annotations = selections_to_sql(list_of_ann, qualified=qualified)
+            g, h = cur_cjt.get_semi_ring().get_value()
+            pred = float(g / h) * self.learning_rate
+            if annotations:
+                cur_model_def.append((pred, annotations))
+
+        if cur_model_def:
+            # note that gradient boosting has multiple decision trees
+            self.model_def.append(AggExpression(Aggregator.CASE, cur_model_def))
+
+    # TODO: remove the codes and rewrite test cases
+    def _build_model_legacy(self, qualified=False):
+        self.model_def = []
         cur_model_def = []
         for cur_cjt in self.leaf_nodes:
             list_of_ann = cur_cjt.get_all_parsed_annotations()
             annotations = selections_to_sql(list_of_ann, qualified=qualified)
             g, h = cur_cjt.get_semi_ring().get_value()
-
             pred = float(g / h) * self.learning_rate
             if annotations:
                 cur_model_def.append((pred, annotations))

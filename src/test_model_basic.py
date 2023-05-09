@@ -45,7 +45,8 @@ class TestModel(unittest.TestCase):
         gb = DecisionTree(learning_rate=1, max_leaves=2 ** depth, max_depth=depth)
 
         gb.fit(dataset)
-
+        gb._build_model_legacy()
+        
         for line in gb.model_def:
             for subline in line:
                 print(subline)
