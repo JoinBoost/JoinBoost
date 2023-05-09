@@ -720,18 +720,16 @@ class SparkExecutor(DuckdbExecutor):
             view = self.get_next_name()
         else:
             view = table_name
-            
+
         # for gradient boosting, the prediction is the base_val plus the sum of the tree predictions
         pred_agg = AggExpression(Aggregator.ADD, [base_val] + case_definitions)
         
         # Create the SELECT statement with the CASE statement
         attrs = ",".join(select_attrs)
         sql = (
-            f"CREATE OR REPLACE TABLE {view} AS\n"
-            + f"SELECT {attrs}, {agg_to_sql(pred_agg, qualified= False)} "
+            f"SELECT {attrs}, {agg_to_sql(pred_agg, qualified= False)}"
             + f"AS {cond_attr} FROM {from_table} "
         )
-
         if order_by:
             sql += f"ORDER BY {order_by};"
 
