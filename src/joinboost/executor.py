@@ -355,20 +355,6 @@ class DuckdbExecutor(Executor):
         # for gradient boosting, the prediction is the base_val plus the sum of the tree predictions
         pred_agg = AggExpression(Aggregator.ADD, [base_val] + case_definitions)
 
-        # Prepare the case statement using the provided operator
-        cases = []
-        for case in case_definitions:
-            # sql_case = f"\nCASE\n"
-            # for val, cond in case_definition:
-            #     conds = " AND ".join(cond)
-            #     sql_case += f" WHEN {conds} THEN CAST({val} AS DOUBLE)\n"
-            # sql_case += "ELSE 0 END\n"
-            cases.append(agg_to_sql(case, qualified= False))
-        sql_cases = f"{operator}".join(cases)
-
-
-        
-
         # Create the SELECT statement with the CASE statement
         attrs = ",".join(select_attrs)
         sql = (
@@ -734,25 +720,18 @@ class SparkExecutor(DuckdbExecutor):
             view = self.get_next_name()
         else:
             view = table_name
-
-        # Prepare the case statement using the provided operator
-        cases = []
-        for case in case_definitions:
-            # sql_case = f"\nCASE\n"
-            # for val, cond in case_definition:
-            #     conds = " AND ".join(cond)
-            #     sql_case += f" WHEN {conds} THEN CAST({val} AS DOUBLE)\n"
-            # sql_case += "ELSE 0 END\n"
-            cases.append(agg_to_sql(case, qualified= False))
-        sql_cases = f"{operator}".join(cases)
-
+            
+        # for gradient boosting, the prediction is the base_val plus the sum of the tree predictions
+        pred_agg = AggExpression(Aggregator.ADD, [base_val] + case_definitions)
+        
         # Create the SELECT statement with the CASE statement
         attrs = ",".join(select_attrs)
         sql = (
-            f"SELECT {attrs}, {base_val}"
-            + f"{sql_cases}"
+            f"CREATE OR REPLACE TABLE {view} AS\n"
+            + f"SELECT {attrs}, {agg_to_sql(pred_agg, qualified= False)} "
             + f"AS {cond_attr} FROM {from_table} "
         )
+
         if order_by:
             sql += f"ORDER BY {order_by};"
 
