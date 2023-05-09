@@ -279,13 +279,14 @@ class JoinGraph:
                                   rightKeys: list):
         # below two queries get the set of join keys
         spja_data = SPJAData(
-            aggregate_expressions={"join_key": AggExpression(Aggregator.IDENTITY, ",".join(leftKeys))},
+            # aggregate_expressions is a dictionary: for ith leftKey, the key is "key_i", the value is the ith leftKey
+            aggregate_expressions = {f"key_{i}": AggExpression(Aggregator.IDENTITY, leftKeys[i]) for i in range(len(leftKeys))},
             from_tables=[relation_left],
             group_by=[",".join(leftKeys)]
         )
         set_left = self.exe.execute_spja_query(spja_data, mode=ExecuteMode.NESTED_QUERY)
         spja_data = SPJAData(
-            aggregate_expressions={"join_key": AggExpression(Aggregator.IDENTITY, ",".join(rightKeys))},
+            aggregate_expressions = {f"key_{i}": AggExpression(Aggregator.IDENTITY, rightKeys[i]) for i in range(len(rightKeys))},
             from_tables=[relation_right],
             group_by=[",".join(rightKeys)]
         )
@@ -321,7 +322,8 @@ class JoinGraph:
 
     def get_max_multiplicity(self, table, keys):
         spja_data = SPJAData(
-            aggregate_expressions={'count': AggExpression(Aggregator.COUNT, '*')},
+            # TODO： why the second argument can't be '*'? COUNT don't really care about the argument
+            aggregate_expressions={'count': AggExpression(Aggregator.COUNT, ','.join(keys))},
             from_tables=[table],
             group_by=keys
         )
