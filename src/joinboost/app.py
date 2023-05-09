@@ -341,7 +341,7 @@ class DecisionTree(DummyModel):
                 obj_view, [attr], "object", [g_col, h_col]
             )
             attr_view_data = SPJAData(
-                aggregate_expressions={attr: (attr, Aggregator.IDENTITY)},
+                aggregate_expressions={attr: AggExpression(Aggregator.IDENTITY, attr)},
                 from_tables=[view_ord_by_obj],
                 select_conds=[SelectionExpression(SELECTION.NOT_GREATER,(f"{g_col}/{h_col}",str(obj)))]
             )
@@ -413,10 +413,10 @@ class DecisionTree(DummyModel):
                     # TODO: further optimization. We don't need to keep the attr.
                     # The only thing we care for splitting is the sum_s/sum_c
                     agg_exp = {
-                        attr: (attr, Aggregator.IDENTITY),
-                        "object": ((g_col, h_col), Aggregator.DIV),
-                        g_col: (g_col, Aggregator.IDENTITY),
-                        h_col: (h_col, Aggregator.IDENTITY),
+                        attr: AggExpression(Aggregator.IDENTITY, attr),
+                        "object": AggExpression(Aggregator.DIV, (g_col, h_col)),
+                        g_col: AggExpression(Aggregator.IDENTITY, g_col),
+                        h_col: AggExpression(Aggregator.IDENTITY, h_col),
                     }
                     spja_data = SPJAData(
                         aggregate_expressions=agg_exp, from_tables=[absoprtion_view]
@@ -425,13 +425,15 @@ class DecisionTree(DummyModel):
                         spja_data, mode=ExecuteMode.NESTED_QUERY
                     )
                     agg_exp = cur_semi_ring.col_sum((g_col, h_col))
-                    agg_exp[attr] = (attr, Aggregator.IDENTITY)
-                    agg_exp["object"] = ("object", Aggregator.IDENTITY)
+                    agg_exp[attr] = AggExpression(Aggregator.IDENTITY, attr)
+                    agg_exp["object"] = AggExpression(Aggregator.IDENTITY, "object")
+
                     spja_data = SPJAData(
                         aggregate_expressions=agg_exp,
                         from_tables=[obj_view],
                         window_by=["object"],
                     )
+
                     view_to_max = self.cjt.exe.execute_spja_query(
                         spja_data, mode=ExecuteMode.NESTED_QUERY
                     )
@@ -462,10 +464,10 @@ class DecisionTree(DummyModel):
                     )
 
                 l2_agg_exp = {
-                    attr: (attr, Aggregator.IDENTITY),
-                    "criteria": (func, Aggregator.IDENTITY_LAMBDA),
-                    g_col: (g_col, Aggregator.IDENTITY),
-                    h_col: (h_col, Aggregator.IDENTITY),
+                    attr: AggExpression(Aggregator.IDENTITY, attr),
+                    "criteria": AggExpression(Aggregator.IDENTITY_LAMBDA, func),
+                    g_col: AggExpression(Aggregator.IDENTITY, g_col),
+                    h_col: AggExpression(Aggregator.IDENTITY, h_col),
                 }
                 spja_data = SPJAData(
                     aggregate_expressions=l2_agg_exp,

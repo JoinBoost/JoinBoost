@@ -37,7 +37,7 @@ class SPJAData:
         join_type: type of join to use for the query.
     """
     aggregate_expressions: dict = field(
-        default_factory=lambda: {None: ("*", Aggregator.IDENTITY)}
+        default_factory=lambda: {None: AggExpression(Aggregator.IDENTITY, "*")}
     )
     from_tables: List[str] = field(default_factory=list)
     select_conds: List[SelectionExpression] = field(default_factory=list)
@@ -506,9 +506,9 @@ class DuckdbExecutor(Executor):
         """
 
         parsed_aggregate_expressions = []
-        for target_col, (para, agg) in spja_data.aggregate_expressions.items():
+        for target_col, aggExp in spja_data.aggregate_expressions.items():
             parsed_expression = self._parse_aggregate_expression(
-                target_col, para, agg, window_by=spja_data.window_by, qualified=spja_data.qualified
+                target_col, aggExp, window_by=spja_data.window_by, qualified=spja_data.qualified
             )
             parsed_aggregate_expressions.append(parsed_expression)
 
@@ -577,9 +577,8 @@ class DuckdbExecutor(Executor):
             print(e)
         return result
     
-    # TODO: receive AggExpression as input, instead of para, agg
     def _parse_aggregate_expression(
-        self, target_col: str, para, agg: Aggregator, window_by: list = None, qualified: bool = True
+        self, target_col: str, aggExp: AggExpression, window_by: list = None, qualified: bool = True
     ):
         """
         Parameters
@@ -599,10 +598,10 @@ class DuckdbExecutor(Executor):
             The parsed SQL statement for the aggregate expression.
         """
 
-        window_clause = " OVER joinboost_window " if window_by and is_agg(agg) else ""
+        window_clause = " OVER joinboost_window " if window_by and is_agg(aggExp.agg) else ""
         rename_expr = " AS " + target_col if target_col is not None else ""
 
-        parsed_expression = agg_to_sql(AggExpression(agg, para),qualified=qualified) + window_clause + rename_expr
+        parsed_expression = agg_to_sql(aggExp, qualified=qualified) + window_clause + rename_expr
 
         return parsed_expression
 

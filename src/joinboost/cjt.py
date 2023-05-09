@@ -134,8 +134,8 @@ class CJT(JoinGraph):
         cols = self.semi_ring.get_columns_name()
         aggregate_expressions = self.semi_ring.col_sum(cols)
         for attr in group_by:
-            aggregate_expressions[attr] = (
-                table + "." + attr, Aggregator.IDENTITY)
+            # TODO: use qualified attribute
+            aggregate_expressions[attr] = AggExpression(Aggregator.IDENTITY, table + "." + attr)
 
         spja_data = SPJAData(
             aggregate_expressions=aggregate_expressions,
@@ -230,7 +230,7 @@ class CJT(JoinGraph):
         aggregation = self.semi_ring.col_sum(
             cols) if m_type == Message.FULL else {}
         for attr in l_join_keys:
-            aggregation[attr] = (from_table + "." + attr, Aggregator.IDENTITY)
+            aggregation[attr] = AggExpression(Aggregator.IDENTITY, from_table + "." + attr)
 
         spja_data = SPJAData(
             aggregate_expressions=aggregation,
@@ -255,10 +255,10 @@ class CJT(JoinGraph):
         lift_exp = self.semi_ring.lift_exp(var)
         # TODO: remove hack
         if isinstance(self.exe, PandasExecutor):
-            lift_exp["s"] = (var, Aggregator.IDENTITY_LAMBDA)
+            lift_exp["s"] = AggExpression(Aggregator.IDENTITY_LAMBDA, var)
         # copy the rest attributes
         for attr in self.get_useful_attributes(self.target_relation):
-            lift_exp[attr] = (attr, Aggregator.IDENTITY)
+            lift_exp[attr] = AggExpression(Aggregator.IDENTITY, attr)
 
         spja_data = SPJAData(
             aggregate_expressions=lift_exp, from_tables=[self.target_relation]

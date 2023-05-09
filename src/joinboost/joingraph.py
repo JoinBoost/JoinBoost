@@ -1,6 +1,6 @@
 import time
 
-from .aggregator import Aggregator
+from .aggregator import *
 import copy
 import time
 
@@ -279,13 +279,13 @@ class JoinGraph:
                                   rightKeys: list):
         # below two queries get the set of join keys
         spja_data = SPJAData(
-            aggregate_expressions={"join_key": (",".join(leftKeys), Aggregator.IDENTITY)},
+            aggregate_expressions={"join_key": AggExpression(Aggregator.IDENTITY, ",".join(leftKeys))},
             from_tables=[relation_left],
             group_by=[",".join(leftKeys)]
         )
         set_left = self.exe.execute_spja_query(spja_data, mode=ExecuteMode.NESTED_QUERY)
         spja_data = SPJAData(
-            aggregate_expressions={"join_key": (",".join(rightKeys), Aggregator.IDENTITY)},
+            aggregate_expressions={"join_key": AggExpression(Aggregator.IDENTITY, ",".join(rightKeys))},
             from_tables=[relation_right],
             group_by=[",".join(rightKeys)]
         )
@@ -296,7 +296,7 @@ class JoinGraph:
         diff_right = self.exe.set_query("EXCEPT", set_right, set_left)
 
         spja_data = SPJAData(
-            aggregate_expressions={'count': ('*',  Aggregator.COUNT)},
+            aggregate_expressions={'count': AggExpression(Aggregator.COUNT, '*')},
             from_tables=[diff_left]
         )
         # get the count of the difference of join keys
@@ -308,7 +308,7 @@ class JoinGraph:
             num_miss_left = res[0][0]
 
         spja_data = SPJAData(
-            aggregate_expressions={'count': ('*',  Aggregator.COUNT)},
+            aggregate_expressions={'count': AggExpression(Aggregator.COUNT, '*')},
             from_tables=[diff_right]
         )
         res = self.exe.execute_spja_query(spja_data, mode=ExecuteMode.EXECUTE)
@@ -321,14 +321,14 @@ class JoinGraph:
 
     def get_max_multiplicity(self, table, keys):
         spja_data = SPJAData(
-            aggregate_expressions={'count': (','.join(keys),  Aggregator.COUNT)},
+            aggregate_expressions={'count': AggExpression(Aggregator.COUNT, '*')},
             from_tables=[table],
             group_by=keys
         )
         multiplicity = self.exe.execute_spja_query(spja_data, mode=ExecuteMode.NESTED_QUERY)
 
         spja_data = SPJAData(
-            aggregate_expressions={'max_count': ('count', Aggregator.MAX)},
+            aggregate_expressions={'max_count': AggExpression(Aggregator.MAX, 'count')},
             from_tables=[multiplicity],
             )
 

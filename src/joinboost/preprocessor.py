@@ -76,7 +76,7 @@ class RenameStep(Step):
 
             for old_name in mapping:
                 new_name = mapping[old_name]
-                expression[new_name] = (old_name, Aggregator.IDENTITY)
+                expression[new_name] = AggExpression(Aggregator.IDENTITY, old_name)
                 joingraph.replace_relation_attribute(relation, old_name, new_name)
 
             spja_data = SPJAData(
