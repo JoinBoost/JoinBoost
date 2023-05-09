@@ -164,8 +164,8 @@ class DecisionTree(DummyModel):
 
         # TODO: make sure the target is not named as "prediction"
         compute_prediction = SPJAData(
-            aggregate_expressions={"prediction":self.get_prediction_aggregate(),
-                                   target: (target, Aggregator.IDENTITY)}, 
+            aggregate_expressions={"prediction": self.get_prediction_aggregate(),
+                                   target: AggExpression(Aggregator.IDENTITY, target)}, 
             from_tables=[test_table], qualified=False
         )
 
@@ -173,12 +173,8 @@ class DecisionTree(DummyModel):
             compute_prediction, mode=ExecuteMode.NESTED_QUERY
         )
 
-        # view = self.cjt.exe.case_query(
-        #     test_table, "+", "prediction", select_attrs = [target], pred_agg = self.get_prediction_aggregate()
-        # )
-
         predict_agg = {
-            "RMSE": (f"SQRT(AVG(POW({target} - prediction, 2)))", Aggregator.IDENTITY)
+            "RMSE": AggExpression(Aggregator.IDENTITY,  f"SQRT(AVG(POW({target} - prediction, 2)))")
         }
         prediction_query_data = SPJAData(
             aggregate_expressions=predict_agg, from_tables=[view]
@@ -219,8 +215,14 @@ class DecisionTree(DummyModel):
             # E.g., R(A,B), S(A,B). They join on A, and B is a feature name shared by both.
             # The full will have ambiguous naming, and may be renamed to (A, R.B, S.B)
             # To avoid this, requires a rename mapping from users. By default, we consider renaming mapping which prefixes the feature with relation name.
-            view = self.cjt.exe.case_query(
-                joingraph.target_relation,"+", "prediction", select_attrs = [self.cjt.target_var], pred_agg = self.get_prediction_aggregate()
+            compute_prediction = SPJAData(
+                aggregate_expressions={"prediction": self.get_prediction_aggregate(),
+                                    self.cjt.target_var: AggExpression(Aggregator.IDENTITY, self.cjt.target_var)}, 
+                from_tables=[joingraph.target_relation], qualified=False
+            )
+
+            view = self.cjt.exe.execute_spja_query(
+                compute_prediction, mode=ExecuteMode.NESTED_QUERY
             )
 
         if input_mode == "JOIN_GRAPH":
@@ -228,18 +230,33 @@ class DecisionTree(DummyModel):
             self._update_fact_table_column_name(jg=joingraph, check_rowid_col=True)
 
             full_join = joingraph.get_full_join_sql()
-            # the reason why we order by rowid is because of the set semantics of the relational models
-            # e.g., for duckdb, join result has its row order shuffled, making it hard to decide the corresponding prediction
-            # we therefore sort by rowid to enforce the correct ordering
-            view = joingraph.exe.case_query(
-                full_join,
-                "+",
-                "prediction",
-                str(self.constant_),
-                self.model_def,
-                [self.cjt.target_var],
-                order_by=f"{joingraph.target_relation}.rowid",
+
+            # # the reason why we order by rowid is because of the set semantics of the relational models
+            # # e.g., for duckdb, join result has its row order shuffled, making it hard to decide the corresponding prediction
+            # # we therefore sort by rowid to enforce the correct ordering
+            # view = joingraph.exe.case_query(
+            #     from_table=full_join,
+            #     cond_attr="prediction",
+            #     base_val=str(self.constant_),
+            #     case_definitions=self.model_def,
+            #     select_attr=[self.cjt.target_var],
+            #     order_by=f"{joingraph.target_relation}.rowid",
+            # )
+
+
+            compute_prediction = SPJAData(
+                aggregate_expressions={"prediction": self.get_prediction_aggregate(),
+                                    self.cjt.target_var: AggExpression(Aggregator.IDENTITY, self.cjt.target_var)}, 
+                from_tables=[full_join], order_by=[(f"{joingraph.target_relation}.rowid", "")], qualified=False
             )
+
+            # have to be mode=ExecuteMode.WRITE_TO_TABLE, can't be NESTED_QUERY
+            # TODO: fix this
+            view = self.cjt.exe.execute_spja_query(
+                compute_prediction, mode=ExecuteMode.WRITE_TO_TABLE
+            )
+
+
             self._update_fact_table_column_name(jg=joingraph, resume_rowid_col=True)
 
         if output_mode == "NUMPY":
@@ -278,10 +295,10 @@ class DecisionTree(DummyModel):
             group_by = [attr]
             absoprtion_view = expanding_cjt.absorption(r_name, [attr])
             agg_exp = {
-                attr: (attr, Aggregator.IDENTITY),
-                "object": ((g_col, h_col), Aggregator.DIV),
-                g_col: (g_col, Aggregator.IDENTITY),
-                h_col: (h_col, Aggregator.IDENTITY),
+                attr: AggExpression(Aggregator.IDENTITY, attr),
+                "object": AggExpression(Aggregator.DIV, (g_col, h_col)),
+                g_col: AggExpression(Aggregator.IDENTITY, g_col),
+                h_col: AggExpression(Aggregator.IDENTITY, h_col),
             }
             spja_data = SPJAData(
                 aggregate_expressions=agg_exp, from_tables=[absoprtion_view]
@@ -293,7 +310,7 @@ class DecisionTree(DummyModel):
                 obj_view, [attr], "object", [g_col, h_col]
             )
             attr_spja_data = SPJAData(
-                aggregate_expressions={attr: (attr, Aggregator.IDENTITY)},
+                aggregate_expressions={attr: AggExpression(Aggregator.IDENTITY, attr)},
                 from_tables=[view_ord_by_obj],
                 # TODO: the {g_col}/{h_col} should be a qualified attribute 
                 select_conds=[SelectionExpression(SELECTION.NOT_GREATER,(f"{g_col}/{h_col}",str(obj)))]
@@ -309,10 +326,10 @@ class DecisionTree(DummyModel):
                 )
             ]
             agg_exp = {
-                attr: (attr, Aggregator.IDENTITY),
-                "object": ((g_col, h_col), Aggregator.DIV),
-                g_col: (g_col, Aggregator.IDENTITY),
-                h_col: (h_col, Aggregator.IDENTITY),
+                attr: AggExpression(Aggregator.IDENTITY, attr),
+                "object": AggExpression(Aggregator.DIV, (g_col, h_col)),
+                g_col: AggExpression(Aggregator.IDENTITY, g_col),
+                h_col: AggExpression(Aggregator.IDENTITY, h_col),
             }
             obj_spja_data = SPJAData(
                 aggregate_expressions=agg_exp, from_tables=[absoprtion_view]
@@ -382,7 +399,7 @@ class DecisionTree(DummyModel):
                 absoprtion_view = cjt.absorption(r_name, group_by)
                 if attr_type == "NUM":
                     agg_exp = cur_semi_ring.col_sum((g_col, h_col))
-                    agg_exp[attr] = (attr, Aggregator.IDENTITY)
+                    agg_exp[attr] = AggExpression(Aggregator.IDENTITY, attr)
                     spja_data = SPJAData(
                         aggregate_expressions=agg_exp,
                         from_tables=[absoprtion_view],

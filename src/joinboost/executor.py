@@ -324,13 +324,14 @@ class DuckdbExecutor(Executor):
 
     def case_query(
         self,
-        from_table: str= None,
-        operator: str= None,
-        cond_attr: str= None,
+        from_table: str,
+        operator: str,
+        cond_attr: str,
+        base_val: str,
+        case_definitions: list,
         select_attrs: list = [],
         table_name: str = None,
         order_by: str = None,
-        pred_agg = None
     ):
         # If no table name is provided, generate a new one
         if not table_name:
@@ -338,7 +339,8 @@ class DuckdbExecutor(Executor):
         else:
             view = table_name
         
-
+        # for gradient boosting, the prediction is the base_val plus the sum of the tree predictions
+        pred_agg = AggExpression(Aggregator.ADD, [base_val] + case_definitions)
 
         # Create the SELECT statement with the CASE statement
         attrs = ",".join(select_attrs)
