@@ -162,10 +162,20 @@ class DecisionTree(DummyModel):
         # target = self.cjt.target_var
         target = self.preprocessor.get_original_target_name()
 
-        # TODO: refactor
-        view = self.cjt.exe.case_query(
-            test_table, "+", "prediction", str(self.constant_), self.model_def, [target]
+        # TODO: make sure the target is not named as "prediction"
+        compute_prediction = SPJAData(
+            aggregate_expressions={"prediction":self.get_prediction_aggregate(),
+                                   target: (target, Aggregator.IDENTITY)}, 
+            from_tables=[test_table], qualified=False
         )
+
+        view = self.cjt.exe.execute_spja_query(
+            compute_prediction, mode=ExecuteMode.NESTED_QUERY
+        )
+
+        # view = self.cjt.exe.case_query(
+        #     test_table, "+", "prediction", select_attrs = [target], pred_agg = self.get_prediction_aggregate()
+        # )
 
         predict_agg = {
             "RMSE": (f"SQRT(AVG(POW({target} - prediction, 2)))", Aggregator.IDENTITY)
@@ -181,6 +191,10 @@ class DecisionTree(DummyModel):
         return self.cjt.exe.execute_spja_query(
             rmse_query_data, mode=ExecuteMode.EXECUTE
         )[0]
+    
+    def get_prediction_aggregate(self):
+        # for gradient boosting, the prediction is the base_val plus the sum of the tree predictions
+        return AggExpression(Aggregator.ADD, [str(self.constant_)] +  self.model_def)
 
     # input_mode = "FULL_JOIN_JG" takes the join graph as input, with the full join specified by JG._target_relation
     # input_mode = "FULL_JOIN_DF" takes the dataframe of full join's table name as input
@@ -205,14 +219,10 @@ class DecisionTree(DummyModel):
             # E.g., R(A,B), S(A,B). They join on A, and B is a feature name shared by both.
             # The full will have ambiguous naming, and may be renamed to (A, R.B, S.B)
             # To avoid this, requires a rename mapping from users. By default, we consider renaming mapping which prefixes the feature with relation name.
-            view = joingraph.exe.case_query(
-                joingraph.target_relation,
-                "+",
-                "prediction",
-                str(self.constant_),
-                self.model_def,
-                [self.cjt.target_var],
+            view = self.cjt.exe.case_query(
+                joingraph.target_relation,"+", "prediction", select_attrs = [self.cjt.target_var], pred_agg = self.get_prediction_aggregate()
             )
+
         if input_mode == "JOIN_GRAPH":
             # TODO: reapply all the preprocessing steps
             self._update_fact_table_column_name(jg=joingraph, check_rowid_col=True)

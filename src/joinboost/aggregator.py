@@ -36,6 +36,9 @@ class AggExpression:
         self.agg = agg
         self.para = para
 
+    # this is to make sure we can unpack AggExpression as (para, agg)
+    def __iter__(self):
+        return iter((self.para, self.agg))
 
 class SelectionExpression:
     def __init__(self, selection, para):

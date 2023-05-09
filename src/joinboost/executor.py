@@ -22,47 +22,34 @@ class ExecutorException(Exception):
 @dataclass(frozen=True)
 class SPJAData:
     """
-    Dataclass representing an SPJA query and its associated parameters.
-
-    Attributes
-    ----------
-    aggregate_expressions : dict
-        A dictionary mapping column names to tuples containing the aggregation expression and the aggregator object.
-    from_tables : list
-        A list of table names to select from. By default, an empty list.
-    select_conds : list
-        A list of conditions to apply to the SELECT statement. By default, an empty list.
-    join_conds : list
-        A list of conditions of the form "table1.col1 IS NOT DISTINCT FROM table2.col2". By default, an empty list.
-    group_by : list
-        A list of column names to group by. By default, an empty list.
-    window_by : list
-        A list of column names to use for windowing. By default, an empty list.
-    order_by : list
-        The column to use for ordering the results. By default, an empty list.
-    limit : int
-        The maximum number of rows to return
-    sample_rate : float
-        The sampling rate to use for the query.
-    replace : bool
-        If True, replaces an existing table or view with the same name.
-    join_type : str
-        The type of join to use for the query. By default, "INNER".
+    Data structure for SPJA queries. Could be recursive (e.g, from_tables could be a list of SPJAData objects).
+    Attributes:
+        aggregate_expressions: dict mapping column names to tuples containing the aggregation expression and the aggregator object.
+        from_tables: list of table names to select from.
+        select_conds: list of conditions to apply to the SELECT statement.
+        join_conds: list of conditions of the form "table1.col1 IS NOT DISTINCT FROM table2.col2".
+        group_by: list of column names to group by.
+        window_by: list of column names to use for windowing.
+        order_by: list of columns to use for ordering the results.
+        limit: maximum number of rows to return.
+        sample_rate: sampling rate to use for the query.
+        replace: if True, replaces an existing table or view with the same name.
+        join_type: type of join to use for the query.
     """
-
     aggregate_expressions: dict = field(
         default_factory=lambda: {None: ("*", Aggregator.IDENTITY)}
     )
     from_tables: List[str] = field(default_factory=list)
-    select_conds: List[str] = field(default_factory=list)
-    join_conds: List[str] = field(default_factory=list)
-    group_by: List[str] = field(default_factory=list)
-    window_by: List[str] = field(default_factory=list)
-    order_by: List[str] = field(default_factory=list)
+    select_conds: List[SelectionExpression] = field(default_factory=list)
+    join_conds: List[SelectionExpression] = field(default_factory=list)
+    group_by: List[QualifiedAttribute] = field(default_factory=list)
+    window_by: List[QualifiedAttribute] = field(default_factory=list)
+    order_by: List[QualifiedAttribute] = field(default_factory=list)
     limit: Optional[int] = None
     sample_rate: Optional[float] = None
     replace: bool = True
     join_type: str = "INNER"
+    qualified: bool = True
 
 
 def ExecutorFactory(con=None):
@@ -337,14 +324,13 @@ class DuckdbExecutor(Executor):
 
     def case_query(
         self,
-        from_table: str,
-        operator: str,
-        cond_attr: str,
-        base_val: str,
-        case_definitions: list,
+        from_table: str= None,
+        operator: str= None,
+        cond_attr: str= None,
         select_attrs: list = [],
         table_name: str = None,
         order_by: str = None,
+        pred_agg = None
     ):
         # If no table name is provided, generate a new one
         if not table_name:
@@ -352,8 +338,7 @@ class DuckdbExecutor(Executor):
         else:
             view = table_name
         
-        # for gradient boosting, the prediction is the base_val plus the sum of the tree predictions
-        pred_agg = AggExpression(Aggregator.ADD, [base_val] + case_definitions)
+
 
         # Create the SELECT statement with the CASE statement
         attrs = ",".join(select_attrs)
@@ -521,7 +506,7 @@ class DuckdbExecutor(Executor):
         parsed_aggregate_expressions = []
         for target_col, (para, agg) in spja_data.aggregate_expressions.items():
             parsed_expression = self._parse_aggregate_expression(
-                target_col, para, agg, window_by=spja_data.window_by
+                target_col, para, agg, window_by=spja_data.window_by, qualified=spja_data.qualified
             )
             parsed_aggregate_expressions.append(parsed_expression)
 
@@ -589,9 +574,10 @@ class DuckdbExecutor(Executor):
         except Exception as e:
             print(e)
         return result
-
+    
+    # TODO: receive AggExpression as input, instead of para, agg
     def _parse_aggregate_expression(
-        self, target_col: str, para, agg: Aggregator, window_by: list = None
+        self, target_col: str, para, agg: Aggregator, window_by: list = None, qualified: bool = True
     ):
         """
         Parameters
@@ -613,7 +599,8 @@ class DuckdbExecutor(Executor):
 
         window_clause = " OVER joinboost_window " if window_by and is_agg(agg) else ""
         rename_expr = " AS " + target_col if target_col is not None else ""
-        parsed_expression = agg_to_sql(AggExpression(agg, para)) + window_clause + rename_expr
+
+        parsed_expression = agg_to_sql(AggExpression(agg, para),qualified=qualified) + window_clause + rename_expr
 
         return parsed_expression
 
