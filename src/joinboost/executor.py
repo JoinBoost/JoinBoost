@@ -344,6 +344,7 @@ class DuckdbExecutor(Executor):
         case_definitions: list,
         select_attrs: list = [],
         table_name: str = None,
+        order_by: str = None,
     ):
         # If no table name is provided, generate a new one
         if not table_name:
@@ -370,6 +371,10 @@ class DuckdbExecutor(Executor):
             + f"{sql_cases}"
             + f"AS {cond_attr} FROM {from_table} "
         )
+
+        if order_by:
+            sql += f"ORDER BY {order_by};"
+
         self._execute_query(sql)
         print(view)
         return view
