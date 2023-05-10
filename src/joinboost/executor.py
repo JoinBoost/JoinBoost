@@ -665,7 +665,6 @@ class PandasExecutor(DuckdbExecutor):
     def execute_spja_query(
         self, spja_data: SPJAData, mode: ExecuteMode = ExecuteMode.WRITE_TO_TABLE
     ):
-        
         # TODO: may need to execute_spja_query, if the from_tables in spja_table is also a spja_table
         from_dfs = {}
 

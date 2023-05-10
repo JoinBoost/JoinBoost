@@ -140,7 +140,7 @@ class DecisionTree(DummyModel):
     def _build_model(self):
         cur_model_def = []
         for cur_cjt in self.leaf_nodes:
-            annotations = cur_cjt.get_all_parsed_annotations()
+            annotations = cur_cjt.get_all_annotations()
             # annotations = selections_to_sql(list_of_ann, qualified=qualified)
             g, h = cur_cjt.get_semi_ring().get_value()
             pred = float(g / h) * self.learning_rate
@@ -155,7 +155,7 @@ class DecisionTree(DummyModel):
         self.model_def = []
         cur_model_def = []
         for cur_cjt in self.leaf_nodes:
-            list_of_ann = cur_cjt.get_all_parsed_annotations()
+            list_of_ann = cur_cjt.get_all_annotations()
             annotations = selections_to_sql(list_of_ann, qualified=qualified)
             g, h = cur_cjt.get_semi_ring().get_value()
             pred = float(g / h) * self.learning_rate
@@ -184,6 +184,7 @@ class DecisionTree(DummyModel):
         predict_agg = {
             "RMSE": AggExpression(Aggregator.IDENTITY,  f"SQRT(AVG(POW({target} - prediction, 2)))")
         }
+
         prediction_query_data = SPJAData(
             aggregate_expressions=predict_agg, from_tables=[view]
         )
@@ -191,10 +192,9 @@ class DecisionTree(DummyModel):
         predict = self.cjt.exe.execute_spja_query(
             prediction_query_data, mode=ExecuteMode.NESTED_QUERY
         )
+
         rmse_query_data = SPJAData(from_tables=[predict])
-        return self.cjt.exe.execute_spja_query(
-            rmse_query_data, mode=ExecuteMode.EXECUTE
-        )[0]
+        return self.cjt.exe.execute_spja_query(rmse_query_data, mode=ExecuteMode.EXECUTE)[0]
 
     def get_prediction_aggregate(self):
         # for gradient boosting, the prediction is the base_val plus the sum of the tree predictions
@@ -561,7 +561,6 @@ class DecisionTree(DummyModel):
 
 
 class GradientBoosting(DecisionTree):
-    
     def __init__(
         self,
         max_leaves: int = 31,

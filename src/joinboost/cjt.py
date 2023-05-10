@@ -37,6 +37,9 @@ class CJT(JoinGraph):
         return list_of_ann
     
     def add_annotation(self, relation: str, annotation: SelectionExpression):
+        # currently, the annotation is a selectionExpression
+        assert isinstance(annotation, SelectionExpression)
+
         if relation not in self.annotations:
             self.annotations[relation] = [annotation]
         else:
@@ -45,6 +48,7 @@ class CJT(JoinGraph):
     def clean_message(self):
         for from_table in self.joins:
             for to_table in self.joins[from_table]:
+                # if the message is not identity, delete the table
                 if self.joins[from_table][to_table]["message_type"] != Message.IDENTITY:
                     m_name = self.joins[from_table][to_table]["message"]
                     self.exe.delete_table(m_name)
@@ -54,88 +58,69 @@ class CJT(JoinGraph):
 
     def copy_cjt(self, semi_ring: SemiRing):
         annotations = copy.deepcopy(self.annotations)
-        c_cjt = CJT(semi_ring=semi_ring, join_graph=self,
+        return CJT(semi_ring=semi_ring, join_graph=self,
                     annotations=annotations)
-        return c_cjt
 
-    def get_root_neighbors(self):
-        joins, neighbors = self.joins, {}
-        for table in joins[self.target_relation]:
-            if (
-                self.joins[table][self.target_relation]["message_type"]
-                != Message.IDENTITY
-            ):
-                neighbors[table] = (
-                    self.get_join_keys(self.target_relation, table),
-                    self.get_message(table, self.target_relation),
-                )
-        return neighbors
+    def calibration(self, root_relation: str = None):
+        if not root_relation:
+            root_relation = self.target_relation
 
-    def calibration(self, rooto_table: str = None):
-        if not rooto_table:
-            rooto_table = self.target_relation
-        self.upward_message_passing(rooto_table, m_type=Message.IDENTITY)
-        self.downward_message_passing(rooto_table, m_type=Message.FULL)
+        # this assumes that the root_relation is a fact table
+        self.upward_message_passing(root_relation, m_type=Message.IDENTITY)
+        self.downward_message_passing(root_relation, m_type=Message.FULL)
 
     def downward_message_passing(
-        self, rooto_table: str = None, m_type: Message = Message.UNDECIDED
+        self, root_relation: str = None, m_type: Message = Message.UNDECIDED
     ):
         msgs = []
-        if not rooto_table:
-            rooto_table = self.target_relation
-        self._pre_dfs(rooto_table, m_type=m_type)
+        root_relation = self.target_relation if not root_relation else root_relation
+        self._pre_dfs(root_relation, m_type=m_type)
         return msgs
-
-    # TODO: this is not working if upward_message_passing from non-fact table
     def upward_message_passing(
-        self, root_table: str = None, m_type: Message = Message.UNDECIDED
+        self, root_relation: str = None, m_type: Message = Message.UNDECIDED
     ):
-        if not root_table:
-            root_table = self.target_relation
-        self._post_dfs(root_table, m_type=m_type)
+        root_relation = self.target_relation if not root_relation else root_relation
+        self._post_dfs(root_relation, m_type=m_type)
 
     def _post_dfs(
-        self,
-        currento_table: str,
-        parent_table: str = None,
-        m_type: Message = Message.UNDECIDED,
+        self, current_relation: str, parent_table: str = None, m_type: Message = Message.UNDECIDED,
     ):
-        jg = self.joins
-        if currento_table not in jg:
+        # if the current relation is not in the join graph, return
+        if not self.has_relation(current_relation):
             return
-        for c_neighbor in jg[currento_table]:
+        
+        for c_neighbor in self.joins[current_relation]:
             if c_neighbor != parent_table:
-                self._post_dfs(c_neighbor, currento_table, m_type=m_type)
+                self._post_dfs(c_neighbor, current_relation, m_type=m_type)
+
         if parent_table:
             self._send_message(
-                from_table=currento_table, to_table=parent_table, m_type=m_type
+                from_table=current_relation, to_table=parent_table, m_type=m_type
             )
 
     def _pre_dfs(
-        self,
-        currento_table: str,
-        parent_table: str = None,
-        m_type: Message = Message.UNDECIDED,
+        self, current_relation: str, parent_table: str = None, m_type: Message = Message.UNDECIDED,
     ):
-        joins = self.joins
-        if currento_table not in joins:
+        if not self.has_relation(current_relation):
             return
-        if currento_table == self.target_relation:
+        
+        if current_relation == self.target_relation:
             m_type = Message.FULL
-        for c_neighbor in joins[currento_table]:
+
+        for c_neighbor in self.joins[current_relation]:
             if c_neighbor != parent_table:
-                self._send_message(currento_table, c_neighbor, m_type=m_type)
-                self._pre_dfs(c_neighbor, currento_table, m_type=m_type)
+                self._send_message(current_relation, c_neighbor, m_type=m_type)
+                self._pre_dfs(c_neighbor, current_relation, m_type=m_type)
 
     def absorption(self, table: str, group_by: list, mode=ExecuteMode.NESTED_QUERY):
-        from_table_attrs = self.get_relation_features(table)
         incoming_messages, join_conds = self._get_income_messages(table)
 
         cols = self.semi_ring.get_columns_name()
         aggregate_expressions = self.semi_ring.col_sum(cols)
+
         for attr in group_by:
             # TODO: use qualified attribute
-            aggregate_expressions[attr] = AggExpression(Aggregator.IDENTITY, table + "." + attr)
+            aggregate_expressions[attr] = AggExpression(Aggregator.IDENTITY, QualifiedAttribute(table, attr))
 
         spja_data = SPJAData(
             aggregate_expressions=aggregate_expressions,
@@ -174,6 +159,7 @@ class CJT(JoinGraph):
             l_join_keys, r_join_keys = self.get_join_keys(
                 neighbour_table, table)
             incoming_messages.append(incoming_message)
+
             if condition == 1:
                 join_conds += [
                     SelectionExpression(SELECTION.NOT_DISTINCT,
@@ -181,6 +167,7 @@ class CJT(JoinGraph):
                                          QualifiedAttribute(table, r_join_keys[i])))
                     for i in range(len(l_join_keys))
                 ]
+
             if condition == 2:
                 join_conds += [
                     SelectionExpression(SELECTION.SEMI_JOIN,
@@ -196,17 +183,11 @@ class CJT(JoinGraph):
         # print('--Sending Message from', from_table, 'to', to_table, 'm_type is', m_type)
         # identity message optimization
         if m_type == Message.IDENTITY:
-            self.joins[from_table][to_table].update(
-                {
-                    "message_type": m_type,
-                }
-            )
+            self.joins[from_table][to_table].update({"message_type": m_type,})
             return
 
         if from_table not in self.joins and to_table not in self.joins[from_table]:
-            raise Exception(
-                "Table", from_table, "and table", to_table, "are not connected"
-            )
+            raise Exception(f"Table {from_table} and table {to_table} are not connected")
 
         # join with incoming messages
         incoming_messages, join_conds = self._get_income_messages(
@@ -253,9 +234,11 @@ class CJT(JoinGraph):
         if var is None:
             var = self.target_var
         lift_exp = self.semi_ring.lift_exp(var)
+        
         # TODO: remove hack
         if isinstance(self.exe, PandasExecutor):
             lift_exp["s"] = AggExpression(Aggregator.IDENTITY_LAMBDA, var)
+
         # copy the rest attributes
         for attr in self.get_useful_attributes(self.target_relation):
             lift_exp[attr] = AggExpression(Aggregator.IDENTITY, attr)
