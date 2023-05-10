@@ -23,10 +23,10 @@ class DummyModel(App):
         self.semi_ring = varSemiRing()
         self.prefix = "joinboost_tmp_"
         self.model_def = []
-        
+
     def fit(self, jg: JoinGraph):
         self._fit(jg)
-    
+
     def _fit(self, jg: JoinGraph):
         jg._preprocess()
 
@@ -36,7 +36,8 @@ class DummyModel(App):
         spja_data = SPJAData(
             aggregate_expressions=agg_exp, from_tables=[jg.target_relation]
         )
-        g, h = jg.exe.execute_spja_query(spja_data, mode=ExecuteMode.EXECUTE)[0]
+        g, h = jg.exe.execute_spja_query(
+            spja_data, mode=ExecuteMode.EXECUTE)[0]
 
         prediction = g / h
         self.semi_ring.set_semi_ring(g, h)
@@ -69,7 +70,7 @@ class DecisionTree(DummyModel):
 
     def _fit(self, jg: JoinGraph):
         jg._preprocess()
-        
+
         # First, we run preprocess to rename reserved column name
         # Create views for tables having conflicting column names with reserved words.
         g, h = self.semi_ring.get_columns_name()
@@ -84,10 +85,11 @@ class DecisionTree(DummyModel):
         self.create_sample()
 
         super()._fit(jg)
-        
+
         # substracting the target variable by means
-        exp = agg_to_sql(AggExpression(Aggregator.SUB, (self.cjt.target_var, str(self.constant_))))
-        
+        exp = agg_to_sql(AggExpression(
+            Aggregator.SUB, (self.cjt.target_var, str(self.constant_))))
+
 #         if isinstance(self.cjt.exe, PandasExecutor):
 #             exp = lambda row: row[self.cjt.target_var] - self.constant_
 
@@ -104,7 +106,8 @@ class DecisionTree(DummyModel):
                 from_tables=[self.cjt.target_relation],
                 sample_rate=self.subsample,
             )
-            new_fact_name = self.cjt.exe.execute_spja_query(spja_data, mode=mode)
+            new_fact_name = self.cjt.exe.execute_spja_query(
+                spja_data, mode=mode)
             self.cjt.replace(self.cjt.target_relation, new_fact_name)
 
     def train_one(self, last=True):
@@ -164,7 +167,7 @@ class DecisionTree(DummyModel):
         # TODO: make sure the target is not named as "prediction"
         compute_prediction = SPJAData(
             aggregate_expressions={"prediction": self.get_prediction_aggregate(),
-                                   target: AggExpression(Aggregator.IDENTITY, target)}, 
+                                   target: AggExpression(Aggregator.IDENTITY, target)},
             from_tables=[test_table], qualified=False
         )
 
@@ -186,10 +189,10 @@ class DecisionTree(DummyModel):
         return self.cjt.exe.execute_spja_query(
             rmse_query_data, mode=ExecuteMode.EXECUTE
         )[0]
-    
+
     def get_prediction_aggregate(self):
         # for gradient boosting, the prediction is the base_val plus the sum of the tree predictions
-        return AggExpression(Aggregator.ADD, [str(self.constant_)] +  self.model_def)
+        return AggExpression(Aggregator.ADD, [str(self.constant_)] + self.model_def)
 
     # input_mode = "FULL_JOIN_JG" takes the join graph as input, with the full join specified by JG._target_relation
     # input_mode = "FULL_JOIN_DF" takes the dataframe of full join's table name as input
@@ -218,7 +221,7 @@ class DecisionTree(DummyModel):
             # One solution is, to require the attributes in the join graph to be qualified with relation name.
             compute_prediction = SPJAData(
                 aggregate_expressions={"prediction": self.get_prediction_aggregate(),
-                                    self.cjt.target_var: AggExpression(Aggregator.IDENTITY, self.cjt.target_var)}, 
+                                       self.cjt.target_var: AggExpression(Aggregator.IDENTITY, self.cjt.target_var)},
                 from_tables=[joingraph.target_relation], qualified=qualified
             )
 
@@ -228,13 +231,14 @@ class DecisionTree(DummyModel):
 
         if input_mode == "JOIN_GRAPH":
             # TODO: reapply all the preprocessing steps
-            self._update_fact_table_column_name(jg=joingraph, check_rowid_col=True)
+            self._update_fact_table_column_name(
+                jg=joingraph, check_rowid_col=True)
 
             full_join = joingraph.get_full_join_sql()
 
             compute_prediction = SPJAData(
                 aggregate_expressions={"prediction": self.get_prediction_aggregate(),
-                                    self.cjt.target_var: AggExpression(Aggregator.IDENTITY, self.cjt.target_var)}, 
+                                       self.cjt.target_var: AggExpression(Aggregator.IDENTITY, self.cjt.target_var)},
                 from_tables=[full_join], order_by=[(f"{joingraph.target_relation}.rowid", "")], qualified=False
             )
 
@@ -244,11 +248,12 @@ class DecisionTree(DummyModel):
                 compute_prediction, mode=ExecuteMode.WRITE_TO_TABLE
             )
 
-
-            self._update_fact_table_column_name(jg=joingraph, resume_rowid_col=True)
+            self._update_fact_table_column_name(
+                jg=joingraph, resume_rowid_col=True)
 
         if output_mode == "NUMPY":
-            preds = joingraph.exe._execute_query(f"select prediction from {view};")
+            preds = joingraph.exe._execute_query(
+                f"select prediction from {view};")
             return np.array(preds)[:, 0]
         elif output_mode == "WRITE_TO_TABLE":
             return view
@@ -279,9 +284,13 @@ class DecisionTree(DummyModel):
         g_col, h_col = self.semi_ring.get_columns_name()
 
         # TODO: remove window_query and everything is spja
+        # Following https://lightgbm.readthedocs.io/en/latest/Advanced-Topics.html#categorical-feature-support
+        # this is to split the categorical feature based on whether the value is in the set or not
         if attr_type == "LCAT":
-            group_by = [attr]
+
             absoprtion_view = expanding_cjt.absorption(r_name, [attr])
+
+            # sort the absorption view by g_col/h_col according to the paper
             agg_exp = {
                 attr: AggExpression(Aggregator.IDENTITY, attr),
                 "object": AggExpression(Aggregator.DIV, (g_col, h_col)),
@@ -294,47 +303,37 @@ class DecisionTree(DummyModel):
             obj_view = self.cjt.exe.execute_spja_query(
                 spja_data, mode=ExecuteMode.NESTED_QUERY
             )
-            view_ord_by_obj = self.cjt.exe.window_query(
-                obj_view, [attr], "object", [g_col, h_col]
+
+            # use the prefix sum to get the cumulative gradient and hessian, just like for numerical features
+            agg_exp = {
+                attr: AggExpression(Aggregator.IDENTITY, attr),
+                g_col: AggExpression(Aggregator.SUM, g_col),
+                h_col: AggExpression(Aggregator.SUM, h_col),
+            }
+
+            spja_data = SPJAData(
+                aggregate_expressions=agg_exp, from_tables=[obj_view], window_by=["object"],
             )
+
+            view_ord_by_obj = self.cjt.exe.execute_spja_query(
+                spja_data, mode=ExecuteMode.NESTED_QUERY
+            )
+
+            # view_ord_by_obj = self.cjt.exe.window_query(
+            #     obj_view, [attr], "object", [g_col, h_col]
+            # )
+
+            # extract the categorical values that are less than the current value
+
             attr_spja_data = SPJAData(
                 aggregate_expressions={attr: AggExpression(Aggregator.IDENTITY, attr)},
                 from_tables=[view_ord_by_obj],
-                # TODO: the {g_col}/{h_col} should be a qualified attribute 
-                select_conds=[SelectionExpression(SELECTION.NOT_GREATER,(f"{g_col}/{h_col}",str(obj)))]
-                
+                select_conds=[SelectionExpression(
+                    SELECTION.NOT_GREATER, (f"{g_col}/{h_col}", str(obj)))]
             )
+
             attr_view = self.cjt.exe.execute_spja_query(
                 attr_spja_data, mode=ExecuteMode.NESTED_QUERY
-            )
-            attrs = [
-                str(x[0])
-                for x in self.cjt.exe.execute_spja_query(
-                    SPJAData(from_tables=[attr_view]), mode=ExecuteMode.EXECUTE
-                )
-            ]
-            agg_exp = {
-                attr: AggExpression(Aggregator.IDENTITY, attr),
-                "object": AggExpression(Aggregator.DIV, (g_col, h_col)),
-                g_col: AggExpression(Aggregator.IDENTITY, g_col),
-                h_col: AggExpression(Aggregator.IDENTITY, h_col),
-            }
-            obj_spja_data = SPJAData(
-                aggregate_expressions=agg_exp, from_tables=[absoprtion_view]
-            )
-            obj_view = self.cjt.exe.execute_spja_query(
-                obj_spja_data, mode=ExecuteMode.NESTED_QUERY
-            )
-            view_ord_by_obj = self.cjt.exe.window_query(
-                obj_view, [attr], "object", [g_col, h_col]
-            )
-            attr_view_data = SPJAData(
-                aggregate_expressions={attr: AggExpression(Aggregator.IDENTITY, attr)},
-                from_tables=[view_ord_by_obj],
-                select_conds=[SelectionExpression(SELECTION.NOT_GREATER,(f"{g_col}/{h_col}",str(obj)))]
-            )
-            attr_view = self.cjt.exe.execute_spja_query(
-                attr_view_data, mode=ExecuteMode.NESTED_QUERY
             )
 
             attrs = [
@@ -343,17 +342,63 @@ class DecisionTree(DummyModel):
                     SPJAData(from_tables=[attr_view]), mode=ExecuteMode.EXECUTE
                 )
             ]
-            l_annotation = SelectionExpression(SELECTION.IN, (QualifiedAttribute(r_name,attr), attrs))
-            r_annotation = SelectionExpression(SELECTION.NOT_IN, (QualifiedAttribute(r_name,attr), attrs))
+
+
+            # agg_exp = {
+            #     attr: AggExpression(Aggregator.IDENTITY, attr),
+            #     "object": AggExpression(Aggregator.DIV, (g_col, h_col)),
+            #     g_col: AggExpression(Aggregator.IDENTITY, g_col),
+            #     h_col: AggExpression(Aggregator.IDENTITY, h_col),
+            # }
+            # obj_spja_data = SPJAData(
+            #     aggregate_expressions=agg_exp, from_tables=[absoprtion_view]
+            # )
+            # obj_view = self.cjt.exe.execute_spja_query(
+            #     obj_spja_data, mode=ExecuteMode.NESTED_QUERY
+            # )
+
+
+            # view_ord_by_obj = self.cjt.exe.window_query(
+            #     obj_view, [attr], "object", [g_col, h_col]
+            # )
+
+            # attr_view_data = SPJAData(
+            #     aggregate_expressions={
+            #         attr: AggExpression(Aggregator.IDENTITY, attr)},
+            #     from_tables=[view_ord_by_obj],
+            #     select_conds=[SelectionExpression(
+            #         SELECTION.NOT_GREATER, (f"{g_col}/{h_col}", str(obj)))]
+            # )
+            # attr_view = self.cjt.exe.execute_spja_query(
+            #     attr_view_data, mode=ExecuteMode.NESTED_QUERY
+            # )
+
+            # attrs = [
+            #     str(x[0])
+            #     for x in self.cjt.exe.execute_spja_query(
+            #         SPJAData(from_tables=[attr_view]), mode=ExecuteMode.EXECUTE
+            #     )
+            # ]
+            l_annotation = SelectionExpression(
+                SELECTION.IN, (QualifiedAttribute(r_name, attr), attrs))
+            r_annotation = SelectionExpression(
+                SELECTION.NOT_IN, (QualifiedAttribute(r_name, attr), attrs))
+            
         elif cur_value == "NULL":
-            l_annotation = SelectionExpression(SELECTION.NULL, QualifiedAttribute(r_name,attr))
-            r_annotation = SelectionExpression(SELECTION.NOT_NULL, QualifiedAttribute(r_name,attr))
+            l_annotation = SelectionExpression(
+                SELECTION.NULL, QualifiedAttribute(r_name, attr))
+            r_annotation = SelectionExpression(
+                SELECTION.NOT_NULL, QualifiedAttribute(r_name, attr))
         elif attr_type == "NUM":
-            l_annotation = SelectionExpression(SELECTION.NOT_GREATER, (QualifiedAttribute(r_name,attr), cur_value))
-            r_annotation = SelectionExpression(SELECTION.GREATER, (QualifiedAttribute(r_name,attr), cur_value))
+            l_annotation = SelectionExpression(
+                SELECTION.NOT_GREATER, (QualifiedAttribute(r_name, attr), cur_value))
+            r_annotation = SelectionExpression(
+                SELECTION.GREATER, (QualifiedAttribute(r_name, attr), cur_value))
         elif attr_type == "CAT":
-            l_annotation = SelectionExpression(SELECTION.NOT_DISTINCT, (QualifiedAttribute(r_name,attr), cur_value))
-            r_annotation = SelectionExpression(SELECTION.DISTINCT, (QualifiedAttribute(r_name,attr), cur_value))
+            l_annotation = SelectionExpression(
+                SELECTION.NOT_DISTINCT, (QualifiedAttribute(r_name, attr), cur_value))
+            r_annotation = SelectionExpression(
+                SELECTION.DISTINCT, (QualifiedAttribute(r_name, attr), cur_value))
         else:
             raise Exception("Unsupported Split")
         return l_annotation, r_annotation
@@ -407,14 +452,16 @@ class DecisionTree(DummyModel):
                         h_col: AggExpression(Aggregator.IDENTITY, h_col),
                     }
                     spja_data = SPJAData(
-                        aggregate_expressions=agg_exp, from_tables=[absoprtion_view]
+                        aggregate_expressions=agg_exp, from_tables=[
+                            absoprtion_view]
                     )
                     obj_view = self.cjt.exe.execute_spja_query(
                         spja_data, mode=ExecuteMode.NESTED_QUERY
                     )
                     agg_exp = cur_semi_ring.col_sum((g_col, h_col))
                     agg_exp[attr] = AggExpression(Aggregator.IDENTITY, attr)
-                    agg_exp["object"] = AggExpression(Aggregator.IDENTITY, "object")
+                    agg_exp["object"] = AggExpression(
+                        Aggregator.IDENTITY, "object")
 
                     spja_data = SPJAData(
                         aggregate_expressions=agg_exp,
@@ -440,29 +487,28 @@ class DecisionTree(DummyModel):
                     )
 
                     l2_agg_exp = {
-                    attr: AggExpression(Aggregator.IDENTITY, attr),
-                    "criteria": AggExpression(Aggregator.IDENTITY_LAMBDA, func),
-                    g_col: AggExpression(Aggregator.IDENTITY, g_col),
-                    h_col: AggExpression(Aggregator.IDENTITY, h_col),
-                }
+                        attr: AggExpression(Aggregator.IDENTITY, attr),
+                        "criteria": AggExpression(Aggregator.IDENTITY_LAMBDA, func),
+                        g_col: AggExpression(Aggregator.IDENTITY, g_col),
+                        h_col: AggExpression(Aggregator.IDENTITY, h_col),
+                    }
                 else:
                     # func = (
                     #     f"CASE WHEN {h} > {h_col} THEN (({g_col}/{h_col})*{g_col} + ({g}-{g_col})/({h}-{h_col})*({g}-{g_col})) ELSE 0 END"
                     # )
 
                     l2_agg_exp = {
-                    attr: AggExpression(Aggregator.IDENTITY, attr),
-                    # the case expression is for window functions
-                    "criteria": AggExpression(Aggregator.CASE, 
-                                              [(f"({g_col}/{h_col})*{g_col} + ({g}-{g_col})/({h}-{h_col})*({g}-{g_col})",
-                                                [SelectionExpression(SELECTION.GREATER, (str(h), str(h_col)))]
-                                               )]),
-                    g_col: AggExpression(Aggregator.IDENTITY, g_col),
-                    h_col: AggExpression(Aggregator.IDENTITY, h_col),
+                        attr: AggExpression(Aggregator.IDENTITY, attr),
+                        # the case expression is for window functions
+                        "criteria": AggExpression(Aggregator.CASE,
+                                                  [(f"({g_col}/{h_col})*{g_col} + ({g}-{g_col})/({h}-{h_col})*({g}-{g_col})",
+                                                    [SelectionExpression(
+                                                        SELECTION.GREATER, (str(h), str(h_col)))]
+                                                    )]),
+                        g_col: AggExpression(Aggregator.IDENTITY, g_col),
+                        h_col: AggExpression(Aggregator.IDENTITY, h_col),
                     }
 
-
-                
                 spja_data = SPJAData(
                     aggregate_expressions=l2_agg_exp,
                     from_tables=[view_to_max],
@@ -479,7 +525,8 @@ class DecisionTree(DummyModel):
                 if cur_criteria > best_criteria:
                     best_criteria = cur_criteria
                     # relation name, split attribute, split value, left gradient, left hessian
-                    best_criteria_ann = (r_name, attr, str(cur_value), left_g, left_h)
+                    best_criteria_ann = (
+                        r_name, attr, str(cur_value), left_g, left_h)
         self.split_candidates.put(
             (
                 const_ - float(best_criteria),
@@ -537,7 +584,6 @@ class DecisionTree(DummyModel):
             l_semi_ring = expanding_cjt.semi_ring.copy()
             l_semi_ring.set_semi_ring(left_g, left_h)
 
-
             l_semi_ring, r_semi_ring = self.split_semi_ring(
                 expanding_cjt.get_semi_ring(), l_semi_ring
             )
@@ -573,7 +619,8 @@ class DecisionTree(DummyModel):
             # print((cur_level, r_cjt.semi_ring.pair[0], r_cjt.semi_ring.pair[1]))
             self._get_best_split(r_id, cur_level + 1)
 
-        self.leaf_nodes = [self.nodes[ele[-1]] for ele in self.split_candidates.queue]
+        self.leaf_nodes = [self.nodes[ele[-1]]
+                           for ele in self.split_candidates.queue]
 
 
 class GradientBoosting(DecisionTree):
@@ -607,7 +654,8 @@ class GradientBoosting(DecisionTree):
 
             g_col, _ = self.semi_ring.get_columns_name()
             self.cjt.exe.update_query(
-                f"{g_col}={g_col}-({pred})", target_relation, join_conds + cur_cjt.get_annotations(target_relation)
+                f"{g_col}={g_col}-({pred})", target_relation, join_conds +
+                cur_cjt.get_annotations(target_relation)
             )
 
 
