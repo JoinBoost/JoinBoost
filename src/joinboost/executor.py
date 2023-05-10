@@ -258,20 +258,6 @@ class DuckdbExecutor(Executor):
         sql = "DROP TABLE IF EXISTS " + table + ";\n"
         self._execute_query(sql)
 
-    # TODO: remove it
-    def window_query(
-        self, view: str, select_attrs: list, base_attr: str, cumulative_attrs: list
-    ):
-        view_name = self.get_next_name()
-        sql = "CREATE OR REPLACE VIEW " + view_name + " AS SELECT * FROM\n"
-        sql += "(\nSELECT " + ",".join(select_attrs)
-        for attr in cumulative_attrs:
-            sql += ",SUM(" + attr + ") OVER joinboost_window as " + attr
-        sql += "\nFROM " + view
-        sql += " WINDOW joinboost_window AS (ORDER BY " + base_attr + ")\n)"
-        self._execute_query(sql)
-        return view_name
-
     def add_table(self, table: str, table_address):
         if table_address is None:
             raise ExecutorException("Please pass in the csv file location")
@@ -318,24 +304,6 @@ class DuckdbExecutor(Executor):
         return view
     
     def check_table(self, table):
-        """
-        Check if a table is a user table.
-
-        Parameters
-        ----------
-        table : str
-            The name of the table to check.
-
-        Raises
-        ------
-        Exception
-            If the table does not start with the prefix specified for user tables.
-
-        Returns
-        -------
-        None
-        """
-
         if not table.startswith(self.prefix):
             raise Exception("Don't modify user tables!")
 

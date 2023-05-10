@@ -283,7 +283,6 @@ class DecisionTree(DummyModel):
         attr_type = expanding_cjt.relation_schema[r_name][attr]
         g_col, h_col = self.semi_ring.get_columns_name()
 
-        # TODO: remove window_query and everything is spja
         # Following https://lightgbm.readthedocs.io/en/latest/Advanced-Topics.html#categorical-feature-support
         # this is to split the categorical feature based on whether the value is in the set or not
         if attr_type == "LCAT":
@@ -319,12 +318,9 @@ class DecisionTree(DummyModel):
                 spja_data, mode=ExecuteMode.NESTED_QUERY
             )
 
-            # view_ord_by_obj = self.cjt.exe.window_query(
-            #     obj_view, [attr], "object", [g_col, h_col]
-            # )
-
-            # extract the categorical values that are less than the current value
-
+            # extract the set of categorical values that are less than the current value
+            # currently, the set is stored in the model definition
+            # maybe a better way is to store it in the database
             attr_spja_data = SPJAData(
                 aggregate_expressions={attr: AggExpression(Aggregator.IDENTITY, attr)},
                 from_tables=[view_ord_by_obj],
@@ -343,42 +339,6 @@ class DecisionTree(DummyModel):
                 )
             ]
 
-
-            # agg_exp = {
-            #     attr: AggExpression(Aggregator.IDENTITY, attr),
-            #     "object": AggExpression(Aggregator.DIV, (g_col, h_col)),
-            #     g_col: AggExpression(Aggregator.IDENTITY, g_col),
-            #     h_col: AggExpression(Aggregator.IDENTITY, h_col),
-            # }
-            # obj_spja_data = SPJAData(
-            #     aggregate_expressions=agg_exp, from_tables=[absoprtion_view]
-            # )
-            # obj_view = self.cjt.exe.execute_spja_query(
-            #     obj_spja_data, mode=ExecuteMode.NESTED_QUERY
-            # )
-
-
-            # view_ord_by_obj = self.cjt.exe.window_query(
-            #     obj_view, [attr], "object", [g_col, h_col]
-            # )
-
-            # attr_view_data = SPJAData(
-            #     aggregate_expressions={
-            #         attr: AggExpression(Aggregator.IDENTITY, attr)},
-            #     from_tables=[view_ord_by_obj],
-            #     select_conds=[SelectionExpression(
-            #         SELECTION.NOT_GREATER, (f"{g_col}/{h_col}", str(obj)))]
-            # )
-            # attr_view = self.cjt.exe.execute_spja_query(
-            #     attr_view_data, mode=ExecuteMode.NESTED_QUERY
-            # )
-
-            # attrs = [
-            #     str(x[0])
-            #     for x in self.cjt.exe.execute_spja_query(
-            #         SPJAData(from_tables=[attr_view]), mode=ExecuteMode.EXECUTE
-            #     )
-            # ]
             l_annotation = SelectionExpression(
                 SELECTION.IN, (QualifiedAttribute(r_name, attr), attrs))
             r_annotation = SelectionExpression(
