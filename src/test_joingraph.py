@@ -15,7 +15,7 @@ class TestJoingraph(unittest.TestCase):
             raise JoinGraphException("Attribute not in the relation but is allowed!")
         except:
             pass
-        dataset.add_relation("R", ["B", "A"], y="B", relation_address=R)
+        dataset.add_relation("R", ["B", "A"], y="B", relation_address=R, replace=True)
         dataset.add_relation("S", ["B", "C"], relation_address=S)
         dataset.add_relation("T", ["A", "C"], relation_address=T)
 

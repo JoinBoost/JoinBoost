@@ -128,6 +128,30 @@ class JoinGraph:
         if relation not in self.relations:
             raise JoinGraphException(relation, " doesn't exist!")
         return list(self.relations[relation].keys())
+    
+    # Below maybe move to preprocess
+    def check_target_exist(self):
+        if self.target_var is None:
+            raise JoinGraphException("Target variable doesn't exist!")
+
+        if self.target_relation is None:
+            raise JoinGraphException("Target relation doesn't exist!")
+
+    def check_all_features_exist(self):
+        for table in self.relations:
+            features = self.relations[table].keys()
+            self.check_features_exist(table, features)
+
+    # this reads the schema of each table from the database
+    def check_features_exist(self, relation, features):
+        """Check if all the features exist in the relation."""
+        attributes = self.exe.get_schema(relation)
+        if not set(features).issubset(set(attributes)):
+            raise JoinGraphException(
+                f"Key error in {features}.", 
+                f" Attribute does not exist in table {relation} with schema {attributes}"
+            )
+        return attributes
 
     # if t_table is not None, get the join keys between f_table and t_table
     # if t_table is None, all get all the join keys of f_table
@@ -192,6 +216,7 @@ class JoinGraph:
             raise JoinGraphException(relation + " doesn't exist!")
         
         # we don't check if the before_attribute exists, because it may be a join key
+        # could call check_features_exist, but database call is expensive
 
         # replace the attribute in relation schema
         if before_attribute in self.relations[relation]:
@@ -259,9 +284,7 @@ class JoinGraph:
             self.exe.add_table(relation, relation_address)
 
         self.joins[relation] = {}
-
-        if relation not in self.relations:
-            self.relations[relation] = {}
+        self.relations[relation] = {}
 
         attributes = self.check_features_exist(
             relation, X + ([y] if y is not None else [])
@@ -492,37 +515,7 @@ Please check the missing key between relations {rel2} and {rel1}.
         if self.target_relation is None:
             raise JoinGraphException("Target relation doesn't exist!")
     
-    # Below maybe move to preprocess
-    def check_target_exist(self):
-        if self.target_var is None:
-            raise JoinGraphException("Target variable doesn't exist!")
 
-        if self.target_relation is None:
-            raise JoinGraphException("Target relation doesn't exist!")
-            
-    # Below maybe move to preprocess
-    def check_target_exist(self):
-        if self.target_var is None:
-            raise JoinGraphException("Target variable doesn't exist!")
-
-        if self.target_relation is None:
-            raise JoinGraphException("Target relation doesn't exist!")
-
-    def check_all_features_exist(self):
-        for table in self.relations:
-            features = self.relations[table].keys()
-            self.check_features_exist(table, features)
-
-    def check_features_exist(self, relation, features):
-        """Check if all the features exist in the relation."""
-
-        attributes = self.exe.get_schema(relation)
-        if not set(features).issubset(set(attributes)):
-            raise JoinGraphException(
-                f"Key error in {features}."
-                + f" Attribute does not exist in table {relation} with schema {attributes}"
-            )
-        return attributes
     
     '''
     node structure:
