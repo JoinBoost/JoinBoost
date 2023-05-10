@@ -59,6 +59,12 @@ class DecisionTree(DummyModel):
         subsample: float = 1,
         debug: bool = False,
     ):
+        assert max_leaves > 0, "max_leaves should be positive"
+        assert max_depth > 0, "max_depth should be positive"
+        # sample ratio should be in (0, 1]
+        assert 0 < subsample <= 1, "subsample should be in (0, 1]"
+        # learning rate should be in (0, 1]
+        assert 0 < learning_rate <= 1, "learning_rate should be in (0, 1]"
 
         super().__init__()
         self.max_leaves = max_leaves
@@ -144,7 +150,7 @@ class DecisionTree(DummyModel):
         # note that gradient boosting has multiple decision trees
         self.model_def.append(AggExpression(Aggregator.CASE, cur_model_def))
 
-    # TODO: remove the codes and rewrite test cases
+    # TODO: remove the test codes and rewrite test cases
     def _build_model_legacy(self, qualified=False):
         self.model_def = []
         cur_model_def = []
@@ -380,21 +386,17 @@ class DecisionTree(DummyModel):
 
         g, h = cur_semi_ring.get_value()
         const_ = float((g**2) / h)
+
         for r_name in cjt.relations:
             for attr in cjt.get_relation_features(r_name):
                 attr_type, group_by = self.cjt.get_type(r_name, attr), [attr]
                 absoprtion_view = cjt.absorption(r_name, group_by)
+
                 if attr_type == "NUM":
                     agg_exp = cur_semi_ring.col_sum((g_col, h_col))
                     agg_exp[attr] = AggExpression(Aggregator.IDENTITY, attr)
-                    spja_data = SPJAData(
-                        aggregate_expressions=agg_exp,
-                        from_tables=[absoprtion_view],
-                        window_by=[attr],
-                    )
-                    view_to_max = self.cjt.exe.execute_spja_query(
-                        spja_data, mode=ExecuteMode.NESTED_QUERY
-                    )
+                    spja_data = SPJAData(aggregate_expressions=agg_exp, from_tables=[absoprtion_view], window_by=[attr])
+                    view_to_max = self.cjt.exe.execute_spja_query(spja_data, mode=ExecuteMode.NESTED_QUERY)
 
                 elif attr_type == "LCAT":
                     # TODO: further optimization. We don't need to keep the attr.
@@ -426,6 +428,7 @@ class DecisionTree(DummyModel):
                     view_to_max = self.cjt.exe.execute_spja_query(
                         spja_data, mode=ExecuteMode.NESTED_QUERY
                     )
+
                 elif attr_type == "CAT":
                     view_to_max = absoprtion_view
 
@@ -453,9 +456,7 @@ class DecisionTree(DummyModel):
                         # the case expression is for window functions
                         "criteria": AggExpression(Aggregator.CASE,
                                                   [(f"({g_col}/{h_col})*{g_col} + ({g}-{g_col})/({h}-{h_col})*({g}-{g_col})",
-                                                    [SelectionExpression(
-                                                        SELECTION.GREATER, (str(h), str(h_col)))]
-                                                    )]),
+                                                    [SelectionExpression(SELECTION.GREATER, (str(h), str(h_col)))])]),
                         g_col: AggExpression(Aggregator.IDENTITY, g_col),
                         h_col: AggExpression(Aggregator.IDENTITY, h_col),
                     }
@@ -464,63 +465,57 @@ class DecisionTree(DummyModel):
                     aggregate_expressions=l2_agg_exp,
                     from_tables=[view_to_max],
                     order_by=[("criteria", "DESC")],
-                    limit=1,
-                )
-                results = self.cjt.exe.execute_spja_query(
-                    spja_data, mode=ExecuteMode.EXECUTE
-                )
+                    limit=1
+                    )
+                
+                results = self.cjt.exe.execute_spja_query(spja_data, mode=ExecuteMode.EXECUTE)
+                
                 if not results:
                     continue
+
                 cur_value, cur_criteria, left_g, left_h = results[0]
-                # print((cur_value, cur_criteria, left_g, left_h))
+
                 if cur_criteria > best_criteria:
                     best_criteria = cur_criteria
                     # relation name, split attribute, split value, left gradient, left hessian
                     best_criteria_ann = (
                         r_name, attr, str(cur_value), left_g, left_h)
-        self.split_candidates.put(
-            (
-                const_ - float(best_criteria),
-                cjt_depth,
-            )
-            + best_criteria_ann
-            + (cjt_id,)
-        )
+                    
+        self.split_candidates.put((const_ - float(best_criteria), cjt_depth,) + best_criteria_ann + (cjt_id,))
 
     # split the semi-ring according to current split
-    def split_semi_ring(
-        self, total_semi_ring: varSemiRing, left_semi_ring: varSemiRing
-    ):
+    def split_semi_ring(self, total_semi_ring: varSemiRing, left_semi_ring: varSemiRing):
         return left_semi_ring, total_semi_ring - left_semi_ring
 
-    # don't update error for single ecision tree
+    # don't update error for single decision tree
     def _update_error(self):
         pass
 
-    def _get_split_cjt(
-        self, expanding_cjt: CJT, l_semi_ring: varSemiRing, r_semi_ring: varSemiRing
-    ):
-        l_cjt, r_cjt = expanding_cjt.copy_cjt(l_semi_ring), expanding_cjt.copy_cjt(
-            r_semi_ring
-        )
+    def _get_split_cjt(self, expanding_cjt: CJT, l_semi_ring: varSemiRing, r_semi_ring: varSemiRing):
+        l_cjt, r_cjt = expanding_cjt.copy_cjt(l_semi_ring), expanding_cjt.copy_cjt(r_semi_ring)
+        
         next_id = len(self.nodes)
-
         self.nodes[next_id] = l_cjt
         self.nodes[next_id + 1] = r_cjt
 
         return l_cjt, r_cjt, next_id, next_id + 1
 
     def _build_tree(self):
+
         self.cjt.calibration()
         self._get_best_split(0, 0)
 
-        # while there are beneficial splits and doesn't read max leaves
         while (
+            # while there are still candidates to split
             not self.split_candidates.empty()
+            # while the split is beneficial
             and self.split_candidates.queue[0][0] < 0
+            # while the number of leaves is less than the max number of leaves
             and self.split_candidates.qsize() < self.max_leaves
         ):
+            # get the best split
             (criteria, cur_level, r_name, attr, cur_value, left_g, left_h, c_id,) = self.split_candidates.get()
+            # get the cjt of the best split to expand
             expanding_cjt = self.nodes[c_id]
 
             l_semi_ring = expanding_cjt.semi_ring.copy()
@@ -535,12 +530,13 @@ class DecisionTree(DummyModel):
                 l_semi_ring=l_semi_ring,
                 r_semi_ring=r_semi_ring,
             )
+
             # TODO: objective has some rounding problem
-            # currently it has an ugly solution. find a better solution
             l_annotations, r_annotations = self._comp_annotations(
                 r_name=r_name,
                 attr=attr,
                 cur_value=cur_value,
+                # currently it has an ugly solution. find a better solution
                 obj=math.ceil(left_g / left_h * 100) / 100,
                 expanding_cjt=expanding_cjt,
             )
@@ -557,16 +553,13 @@ class DecisionTree(DummyModel):
             r_cjt.downward_message_passing(r_name)
 
             self._get_best_split(l_id, cur_level + 1)
-            # print('level, right g, h')
-            # print((cur_level, r_cjt.semi_ring.pair[0], r_cjt.semi_ring.pair[1]))
             self._get_best_split(r_id, cur_level + 1)
 
-        self.leaf_nodes = [self.nodes[ele[-1]]
-                           for ele in self.split_candidates.queue]
+        self.leaf_nodes = [self.nodes[ele[-1]] for ele in self.split_candidates.queue]
 
 
 class GradientBoosting(DecisionTree):
-    # TODO: add some checks. E.g., paramters have to be positive
+    
     def __init__(
         self,
         max_leaves: int = 31,
@@ -575,6 +568,8 @@ class GradientBoosting(DecisionTree):
         iteration: int = 1,
         debug: bool = False,
     ):
+        assert iteration > 0, "iteration should be positive"
+        
         super().__init__(max_leaves, learning_rate, max_depth, debug=debug)
         self.iteration = iteration
 
@@ -611,6 +606,8 @@ class RandomForest(DecisionTree):
         iteration: int = 1,
         debug: bool = False,
     ):
+        assert iteration > 0, "iteration should be positive"
+
         super().__init__(max_leaves, learning_rate, max_depth, subsample, debug=debug)
         self.iteration = iteration
         self.learning_rate = 1 / iteration

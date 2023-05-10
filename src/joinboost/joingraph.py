@@ -16,13 +16,11 @@ class JoinGraph:
     def __init__(
         self,
         exe=None,
-        joins=None,
-        relation_schema=None,
+        joins={},
+        relation_schema={},
         target_var=None,
         target_relation=None,
     ):
-        joins = joins if joins else {}
-        relation_schema = relation_schema if relation_schema else {}
 
         self.exe = ExecutorFactory(exe)
 
