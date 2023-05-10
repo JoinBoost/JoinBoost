@@ -88,11 +88,11 @@ class CJT(JoinGraph):
 
     # TODO: this is not working if upward_message_passing from non-fact table
     def upward_message_passing(
-        self, rooto_table: str = None, m_type: Message = Message.UNDECIDED
+        self, root_table: str = None, m_type: Message = Message.UNDECIDED
     ):
-        if not rooto_table:
-            rooto_table = self.target_relation
-        self._post_dfs(rooto_table, m_type=m_type)
+        if not root_table:
+            root_table = self.target_relation
+        self._post_dfs(root_table, m_type=m_type)
 
     def _post_dfs(
         self,

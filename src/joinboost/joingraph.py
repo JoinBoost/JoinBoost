@@ -120,8 +120,30 @@ class JoinGraph:
     def has_relation(self, relation):
         return relation in self.relations
     
-    def get_type(self, relation, feature):
+    def get_feature_type(self, relation, feature):
         return self.relations[relation][feature]
+    
+    # get features for each table
+    def get_relation_features(self, relation):
+        if relation not in self.relations:
+            raise JoinGraphException(relation, " doesn't exist!")
+        return list(self.relations[relation].keys())
+
+    # if t_table is not None, get the join keys between f_table and t_table
+    # if t_table is None, all get all the join keys of f_table
+    def get_join_keys(self, f_table: str, t_table: str = None):
+        if f_table not in self.joins:
+            return []
+        if t_table:
+            if t_table not in self.joins[f_table]:
+                raise JoinGraphException(t_table, " not connected to ", f_table)
+            return self.joins[f_table][t_table]["keys"]
+        else:
+            keys = set()
+            for table in self.joins[f_table]:
+                l_keys, _ = self.joins[f_table][table]["keys"]
+                keys = keys.union(set(l_keys))
+            return list(keys)
     
     # useful attributes are features + join keys
     def get_useful_attributes(self, table):
@@ -169,10 +191,8 @@ class JoinGraph:
         if not self.has_relation(relation):
             raise JoinGraphException(relation + " doesn't exist!")
         
-        # check if the attribute exists
-        if before_attribute not in self.relations[relation]:
-            raise JoinGraphException(before_attribute + " doesn't exist in " + relation + "!")
-        
+        # we don't check if the before_attribute exists, because it may be a join key
+
         # replace the attribute in relation schema
         if before_attribute in self.relations[relation]:
             self.relations[relation][after_attribute] = self.relations[relation][before_attribute]
@@ -191,6 +211,8 @@ class JoinGraph:
                 index = left_join_key.index(before_attribute)
                 # Replace the old string with the new string
                 left_join_key[index] = after_attribute
+
+                
     # check if the join graph is acyclic
     def check_acyclic(self):
         
@@ -226,15 +248,18 @@ class JoinGraph:
         y: str = None,
         categorical_feature: list = [],
         relation_address=None,
-    ):      
+        replace=False,
+    ):    
+        # check if the relation exists
+        if relation in self.relations and not replace:
+            raise JoinGraphException(relation + " already exists!")
+            
         # add relation to the join graph if the address is not None
         if relation_address is not None:
-            # check if the relation exists
-            if relation in self.relations:
-                raise JoinGraphException(relation + " already exists!")
             self.exe.add_table(relation, relation_address)
-            
-        self.joins[relation] = dict()
+
+        self.joins[relation] = {}
+
         if relation not in self.relations:
             self.relations[relation] = {}
 
@@ -265,30 +290,6 @@ class JoinGraph:
             tmp = "joinboost_tmp_" + tmp
         return tmp if tmp != "rowid" else ""
 
-    # get features for each table
-    def get_relation_features(self, r_name):
-        if r_name not in self.relations:
-            raise JoinGraphException("Attribute not in " + r_name)
-        return list(self.relations[r_name].keys())
-
-    # get the join keys between two tables
-    # all get all the join keys of one table
-    # TODO: check if the join keys exist
-    # if t_table is not None, get the join keys between f_table and t_table
-    # if t_table is None, all get all the join keys of f_table
-    def get_join_keys(self, f_table: str, t_table: str = None):
-        if f_table not in self.joins:
-            return []
-        if t_table:
-            if t_table not in self.joins[f_table]:
-                raise JoinGraphException(t_table, " not connected to ", f_table)
-            return self.joins[f_table][t_table]["keys"]
-        else:
-            keys = set()
-            for table in self.joins[f_table]:
-                l_keys, _ = self.joins[f_table][table]["keys"]
-                keys = keys.union(set(l_keys))
-            return list(keys)
 
     def add_join(
         self,

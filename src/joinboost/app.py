@@ -389,7 +389,7 @@ class DecisionTree(DummyModel):
 
         for r_name in cjt.relations:
             for attr in cjt.get_relation_features(r_name):
-                attr_type, group_by = self.cjt.get_type(r_name, attr), [attr]
+                attr_type, group_by = self.cjt.get_feature_type(r_name, attr), [attr]
                 absoprtion_view = cjt.absorption(r_name, group_by)
 
                 if attr_type == "NUM":
