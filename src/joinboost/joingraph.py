@@ -17,51 +17,63 @@ class JoinGraph:
         self,
         exe=None,
         joins={},
-        relation_schema={},
+        relations={},
         target_var=None,
         target_relation=None,
     ):
-
         self.exe = ExecutorFactory(exe)
 
-        # maps each from_relation => to_relation => {keys: (from_keys, to_keys), message_type: "", message: name,
-        # multiplicity: x, missing_keys: x ...}
+        # join graph edge information
+        # joins maps each relation => {joined relation: {keys: (from_keys, to_keys), 
+        #                                                message_type: "", message: name,
+        #                                                multiplicity: x, missing_keys: x ...}}
         self.joins = copy.deepcopy(joins)
-        # maps each relation => {feature: feature_type}
-        self.relation_schema = copy.deepcopy(relation_schema)
+
+        # join graph node information
+        # relation_schema maps each relation => {feature: feature_type}
+        self.relations = copy.deepcopy(relations)
         
         self.target_var = target_var
         self.target_relation = target_relation
+
+        # TODO: this is a hack, we should have a better way to handle this
+        self._target_rowid_colname = ""
+
         # some magic/random number used for jupyter notebook display
         self.session_id = int(time.time())
-#         self.rep_template = data = pkgutil.get_data(__name__, "d3graph.html").decode(
-#             "utf-8"
-#         )
         
         # template for jupyter notebook display
-        self.rep_template = data = pkgutil.get_data(__name__,"static_files/dashboard.html").decode('utf-8')
-        self._target_rowid_colname = ""
+        self.rep_template = pkgutil.get_data(__name__,"static_files/dashboard.html").decode('utf-8')
+
 
     def copy(self):
         return JoinGraph(
             self.exe,
             self.joins,
-            self.relation_schema,
+            self.relations,
             self.target_var,
             self.target_relation,
         )
-
+    
+    # the @property decorator is used to define properties,
+    # these properties are read-only
+    # example usage:
+    # join_graph = JoinGraph()
+    # join_graph.relations
+    # join_graph.relations = {}
+    # the last line will raise an error
+    # because relations is read-only
     @property
     def relations(self):
-        return list(self.relation_schema.keys())
+        return list(self.relations.keys())
 
     @property
     def target_rowid_colname(self):
         return self._target_rowid_colname
 
     @property
-    def relation_schema(self):
-        return self._relation_schema
+    def relations(self):
+        return self._relations
 
     @property
     def target_var(self):
@@ -74,22 +86,74 @@ class JoinGraph:
     @property
     def joins(self):
         return self._joins
+    
+    # the @property_name.setter
+    # is used to define the setter of a property
+    # example usage to set the joins property:
+    # join_graph = JoinGraph()
+    # join_graph.joins = {}
+    # the last line will call the setter of joins
+    # and set the joins property to {}
+    @joins.setter
+    def joins(self, value):
+        assert isinstance(value, dict)
+        self._joins = value
 
-    def set_target_relation(self, target_relation):
-        self._target_relation = target_relation
+    @relations.setter
+    def relations(self, value):
+        assert isinstance(value, dict)
+        self._relations = value
 
+    @target_var.setter
+    def target_var(self, value):
+        assert isinstance(value, str) or value is None
+        self._target_var = value
+
+    @target_relation.setter
+    def target_relation(self, value):
+        assert isinstance(value, str) or value is None
+        self._target_relation = value
+
+    def has_join(self, table1, table2):
+        return table1 in self.joins[table2] and table2 in self.joins[table1]
+    
+    def has_relation(self, relation):
+        return relation in self.relations
+    
+    def get_type(self, relation, feature):
+        return self.relations[relation][feature]
+    
+    # useful attributes are features + join keys
+    def get_useful_attributes(self, table):
+        useful_attributes = self.get_relation_features(table) + self.get_join_keys(table)
+        return list(set(useful_attributes))
+    
+    def check_graph_validity(self):
+        # for each graph edge, check if the end node is in the graph
+        for relation in self.joins:
+            for relation2 in self.joins[relation]:
+                if not self.has_relation(relation):
+                    raise JoinGraphException(relation + " doesn't exist!", "the relations are " + str(self.relations))
+                if not self.has_relation(relation2):
+                    raise JoinGraphException(relation2 + " doesn't exist!", "the relations are " + str(self.relations))
+    
     # replace a table from table_prev to table_after
     def replace(self, table_prev, table_after):
-        if table_prev not in self.relation_schema:
+        if not self.has_relation(table_prev):
             raise JoinGraphException(table_prev + " doesn't exit!")
-        if table_after in self.relation_schema:
+        
+        if self.has_relation(table_after):
             raise JoinGraphException(table_after + " already exits!")
-        self.relation_schema[table_after] = self.relation_schema[table_prev]
-        del self.relation_schema[table_prev]
 
+        # replace the table name in relations
+        self.relations[table_after] = self.relations[table_prev]
+        del self.relations[table_prev]
+
+        # replace the target_relation if necessary
         if self.target_relation == table_prev:
             self._target_relation = table_after
 
+        # replace the joins
         for relation in self.joins:
             if table_prev in self.joins[relation]:
                 self.joins[relation][table_after] = self.joins[relation][table_prev]
@@ -101,16 +165,25 @@ class JoinGraph:
 
     # replace a table's attrbute from before_attribute to after_attribute
     def replace_relation_attribute(self, relation, before_attribute, after_attribute):
+        # check if the relation exists
+        if not self.has_relation(relation):
+            raise JoinGraphException(relation + " doesn't exist!")
+        
+        # check if the attribute exists
+        if before_attribute not in self.relations[relation]:
+            raise JoinGraphException(before_attribute + " doesn't exist in " + relation + "!")
+        
+        # replace the attribute in relation schema
+        if before_attribute in self.relations[relation]:
+            self.relations[relation][after_attribute] = self.relations[relation][before_attribute]
+            del self.relations[relation][before_attribute]
+        
+        # replace the target_var if necessary
         if relation == self.target_relation:
             if self.target_var == before_attribute:
-                self._target_var = after_attribute
+                self.target_var = after_attribute
 
-        if before_attribute in self.relation_schema[relation]:
-            self.relation_schema[relation][after_attribute] = self.relation_schema[
-                relation
-            ][before_attribute]
-            del self.relation_schema[relation][before_attribute]
-
+        # replace the attribute in joins as join keys
         for relation2 in self.joins[relation]:
             left_join_key = self.joins[relation][relation2]["keys"][0]
             if before_attribute in left_join_key:
@@ -118,16 +191,12 @@ class JoinGraph:
                 index = left_join_key.index(before_attribute)
                 # Replace the old string with the new string
                 left_join_key[index] = after_attribute
-
-    def get_type(self, relation, feature):
-        return self.relation_schema[relation][feature]
-
-    def has_join(self, table1, table2):
-        return table1 in self.joins[table2] and table2 in self.joins[table1]
-
+    # check if the join graph is acyclic
     def check_acyclic(self):
+        
         seen = set()
-
+        # dfs to check if the graph is acyclic
+        # it uses the fact that if a node is visited twice, then the graph is cyclic
         def dfs(cur_table, parent=None):
             seen.add(cur_table)
             for neighbour in self.joins[cur_table]:
@@ -153,21 +222,21 @@ class JoinGraph:
     def add_relation(
         self,
         relation: str,
-        X: list = None,
+        X: list = [],
         y: str = None,
-        categorical_feature: list = None,
+        categorical_feature: list = [],
         relation_address=None,
-    ):
-
-        X = X if X else []
-        categorical_feature = categorical_feature if categorical_feature else []
-        
+    ):      
+        # add relation to the join graph if the address is not None
         if relation_address is not None:
+            # check if the relation exists
+            if relation in self.relations:
+                raise JoinGraphException(relation + " already exists!")
             self.exe.add_table(relation, relation_address)
             
         self.joins[relation] = dict()
-        if relation not in self.relation_schema:
-            self.relation_schema[relation] = {}
+        if relation not in self.relations:
+            self.relations[relation] = {}
 
         attributes = self.check_features_exist(
             relation, X + ([y] if y is not None else [])
@@ -175,16 +244,16 @@ class JoinGraph:
 
         for x in X:
             # by default, assume all features to be numerical
-            self.relation_schema[relation][x] = "NUM"
+            self.relations[relation][x] = "NUM"
 
         for x in categorical_feature:
-            self.relation_schema[relation][x] = "LCAT"
+            self.relations[relation][x] = "LCAT"
 
         if y is not None:
             if self.target_var is not None:
                 print("Warning: Y already exists and has been replaced")
-            self._target_var = y
-            self.set_target_relation(relation)
+            self.target_var = y
+            self.target_relation = relation
             self._target_rowid_colname = self._get_target_rowid_colname(attributes)
 
     def _get_target_rowid_colname(self, attributes):
@@ -198,9 +267,9 @@ class JoinGraph:
 
     # get features for each table
     def get_relation_features(self, r_name):
-        if r_name not in self.relation_schema:
+        if r_name not in self.relations:
             raise JoinGraphException("Attribute not in " + r_name)
-        return list(self.relation_schema[r_name].keys())
+        return list(self.relations[r_name].keys())
 
     # get the join keys between two tables
     # all get all the join keys of one table
@@ -221,13 +290,6 @@ class JoinGraph:
                 keys = keys.union(set(l_keys))
             return list(keys)
 
-    # useful attributes are features + join keys
-    def get_useful_attributes(self, table):
-        useful_attributes = self.get_relation_features(table) + self.get_join_keys(
-            table
-        )
-        return list(set(useful_attributes))
-
     def add_join(
         self,
         table_name_left: str,
@@ -237,9 +299,9 @@ class JoinGraph:
     ):
         if len(left_keys) != len(right_keys):
             raise JoinGraphException("Join keys have different lengths!")
-        if table_name_left not in self.relation_schema:
+        if table_name_left not in self.relations:
             raise JoinGraphException(table_name_left + " doesn't exit!")
-        if table_name_right not in self.relation_schema:
+        if table_name_right not in self.relations:
             raise JoinGraphException(table_name_right + " doesn't exit!")
 
         left_keys = [attr for attr in left_keys]
@@ -386,6 +448,7 @@ class JoinGraph:
         return sql
 
     def _preprocess(self):
+        self.check_graph_validity()
         self.check_all_features_exist()
         self.check_acyclic()
         self.check_target_exist()
@@ -445,8 +508,8 @@ Please check the missing key between relations {rel2} and {rel1}.
             raise JoinGraphException("Target relation doesn't exist!")
 
     def check_all_features_exist(self):
-        for table in self.relation_schema:
-            features = self.relation_schema[table].keys()
+        for table in self.relations:
+            features = self.relations[table].keys()
             self.check_features_exist(table, features)
 
     def check_features_exist(self, relation, features):
@@ -459,42 +522,6 @@ Please check the missing key between relations {rel2} and {rel1}.
                 + f" Attribute does not exist in table {relation} with schema {attributes}"
             )
         return attributes
-
-#     # output html that displays the join graph. Taken from JoinExplorer notebook
-#     def _repr_html_(self):
-#         nodes = []
-#         links = []
-#         for table_name in self.relation_schema:
-#             attributes = set(self.exe.get_schema(table_name))
-#             if table_name == self.target_relation:
-#                 attributes.add(self.target_var)
-#             nodes.append({"id": table_name, "attributes": list(attributes)})
-
-#         # avoid edge in opposite direction
-#         seen = set()
-#         for table_name_left in self.joins:
-#             for table_name_right in self.joins[table_name_left]:
-#                 if (table_name_right, table_name_left) in seen:
-#                     continue
-#                 keys = self.joins[table_name_left][table_name_right]["keys"]
-#                 links.append(
-#                     {
-#                         "source": table_name_left,
-#                         "target": table_name_right,
-#                         "left_keys": keys[0],
-#                         "right_keys": keys[1],
-#                     }
-#                 )
-#                 seen.add((table_name_left, table_name_right))
-
-#         self.session_id += 1
-
-#         s = self.rep_template
-#         s = s.replace("{{session_id}}", str(self.session_id))
-#         s = s.replace("{{nodes}}", str(nodes))
-#         s = s.replace("{{links}}", str(links))
-#         return s
-
     
     '''
     node structure:
@@ -597,18 +624,7 @@ Please check the missing key between relations {rel2} and {rel1}.
     #                     r_meta[attr] = 'LCAT'
     #         self.meta_data[table] = r_meta
     #         self.r_attrs[table] = list(r_meta.keys())
-    @joins.setter
-    def joins(self, value):
-        self._joins = value
 
-    @relation_schema.setter
-    def relation_schema(self, value):
-        self._relation_schema = value
 
-    @target_var.setter
-    def target_var(self, value):
-        self._target_var = value
 
-    @target_relation.setter
-    def target_relation(self, value):
-        self._target_relation = value
+

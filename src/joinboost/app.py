@@ -286,7 +286,7 @@ class DecisionTree(DummyModel):
     def _comp_annotations(
         self, r_name: str, attr: str, cur_value: str, obj: float, expanding_cjt: CJT
     ):
-        attr_type = expanding_cjt.relation_schema[r_name][attr]
+        attr_type = expanding_cjt.relations[r_name][attr]
         g_col, h_col = self.semi_ring.get_columns_name()
 
         # Following https://lightgbm.readthedocs.io/en/latest/Advanced-Topics.html#categorical-feature-support
@@ -373,7 +373,7 @@ class DecisionTree(DummyModel):
     def _get_best_split(self, cjt_id: int, cjt_depth: int):
         cjt = self.nodes[cjt_id]
         cur_semi_ring = cjt.get_semi_ring()
-        attr_meta = self.cjt.relation_schema
+        attr_meta = self.cjt.relations
         g_col, h_col = self.semi_ring.get_columns_name()
 
         # criteria, (relation name, split attribute, split value, new s, new c)

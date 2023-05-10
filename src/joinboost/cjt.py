@@ -14,7 +14,7 @@ class CJT(JoinGraph):
         super().__init__(
             join_graph.exe,
             join_graph.joins,
-            join_graph.relation_schema,
+            join_graph.relations,
             join_graph.target_var,
             join_graph.target_relation,
         )
