@@ -286,9 +286,7 @@ class JoinGraph:
         self.joins[relation] = {}
         self.relations[relation] = {}
 
-        attributes = self.check_features_exist(
-            relation, X + ([y] if y is not None else [])
-        )
+        attributes = self.check_features_exist(relation, X + categorical_feature + ([y] if y is not None else []))
 
         for x in X:
             # by default, assume all features to be numerical
@@ -304,15 +302,14 @@ class JoinGraph:
             self.target_relation = relation
             self._target_rowid_colname = self._get_target_rowid_colname(attributes)
 
+    # TODO: move the logic to preprocessor
     def _get_target_rowid_colname(self, attributes):
         """Get the temporary rowid column name(if exists) for the target relation. If not exists, set to empty string."""
-
         attr = set(attributes)
         tmp = "rowid"
         while tmp in attr:
             tmp = "joinboost_tmp_" + tmp
         return tmp if tmp != "rowid" else ""
-
 
     def add_join(
         self,
@@ -334,75 +331,69 @@ class JoinGraph:
         self.joins[table_name_left][table_name_right] = {"keys": (left_keys, right_keys)}
         self.joins[table_name_right][table_name_left] = {"keys": (right_keys, left_keys)}
         
-        self.determine_multiplicity_and_missing(
-            table_name_left, left_keys, table_name_right, right_keys)
-        
+        self.determine_multiplicity_and_missing(table_name_left, left_keys, table_name_right, right_keys)
+    
+    # this function is used to determine the multiplicity and missing keys of a join
+    # for example relation with join key B
+    #   R(A, B) and S(B, C)
+    #     1, 1        1, 1
+    #     2, 1        2, 1
+    #     1, 2        3, 1
+    # the multiplicity of R is 2, and the multiplicity of S is 1  
     def determine_multiplicity_and_missing(self,
-                                           relation_left: str,
-                                           leftKeys: list,
-                                           relation_right: str,
-                                           rightKeys: list):
-
-        num_miss_left, num_miss_right = self.get_num_missing_join_keys(relation_left,
-                                                                       leftKeys,
-                                                                       relation_right,
-                                                                       rightKeys)
+                                        relation_left: str,
+                                        left_keys: list,
+                                        relation_right: str,
+                                        right_keys: list):
+        """Determine multiplicity and missing keys of a join."""
+        num_miss_left, num_miss_right = self.calculate_missing_keys(
+            relation_left, left_keys, relation_right, right_keys)
 
         self.joins[relation_right][relation_left]["missing_keys"] = num_miss_left
         self.joins[relation_left][relation_right]["missing_keys"] = num_miss_right
 
         self.joins[relation_left][relation_right]["multiplicity"] = \
-            self.get_max_multiplicity(relation_left, leftKeys)
+            self.get_max_multiplicity(relation_left, left_keys)
         self.joins[relation_right][relation_left]["multiplicity"] = \
-            self.get_max_multiplicity(relation_right, rightKeys)
+            self.get_max_multiplicity(relation_right, right_keys)
 
-    def get_num_missing_join_keys(self,
-                                  relation_left: str,
-                                  leftKeys: list,
-                                  relation_right: str,
-                                  rightKeys: list):
-        # below two queries get the set of join keys
-        spja_data = SPJAData(
-            # aggregate_expressions is a dictionary: for ith leftKey, the key is "key_i", the value is the ith leftKey
-            aggregate_expressions = {f"key_{i}": AggExpression(Aggregator.IDENTITY, leftKeys[i]) for i in range(len(leftKeys))},
-            from_tables=[relation_left],
-            group_by=[",".join(leftKeys)]
-        )
-        set_left = self.exe.execute_spja_query(spja_data, mode=ExecuteMode.NESTED_QUERY)
-        spja_data = SPJAData(
-            aggregate_expressions = {f"key_{i}": AggExpression(Aggregator.IDENTITY, rightKeys[i]) for i in range(len(rightKeys))},
-            from_tables=[relation_right],
-            group_by=[",".join(rightKeys)]
-        )
-        set_right = self.exe.execute_spja_query(spja_data, mode=ExecuteMode.NESTED_QUERY)
 
-        # below two queries get the difference of join keys
-        diff_left = self.exe.set_query("EXCEPT", set_left, set_right)
-        diff_right = self.exe.set_query("EXCEPT", set_right, set_left)
+    def calculate_missing_keys(self,
+                            relation_left: str,
+                            left_keys: list,
+                            relation_right: str,
+                            right_keys: list):
+        """Calculate the number of missing keys in both relations."""
+        set_left = self.get_join_key_set(relation_left, left_keys)
+        set_right = self.get_join_key_set(relation_right, right_keys)
 
-        spja_data = SPJAData(
-            aggregate_expressions={'count': AggExpression(Aggregator.COUNT, '*')},
-            from_tables=[diff_left]
-        )
-        # get the count of the difference of join keys
-        res = self.exe.execute_spja_query(spja_data, mode=ExecuteMode.EXECUTE)
-
-        if len(res) == 0:
-            num_miss_left = 0
-        else:
-            num_miss_left = res[0][0]
-
-        spja_data = SPJAData(
-            aggregate_expressions={'count': AggExpression(Aggregator.COUNT, '*')},
-            from_tables=[diff_right]
-        )
-        res = self.exe.execute_spja_query(spja_data, mode=ExecuteMode.EXECUTE)
-        if len(res) == 0:
-            num_miss_right = 0
-        else:
-            num_miss_right = res[0][0]
+        num_miss_left = self.calculate_key_difference(set_left, set_right)
+        num_miss_right = self.calculate_key_difference(set_right, set_left)
 
         return num_miss_left, num_miss_right
+
+
+    def get_join_key_set(self, relation: str, keys: list):
+        """Get the set of join keys for a relation."""
+        spja_data = SPJAData(
+            aggregate_expressions={f"key_{i}": AggExpression(Aggregator.IDENTITY, key) for i, key in enumerate(keys)},
+            from_tables=[relation],
+            group_by=[",".join(keys)]
+        )
+        return self.exe.execute_spja_query(spja_data, mode=ExecuteMode.NESTED_QUERY)
+
+
+    def calculate_key_difference(self, set_1, set_2):
+        """Calculate the difference of join keys between two sets."""
+        diff = self.exe.set_query("EXCEPT ALL", set_1, set_2)
+
+        spja_data = SPJAData(
+            aggregate_expressions={'count': AggExpression(Aggregator.COUNT, '*')},
+            from_tables=[diff]
+        )
+        res = self.exe.execute_spja_query(spja_data, mode=ExecuteMode.EXECUTE)
+        return res[0][0] if res else 0
+
 
     def get_max_multiplicity(self, table, keys):
         spja_data = SPJAData(
@@ -417,14 +408,8 @@ class JoinGraph:
             aggregate_expressions={'max_count': AggExpression(Aggregator.MAX, 'count')},
             from_tables=[multiplicity],
             )
-
         res = self.exe.execute_spja_query(spja_data, mode=ExecuteMode.EXECUTE)
-        if len(res) == 0:
-            max_multiplicity = 0
-        else:
-            max_multiplicity = res[0][0]
-
-        return max_multiplicity
+        return res[0][0] if res else 0
 
     def get_multiplicity(self, from_table, to_table, simple=False):
         if not simple:
@@ -434,7 +419,6 @@ class JoinGraph:
 
     def get_missing_keys(self, from_table, to_table):
         return self.joins[from_table][to_table]["missing_keys"]
-
 
     # Return the sql statement of full join
     def get_full_join_sql(self):
@@ -464,12 +448,13 @@ class JoinGraph:
 
     def check_target_relation_contains_rowid_col(self):
         return len(self.target_rowid_colname) != 0
-
+    
+    # given relations rel1 and rel2, and their join keys
+    # return the sql statement of the join
+    # e.g. rel1: A, rel2: B, keys1: [a1, a2], keys2: [b1, b2]
+    # return: A.a1=B.b1 AND A.a2=B.b2
     def _format_join_sql(self, rel1, rel2, keys1, keys2):
-        sql = " AND ".join(
-            f"{rel1}.{key1}={rel2}.{key2}" for key1, key2 in zip(keys1, keys2)
-        )
-        return sql
+        return " AND ".join(f"{rel1}.{key1}={rel2}.{key2}" for key1, key2 in zip(keys1, keys2))
 
     def _preprocess(self):
         self.check_graph_validity()
@@ -477,9 +462,6 @@ class JoinGraph:
         self.check_acyclic()
         self.check_target_exist()
         self.check_target_is_fact()
-        
-    
-         
     
     # Below maybe move to preprocess
     def check_target_is_fact(self):
@@ -494,17 +476,12 @@ class JoinGraph:
                     else:
                         multiplicity = self.get_multiplicity(rel2, rel1)
                         if multiplicity != 1:
-                            raise JoinGraphException(f"""
-The target table doesn't have many-to-one relationship with the rest.
-Please check the multiplicity between relations {rel2} and {rel1}.
-                            """)
+                            raise JoinGraphException(f"The target table is not a fact table.",
+                                                     f"Please check the multiplicity between relations {rel2} and {rel1}.")
                         missing_keys = self.get_missing_keys(rel2, rel1)
                         if missing_keys != 0:
-                            raise JoinGraphException(f"""
-The dimension table have missing key along the path to the target.
-Please check the missing key between relations {rel2} and {rel1}.
-                            """)
-                        
+                            raise JoinGraphException(f"The dimension table have missing key along the path to the target.",
+                                                     f"Please check the missing key between relations {rel2} and {rel1}.")
             return
 
         dfs(self.target_relation)
@@ -600,7 +577,6 @@ Please check the missing key between relations {rel2} and {rel1}.
         s = s.replace("{{nodes}}", str(nodes))
         s = s.replace("{{links}}", str(links))
         return s
-    
     
 
     #     def decide_feature_type(self, table, attrs, attr_types, threshold, exe: Executor):

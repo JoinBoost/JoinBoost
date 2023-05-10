@@ -263,7 +263,9 @@ class DecisionTree(DummyModel):
             return np.array(preds)[:, 0]
         elif output_mode == "WRITE_TO_TABLE":
             return view
+        
 
+    # TODO: refactor this
     def _update_fact_table_column_name(
         self, jg, check_rowid_col=False, resume_rowid_col=False
     ):
