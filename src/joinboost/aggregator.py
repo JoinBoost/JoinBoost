@@ -173,7 +173,7 @@ def value_to_sql(value, qualified=True):
     elif isinstance(value, str):
         return value
     else:
-        raise Exception("Unsupported value type")
+        raise Exception("Unsupported value type for", value)
 
 
 def selection_to_sql(sel, qualified=True):

@@ -154,46 +154,6 @@ class Executor(ABC):
         """
 
     @abstractmethod
-    def case_query(
-        self,
-        from_table: str,
-        operator: str,
-        cond_attr: str,
-        base_val: str,
-        case_definitions: list,
-        select_attrs: list = [],
-        table_name: str = None,
-    ):
-        """
-        Executes a SQL query with a CASE statement to perform tree-model prediction.
-        Each CASE represents a tree and each WHEN within a CASE represents a leaf.
-
-        Parameters
-        -----------
-        from_table : str
-            Name of the source table
-        operator : str
-            The operator used to combine predictions
-        cond_attr : str
-            Name of the column used in the conditions of the case statement
-        base_val : int
-            Base value for the entire tree-model
-        case_definitions : list
-            A list of lists containing the (leaf prediction, leaf predicates) for each tree.
-        select_attrs : list, optional (default=[])
-            List of attributes to be selected
-        table_name : str, optional (default=None)
-            Name of the new table
-        order_by : str, optional (default=None)
-            Name of the table to be ordered by rowid
-
-        Returns
-        --------
-        str
-            Name of the new table
-        """
-
-    @abstractmethod
     def window_query(
         self, view: str, select_attrs: list, base_attr: str, cumulative_attrs: list
     ):

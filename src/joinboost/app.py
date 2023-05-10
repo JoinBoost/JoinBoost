@@ -70,7 +70,6 @@ class DecisionTree(DummyModel):
     def _fit(self, jg: JoinGraph):
         jg._preprocess()
         
-        
         # First, we run preprocess to rename reserved column name
         # Create views for tables having conflicting column names with reserved words.
         g, h = self.semi_ring.get_columns_name()
@@ -202,6 +201,7 @@ class DecisionTree(DummyModel):
         joingraph: JoinGraph,
         input_mode: str = "FULL_JOIN_JG",
         output_mode: str = "NUMPY",
+        qualified: bool = False,
     ):
         input_modes = ["FULL_JOIN_JG", "FULL_JOIN_DF", "JOIN_GRAPH"]
         output_modes = ["NUMPY", "WRITE_TO_TABLE"]
@@ -215,10 +215,11 @@ class DecisionTree(DummyModel):
             # E.g., R(A,B), S(A,B). They join on A, and B is a feature name shared by both.
             # The full will have ambiguous naming, and may be renamed to (A, R.B, S.B)
             # To avoid this, requires a rename mapping from users. By default, we consider renaming mapping which prefixes the feature with relation name.
+            # One solution is, to require the attributes in the join graph to be qualified with relation name.
             compute_prediction = SPJAData(
                 aggregate_expressions={"prediction": self.get_prediction_aggregate(),
                                     self.cjt.target_var: AggExpression(Aggregator.IDENTITY, self.cjt.target_var)}, 
-                from_tables=[joingraph.target_relation], qualified=False
+                from_tables=[joingraph.target_relation], qualified=qualified
             )
 
             view = self.cjt.exe.execute_spja_query(
@@ -230,19 +231,6 @@ class DecisionTree(DummyModel):
             self._update_fact_table_column_name(jg=joingraph, check_rowid_col=True)
 
             full_join = joingraph.get_full_join_sql()
-
-            # # the reason why we order by rowid is because of the set semantics of the relational models
-            # # e.g., for duckdb, join result has its row order shuffled, making it hard to decide the corresponding prediction
-            # # we therefore sort by rowid to enforce the correct ordering
-            # view = joingraph.exe.case_query(
-            #     from_table=full_join,
-            #     cond_attr="prediction",
-            #     base_val=str(self.constant_),
-            #     case_definitions=self.model_def,
-            #     select_attr=[self.cjt.target_var],
-            #     order_by=f"{joingraph.target_relation}.rowid",
-            # )
-
 
             compute_prediction = SPJAData(
                 aggregate_expressions={"prediction": self.get_prediction_aggregate(),
@@ -441,7 +429,7 @@ class DecisionTree(DummyModel):
                     view_to_max = absoprtion_view
 
                 # check if executor is of type PandasExecutor or DuckdbExecutor
-                # TODO: express this logic using recursive aggregation
+                # TODO: this is too complex. use pandas eval() instead
                 if isinstance(self.cjt.exe, PandasExecutor):
                     func = (
                         lambda row: (row[f"{g_col}"] / row[f"{h_col}"])
@@ -450,25 +438,31 @@ class DecisionTree(DummyModel):
                         if h > row["c"]
                         else 0
                     )
-                else:
-                    func = (
-                        "CASE WHEN "
-                        + str(h)
-                        + f" > {h_col} THEN (({g_col}/{h_col})*{g_col} + ("
-                        + str(g)
-                        + f"-{g_col})/("
-                        + str(h)
-                        + f"-{h_col})*("
-                        + str(g)
-                        + f"-{g_col})) ELSE 0 END"
-                    )
 
-                l2_agg_exp = {
+                    l2_agg_exp = {
                     attr: AggExpression(Aggregator.IDENTITY, attr),
                     "criteria": AggExpression(Aggregator.IDENTITY_LAMBDA, func),
                     g_col: AggExpression(Aggregator.IDENTITY, g_col),
                     h_col: AggExpression(Aggregator.IDENTITY, h_col),
                 }
+                else:
+                    # func = (
+                    #     f"CASE WHEN {h} > {h_col} THEN (({g_col}/{h_col})*{g_col} + ({g}-{g_col})/({h}-{h_col})*({g}-{g_col})) ELSE 0 END"
+                    # )
+
+                    l2_agg_exp = {
+                    attr: AggExpression(Aggregator.IDENTITY, attr),
+                    # the case expression is for window functions
+                    "criteria": AggExpression(Aggregator.CASE, 
+                                              [(f"({g_col}/{h_col})*{g_col} + ({g}-{g_col})/({h}-{h_col})*({g}-{g_col})",
+                                                [SelectionExpression(SELECTION.GREATER, (str(h), str(h_col)))]
+                                               )]),
+                    g_col: AggExpression(Aggregator.IDENTITY, g_col),
+                    h_col: AggExpression(Aggregator.IDENTITY, h_col),
+                    }
+
+
+                
                 spja_data = SPJAData(
                     aggregate_expressions=l2_agg_exp,
                     from_tables=[view_to_max],
