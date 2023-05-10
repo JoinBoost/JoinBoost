@@ -544,8 +544,8 @@ class DecisionTree(DummyModel):
             )
 
             # add annotations according to split conditions
-            l_cjt.add_annotations(r_name, l_annotations)
-            r_cjt.add_annotations(r_name, r_annotations)
+            l_cjt.add_annotation(r_name, l_annotations)
+            r_cjt.add_annotation(r_name, r_annotations)
 
             # for the leaf split_candidates that can't be splitted (e.g. meet max depth)
             # we still need message passing to fact table for semi-join selection

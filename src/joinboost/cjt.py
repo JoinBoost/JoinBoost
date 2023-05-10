@@ -1,7 +1,7 @@
 import copy
 from .semiring import SemiRing
 from .joingraph import JoinGraph
-from .executor import Executor, PandasExecutor, SPJAData, ExecuteMode
+from .executor import PandasExecutor, SPJAData, ExecuteMode
 from .aggregator import *
 
 
@@ -28,19 +28,19 @@ class CJT(JoinGraph):
         # return self.annotations[table] if in the dict, otherwise return empty list
         return self.annotations.get(table, [])
     
-    def get_all_parsed_annotations(self):
+    def get_all_annotations(self):
         # self.annotations is a dict of selectionExpressions, and the key is the table name
+        # iterate through the dictionary and return a list of all selectionExpressions
         list_of_ann = []
         for _, value in self.annotations.items():
             list_of_ann.extend(value)
-
         return list_of_ann
-
-    def add_annotations(self, r_name: str, annotation: str):
-        if r_name not in self.annotations:
-            self.annotations[r_name] = [annotation]
+    
+    def add_annotation(self, relation: str, annotation: SelectionExpression):
+        if relation not in self.annotations:
+            self.annotations[relation] = [annotation]
         else:
-            self.annotations[r_name].append(annotation)
+            self.annotations[relation].append(annotation)
 
     def clean_message(self):
         for from_table in self.joins:

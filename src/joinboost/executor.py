@@ -628,18 +628,32 @@ class PandasExecutor(DuckdbExecutor):
         df1.columns = [col.split(".")[-1] for col in df1.columns]
         df2.columns = [col.split(".")[-1] for col in df2.columns]
 
+        def intersect_all(df1, df2):
+            # This function implements 'INTERSECT ALL' operation.
+            df1['key'] = 1
+            df2['key'] = 1
+            merged = pd.merge(df1, df2, on=list(df1.columns[:-1]), suffixes=['', '_'])
+            merged = merged[merged.key == merged.key_]
+            return merged[list(df1.columns[:-1])]
+
         if operation == "UNION":
-            df1 = df1.concat(df2, ignore_index=True)
+            df1 = pd.concat([df1, df2], ignore_index=True)
+        elif operation == "UNION ALL":
+            df1 = pd.concat([df1, df2])
         elif operation == "INTERSECT":
-            df1 = df1.merge(df2, how="inner")
+            df1 = pd.merge(df1, df2)
+        elif operation == "INTERSECT ALL":
+            df1 = intersect_all(df1, df2)
         elif operation == "EXCEPT":
-            df1 = (
-                df1.merge(df2, how="left", indicator=True)
-                .query('_merge=="left_only"')
-                .drop("_merge", axis=1)
-            )
+            df1 = df1.merge(df2, how='outer', indicator=True).query('_merge=="left_only"').drop('_merge', axis=1)
+        elif operation == "EXCEPT ALL":
+            df1['_key'] = df1.groupby(list(df1.columns)).cumcount()
+            df2['_key'] = df2.groupby(list(df2.columns)).cumcount()
+            df1 = pd.merge(df1, df2, how='outer', on=list(df1.columns), indicator=True, suffixes=['', '_y'])
+            df1 = df1.query('_merge=="left_only"').drop(['_merge', '_key'], axis=1)
         else:
             raise ExecutorException("Unsupported set operation!")
+        
         self.table_registry[df1_name] = df1
         return df1_name
 
