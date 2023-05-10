@@ -414,7 +414,6 @@ class DuckdbExecutor(Executor):
             # we need window clause if we have a window_by and the aggregate is not a simple aggregation
             window_clause = " OVER joinboost_window " if spja_data.window_by and is_agg(aggExp.agg) else ""
             rename_expr = (" AS " + target_col) if target_col is not None else ""
-            print(target_col, aggExp)
             parsed_aggregate_expressions.append(agg_to_sql(aggExp, qualified=spja_data.qualified) + window_clause + rename_expr)
 
         sql = "SELECT " + ", ".join(parsed_aggregate_expressions) + "\n"
@@ -1082,6 +1081,10 @@ class PandasExecutor(DuckdbExecutor):
         # handle aggregate expressions
         for target_col, aggregation_spec in aggregate_expressions.items():
             para, agg = aggregation_spec
+
+            # if para is QualifiedName
+            if isinstance(para, QualifiedAttribute):
+                para = agg_to_sql(para)
 
             if target_col is None:
                 target_col = para
