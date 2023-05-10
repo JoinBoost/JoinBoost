@@ -375,13 +375,7 @@ class DecisionTree(DummyModel):
 
         if cjt_depth == self.max_depth:
             self.split_candidates.put(
-                (
-                    -best_criteria,
-                    cjt_depth,
-                )
-                + best_criteria_ann
-                + (cjt_id,)
-            )
+                (-best_criteria,cjt_depth,) + best_criteria_ann+ (cjt_id,))
             return
 
         g, h = cur_semi_ring.get_value()
@@ -453,9 +447,6 @@ class DecisionTree(DummyModel):
                         h_col: AggExpression(Aggregator.IDENTITY, h_col),
                     }
                 else:
-                    # func = (
-                    #     f"CASE WHEN {h} > {h_col} THEN (({g_col}/{h_col})*{g_col} + ({g}-{g_col})/({h}-{h_col})*({g}-{g_col})) ELSE 0 END"
-                    # )
 
                     l2_agg_exp = {
                         attr: AggExpression(Aggregator.IDENTITY, attr),
@@ -529,16 +520,7 @@ class DecisionTree(DummyModel):
             and self.split_candidates.queue[0][0] < 0
             and self.split_candidates.qsize() < self.max_leaves
         ):
-            (
-                criteria,
-                cur_level,
-                r_name,
-                attr,
-                cur_value,
-                left_g,
-                left_h,
-                c_id,
-            ) = self.split_candidates.get()
+            (criteria, cur_level, r_name, attr, cur_value, left_g, left_h, c_id,) = self.split_candidates.get()
             expanding_cjt = self.nodes[c_id]
 
             l_semi_ring = expanding_cjt.semi_ring.copy()

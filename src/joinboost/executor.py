@@ -411,10 +411,11 @@ class DuckdbExecutor(Executor):
 
         parsed_aggregate_expressions = []
         for target_col, aggExp in spja_data.aggregate_expressions.items():
-            parsed_expression = self._parse_aggregate_expression(
-                target_col, aggExp, window_by=spja_data.window_by, qualified=spja_data.qualified
-            )
-            parsed_aggregate_expressions.append(parsed_expression)
+            # we need window clause if we have a window_by and the aggregate is not a simple aggregation
+            window_clause = " OVER joinboost_window " if spja_data.window_by and is_agg(aggExp.agg) else ""
+            rename_expr = (" AS " + target_col) if target_col is not None else ""
+            parsed_aggregate_expressions.append(
+                agg_to_sql(aggExp, qualified=spja_data.qualified) + window_clause + rename_expr)
 
         sql = "SELECT " + ", ".join(parsed_aggregate_expressions) + "\n"
         sql += "FROM " + ",".join(spja_data.from_tables) + "\n"
@@ -422,19 +423,11 @@ class DuckdbExecutor(Executor):
         if len(spja_data.select_conds) > 0 or len(spja_data.join_conds) > 0:
             sql += "WHERE " + " AND ".join([selection_to_sql(cond) for cond in spja_data.select_conds + spja_data.join_conds]) + "\n"
         if len(spja_data.window_by) > 0:
-            sql += (
-                "WINDOW joinboost_window AS (ORDER BY "
-                + ",".join(spja_data.window_by)
-                + ")\n"
-            )
+            sql += ("WINDOW joinboost_window AS (ORDER BY " + ",".join(spja_data.window_by) + ")\n")
         if len(spja_data.group_by) > 0:
             sql += "GROUP BY " + ",".join(spja_data.group_by) + "\n"
         if len(spja_data.order_by) > 0:
-            sql += (
-                "ORDER BY "
-                + ",".join([f"{col} {order}" for (col, order) in spja_data.order_by])
-                + "\n"
-            )
+            sql += ("ORDER BY " + ",".join([f"{col} {order}" for (col, order) in spja_data.order_by])+ "\n")
         if spja_data.limit is not None:
             sql += "LIMIT " + str(spja_data.limit) + "\n"
         if spja_data.sample_rate is not None:
@@ -480,35 +473,6 @@ class DuckdbExecutor(Executor):
         except Exception as e:
             print(e)
         return result
-    
-    def _parse_aggregate_expression(
-        self, target_col: str, aggExp: AggExpression, window_by: list = None, qualified: bool = True
-    ):
-        """
-        Parameters
-        ----------
-        target_col : str
-            The name of the target column to rename the result to.
-        para : Union[str, float, int, None]
-            The parameter of the aggregation function.
-        agg : aggregator.Aggregator
-            An aggregator object that represents the aggregation function.
-        window_by : Optional[List[str]], optional
-            A list of column names to partition the window by, by default None.
-
-        Returns
-        -------
-        str
-            The parsed SQL statement for the aggregate expression.
-        """
-
-        window_clause = " OVER joinboost_window " if window_by and is_agg(aggExp.agg) else ""
-        rename_expr = " AS " + target_col if target_col is not None else ""
-
-        parsed_expression = agg_to_sql(aggExp, qualified=qualified) + window_clause + rename_expr
-
-        return parsed_expression
-
 
 class SparkExecutor(DuckdbExecutor):
     def add_table(self, table: str, table_address):
