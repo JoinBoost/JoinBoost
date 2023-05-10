@@ -154,30 +154,6 @@ class Executor(ABC):
         """
 
     @abstractmethod
-    def window_query(
-        self, view: str, select_attrs: list, base_attr: str, cumulative_attrs: list
-    ):
-        """
-        A function to create a window query. TODO: Remove this function.
-
-        Parameters
-        ----------
-        view : str
-            The view name.
-        select_attrs : list
-            A list of attributes to select.
-        base_attr : str
-            The base attribute.
-        cumulative_attrs : list
-            A list of cumulative attributes.
-
-        Returns
-        -------
-        str
-            The view name.
-        """
-
-    @abstractmethod
     def execute_spja_query(
         self,
         spja_data: SPJAData,
