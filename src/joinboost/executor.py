@@ -414,8 +414,8 @@ class DuckdbExecutor(Executor):
             # we need window clause if we have a window_by and the aggregate is not a simple aggregation
             window_clause = " OVER joinboost_window " if spja_data.window_by and is_agg(aggExp.agg) else ""
             rename_expr = (" AS " + target_col) if target_col is not None else ""
-            parsed_aggregate_expressions.append(
-                agg_to_sql(aggExp, qualified=spja_data.qualified) + window_clause + rename_expr)
+            print(target_col, aggExp)
+            parsed_aggregate_expressions.append(agg_to_sql(aggExp, qualified=spja_data.qualified) + window_clause + rename_expr)
 
         sql = "SELECT " + ", ".join(parsed_aggregate_expressions) + "\n"
         sql += "FROM " + ",".join(spja_data.from_tables) + "\n"

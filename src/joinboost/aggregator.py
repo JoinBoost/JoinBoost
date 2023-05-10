@@ -39,6 +39,9 @@ class AggExpression:
     # this is to make sure we can unpack AggExpression as (para, agg)
     def __iter__(self):
         return iter((self.para, self.agg))
+    
+    def __str__(self):
+        return self.agg.name + "(" + str(self.para) + ")"
 
 class SelectionExpression:
     def __init__(self, selection, para):
@@ -60,7 +63,11 @@ def agg_to_sql(agg_expr, qualified=True):
     # check if agg_expr is a string as the base SQL expression
     if isinstance(agg_expr, str):
         return agg_expr
-
+    
+    # if it is a qualified attribute, return the attribute name
+    if isinstance(agg_expr, QualifiedAttribute):
+        return agg_expr.to_str(qualified)
+    
     agg = agg_expr.agg
     para = agg_expr.para
 
@@ -78,7 +85,7 @@ def agg_to_sql(agg_expr, qualified=True):
         return "COUNT(" + agg_to_sql(para, qualified) + ")"
 
     elif agg.value == Aggregator.IDENTITY.value or agg.value == Aggregator.IDENTITY_LAMBDA.value:
-        return para
+        return agg_to_sql(para, qualified) 
 
     elif agg.value == Aggregator.PROD.value:
         assert isinstance(para, list)
