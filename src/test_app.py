@@ -82,7 +82,7 @@ class TestApp(unittest.TestCase):
         reg.fit(dataset)
         
         
-        dataset.set_target_relation("train")
+        dataset.target_relation = "train"
         reg_prediction = reg.predict(joingraph=dataset, input_mode="FULL_JOIN_JG")
 
         data = pd.read_csv("../data/favorita/train_small.csv")

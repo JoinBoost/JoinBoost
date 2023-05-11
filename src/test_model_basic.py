@@ -45,7 +45,8 @@ class TestModel(unittest.TestCase):
         gb = DecisionTree(learning_rate=1, max_leaves=2 ** depth, max_depth=depth)
 
         gb.fit(dataset)
-
+        gb._build_model_legacy()
+        
         for line in gb.model_def:
             for subline in line:
                 print(subline)
@@ -181,7 +182,7 @@ class TestModel(unittest.TestCase):
 
         reg.fit(dataset)
         
-        dataset.set_target_relation("train")
+        dataset.target_relation = "train"
         reg_prediction = reg.predict(joingraph=dataset, input_mode="FULL_JOIN_JG")
 
         data = pd.read_csv("../data/favorita/train_small.csv")

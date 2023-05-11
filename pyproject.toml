@@ -4,6 +4,6 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "joinboost"
-version = "0.0.1521"
+version = "0.0.1523"
 description = "JoinBoost: In-Database Tree-Models over Many Tables"
 readme = "README.md"

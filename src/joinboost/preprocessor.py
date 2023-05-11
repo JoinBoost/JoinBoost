@@ -25,11 +25,11 @@ class Preprocessor:
         for step in self.steps:
             self.histories.append(step.apply(joingraph))
 
-    def reapply_preprocessing(self):
+    def reapply_preprocessing(self, joingraph: JoinGraph):
         # reapply the preprocess steps according to the history
         for i in range(len(self.steps)):
             history = self.histories[i]
-            step.reapply(joingraph, history)
+            self.step.reapply(joingraph, history)
 
     def get_history(self):
         # records the history of preprocess
@@ -76,7 +76,7 @@ class RenameStep(Step):
 
             for old_name in mapping:
                 new_name = mapping[old_name]
-                expression[new_name] = (old_name, Aggregator.IDENTITY)
+                expression[new_name] = AggExpression(Aggregator.IDENTITY, old_name)
                 joingraph.replace_relation_attribute(relation, old_name, new_name)
 
             spja_data = SPJAData(

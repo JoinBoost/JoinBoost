@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from copy import deepcopy
-from .aggregator import Aggregator, Message
+from .aggregator import *
 from .joingraph import JoinGraph
 
 
@@ -75,12 +75,12 @@ class varSemiRing(GradientHessianSemiRing):
 
     def lift_exp(self, g="s", h="1"):
         g_after, h_after = self.gradient_column_name, self.hessian_column_name
-        return {g_after: (g, Aggregator.IDENTITY), h_after: (h, Aggregator.IDENTITY)}
+        return {g_after: AggExpression(Aggregator.IDENTITY, g), h_after: AggExpression(Aggregator.IDENTITY, h)}
 
     def col_sum(self, pair=("s", "c")):
         g, h = pair
         g_after, h_after = self.gradient_column_name, self.hessian_column_name
-        return {g_after: (g, Aggregator.SUM), h_after: (h, Aggregator.SUM)}
+        return {g_after: AggExpression(Aggregator.SUM, g), h_after: AggExpression(Aggregator.SUM, h)}
 
     def get_value(self):
         return self.pair
@@ -95,12 +95,15 @@ class AvgSemiRing(SemiField):
 
     def lift_exp(self, s_after='s', c_after='c', user_table=""):
         if user_table == self.user_table:
-            return {s_after: (self.attr, Aggregator.IDENTITY), c_after: ("1", Aggregator.IDENTITY)}
+            return {s_after: AggExpression(Aggregator.IDENTITY, self.attr),
+                    c_after: AggExpression(Aggregator.IDENTITY, "1")}
         else:
-            return {s_after: ("0", Aggregator.IDENTITY), c_after: ("1", Aggregator.IDENTITY)}
+            return {s_after: AggExpression(Aggregator.IDENTITY, "0"),
+                    c_after: AggExpression(Aggregator.IDENTITY, "1")}
 
     def col_sum(self, s='s', c='c', s_after='s', c_after='c'):
-        return {s_after: (s, Aggregator.SUM), c_after: (c, Aggregator.SUM)}
+        return {s_after: AggExpression(Aggregator.SUM, s),
+                c_after: AggExpression(Aggregator.SUM, c)}
 
     def sum_over_product(self, user_tables=[], s='s', c='c', s_after='s', c_after='c'):
         annotated_count = {}
@@ -112,8 +115,8 @@ class AvgSemiRing(SemiField):
             sum_join_calculation.append([f'"{str(user_table)}"."{s}"'] + \
                                         [f'"{rel}"."{c}"' for rel in (user_tables[:i] + user_tables[i + 1:])])
 
-        return {s_after: (sum_join_calculation, Aggregator.DISTRIBUTED_SUM_PROD),
-                c_after: (annotated_count, Aggregator.SUM_PROD)}
+        return {s_after: AggExpression(Aggregator.DISTRIBUTED_SUM_PROD, sum_join_calculation),
+                c_after: AggExpression(Aggregator.SUM_PROD, annotated_count)}
 
     def sum_col(self, user_table):
         return self.sum_over_product([user_table])
