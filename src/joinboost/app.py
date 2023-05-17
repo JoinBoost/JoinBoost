@@ -435,15 +435,11 @@ class DecisionTree(DummyModel):
                     view_to_max = absoprtion_view
 
                 # check if executor is of type PandasExecutor or DuckdbExecutor
-                # TODO: this is too complex. use pandas eval() instead
                 if isinstance(self.cjt.exe, PandasExecutor):
-                    func = (
-                        lambda row: (row[f"{g_col}"] / row[f"{h_col}"])
-                        * row[f"{g_col}"]
-                        + ((g - row["s"]) / (h - row["c"])) * (g - row["s"])
-                        if h > row["c"]
-                        else 0
-                    )
+                    cond = f"{h} > df.{h_col}"
+                    true_eval_expr = f"((df.{g_col}/df.{h_col})*df.{g_col} + ({g}-df.{g_col})/({h}-df.{h_col})*({g}-df.{g_col}))"
+                    false_eval_expr = f"0"
+                    func = {'cond': cond, 'true': true_eval_expr, 'false': false_eval_expr}
 
                     l2_agg_exp = {
                         attr: AggExpression(Aggregator.IDENTITY, attr),
