@@ -676,17 +676,11 @@ class PandasExecutor(DuckdbExecutor):
 
         sqls = selections_to_sql(spja_data.select_conds + spja_data.join_conds)
 
-        # search select_conds for join_conditions that are of the form "table1.col1 IS NOT DISTINCT FROM table2.col2"
-        join_conds = [
-            re.findall(r"(\w+\.\w+ IS NOT DISTINCT FROM \w+\.\w+)", cond)[0]
-            for cond in sqls
-            if "IS NOT DISTINCT FROM" in cond
-        ]
         select_conds = self.convert_predicates(sqls)
 
         # join_conds are of the form "table1.col1 IS NOT DISTINCT FROM table2.col2".
         # extract the table1.col1 and table2.col2
-        join_conds = [re.findall(r"(\w+\.\w+)", cond) for cond in join_conds]
+        join_conds = [re.findall(r"(\w+\.\w+)", cond) for cond in selections_to_sql(spja_data.join_conds)]
 
         df = list(from_dfs.values())[0]
 

@@ -448,7 +448,6 @@ class DecisionTree(DummyModel):
                         h_col: AggExpression(Aggregator.IDENTITY, h_col),
                     }
                 else:
-
                     l2_agg_exp = {
                         attr: AggExpression(Aggregator.IDENTITY, attr),
                         # the case expression is for window functions
