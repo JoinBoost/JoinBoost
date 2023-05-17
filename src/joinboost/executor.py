@@ -9,6 +9,8 @@ import types
 import pandas as pd
 
 from .aggregator import *
+from .mini_joingraph import MiniJoinGraph
+import numpy as np
 
 ExecuteMode = Enum(
     "ExecuteMode", ["WRITE_TO_TABLE", "CREATE_VIEW", "EXECUTE", "NESTED_QUERY"]
@@ -276,7 +278,7 @@ class DuckdbExecutor(Executor):
             sql += f"ORDER BY {order_by};"
 
         self._execute_query(sql)
-        print(view)
+        # print(view)
         return view
     
     def check_table(self, table):
@@ -689,15 +691,9 @@ class PandasExecutor(DuckdbExecutor):
         df = list(from_dfs.values())[0]
 
         if len(join_conds) > 0:
-            # df = self.execute_join(
-            #     from_dfs,
-            #     SPJAData.join_conds
-            # )
-
             df = self.execute_join(
                 from_dfs,
-                join_conds,
-                SPJAData.join_type
+                spja_data.join_conds
             )
 
         # filter by select_conds
@@ -743,10 +739,10 @@ class PandasExecutor(DuckdbExecutor):
         ):
             name_ = self.get_next_name()
             # always qualify intermediate tables as future aggregations for these tables will come qualified
-            for col in df.columns:
-                if col not in ["s", "c"]:
-                    # strip any table name from the column name
-                    df = df.rename(columns={col: name_ + "." + col.split(".")[-1]})
+            # for col in df.columns:
+                # if col not in ["s", "c"]:
+                #     # strip any table name from the column name
+                #     df = df.rename(columns={col: name_ + "." + col.split(".")[-1]})
             if self.debug:
                 print("creating table " + name_)
                 print(df.head())
@@ -775,7 +771,7 @@ class PandasExecutor(DuckdbExecutor):
         return df
 
     def apply_group_by_and_agg(self, agg_conditions, df, group_by, window_by):
-        print(agg_conditions)
+        # print(agg_conditions)
 
         if len(group_by) > 0:
             # if group_by element is not of the form joinboost_<digit>.col, then unqualify it
@@ -826,9 +822,8 @@ class PandasExecutor(DuckdbExecutor):
                     for col in list(agg_conditions.keys()):
                         if agg_conditions[col].column == "*":
                             func = agg_conditions[col].aggfunc
-                            print(func)
-                            if isinstance(func, types.LambdaType):
-                                df[col] = df.apply(func, axis=1)
+                            if isinstance(func, dict):
+                                df[col] = np.where(eval(func['cond']), eval(func['true']), eval(func['false']))
                             else:
                                 df[col] = df.eval(func)
                             del agg_conditions[col]
@@ -851,207 +846,69 @@ class PandasExecutor(DuckdbExecutor):
 
         return df
 
-    # def execute_join(self, df_to_join, join_conds):
-    #     # Step 1: Extract all join keys for each pair of dataframes
-    #     join_conditions = {}
-    #     for sel in join_conds:
-    #         left_attr, right_attr = sel.para[0], sel.para[1]
-    #         left_table, right_table = left_attr.table(), right_attr.table()
-    #         left_attribute_name, right_attribute_name = value_to_sql(left_attr, False), value_to_sql(right_attr, False)
+    def execute_join(self, df_to_join, join_conds):
+        # Step 1: Extract all join keys for each pair of dataframes
+        join_conditions = {}
+        for sel in join_conds:
+            left_attr, right_attr = sel.para[0], sel.para[1]
+            left_table, right_table = left_attr.table(), right_attr.table()
+            left_attribute_name, right_attribute_name = value_to_sql(left_attr, False), value_to_sql(right_attr, False)
 
-    #         key = tuple(sorted((left_table, right_table)))
-    #         if key not in join_conditions:
-    #             join_conditions[key] = {'left_table': left_table, 'right_table': right_table, 'left_keys': [], 'right_keys': []}
+            key = tuple(sorted((left_table, right_table)))
+            if key not in join_conditions:
+                join_conditions[key] = {'left_table': left_table, 'right_table': right_table, 'left_keys': [], 'right_keys': []}
 
-    #         if left_table == join_conditions[key]['left_table']:
-    #             join_conditions[key]['left_keys'].append(left_attribute_name)
-    #             join_conditions[key]['right_keys'].append(right_attribute_name)
-    #         else:
-    #             join_conditions[key]['left_keys'].append(right_attribute_name)
-    #             join_conditions[key]['right_keys'].append(left_attribute_name)
+            if left_table == join_conditions[key]['left_table']:
+                join_conditions[key]['left_keys'].append(left_attribute_name)
+                join_conditions[key]['right_keys'].append(right_attribute_name)
+            else:
+                join_conditions[key]['left_keys'].append(right_attribute_name)
+                join_conditions[key]['right_keys'].append(left_attribute_name)
 
-    #     # Step 2: Implement a simple query optimizer to decide the join order
-    #     def simple_query_optimizer(join_conditions):
-    #         # This is a simple example; you can implement more advanced optimization techniques if needed.
-    #         return sorted(join_conditions.values(), key=lambda x: (x['left_table'], x['right_table']))
+        # Step 1.5: Construct Join graph using join tables as nodes and join conditions as edges without using networkx
+        join_graph = MiniJoinGraph()
+        for key in join_conditions:
+            join_graph.add_node(join_conditions[key]['left_table'])
+            join_graph.add_node(join_conditions[key]['right_table'])
+            join_graph.add_edge(join_conditions[key]['left_table'], join_conditions[key]['right_table'])
 
-    #     optimized_join_order = simple_query_optimizer(join_conditions)
-
-    #     # Step 3: Join all dataframes together using Pandas merge function
-    #     result = None
-    #     for join_cond in optimized_join_order:
-    #         left_table = df_to_join[join_cond['left_table']]
-    #         right_table = df_to_join[join_cond['right_table']]
-
-    #         # TODO: quite hacky, but works for now
-    #         def remove_table_prefix(column_name):
-    #             return column_name.split(".")[-1]
-            
-    #         print("left_table", left_table.columns, "right_table", right_table.columns, "join_cond", join_cond)
+        dfs_order, dfs_join_order = join_graph.get_dfs_order()
 
 
-    #         left_table.columns = [remove_table_prefix(col) for col in left_table.columns]
-    #         right_table.columns = [remove_table_prefix(col) for col in right_table.columns]
+        # Step 2: Implement a simple query optimizer to decide the join order
+        # def simple_query_optimizer(join_conditions):
+        #     # This is a simple example; you can implement more advanced optimization techniques if needed.
+        #     return sorted(join_conditions.values(), key=lambda x: (x['left_table'], x['right_table']))
+        #
+        # optimized_join_order = simple_query_optimizer(join_conditions)
 
-    #         # Rename duplicate columns in the right table to match the left table
-    #         for left_key, right_key in zip(join_cond['left_keys'], join_cond['right_keys']):
-    #             if left_key != right_key:
-    #                 right_table = right_table.rename(columns={right_key: left_key})
+        # Step 3: Join all dataframes together using Pandas merge function
+        result = None
+        for left_table_name, right_table_name in dfs_join_order:
+            left_table = df_to_join[left_table_name]
+            right_table = df_to_join[right_table_name]
+            join_cond = join_conditions[tuple(sorted((left_table_name, right_table_name)))]
 
-    #         if result is None:
-    #             result = pd.merge(left_table, right_table, on=join_cond['left_keys'])
-    #         else:
-    #             result = pd.merge(result, right_table, on=join_cond['left_keys'])
+            # Rename duplicate columns in the right table to match the left table
+            for left_key, right_key in zip(join_cond['left_keys'], join_cond['right_keys']):
+                if left_key != right_key:
+                    right_table = right_table.rename(columns={right_key: left_key})
 
-    #     return result
+            if result is None:
+                result = pd.merge(left_table, right_table, on=join_cond['left_keys'])
+            else:
+                result = pd.merge(result, right_table, on=join_cond['left_keys'])
 
-    # computes join or cross (if no join condition) between all tables.
-    def execute_join(
-        self, intermediates, join_conds, join_type
-    ):
-        df = None
+        return result
 
+    @staticmethod
+    def get_unqualified_cols(df):
+        return [col.split(".")[-1] for col in df.columns]
 
-        # unqualify all join conditions
-        temp_join_conds = [
-            [cond[0].split(".")[-1], cond[1].split(".")[-1]] for cond in join_conds
-        ]
-        # flatten temp_join_conds
-        temp_join_conds = [item for sublist in temp_join_conds for item in sublist]
-
-        # sort tables_to_join by the number of times their respective columns appear in join_conds.
-        # TODO: this is a hacky way to avoid duplicate joining between tables.
-        tables_to_join = sorted(
-            intermediates,
-            key=lambda x: len(
-                [col for col in intermediates[x].columns if col in temp_join_conds]
-            ),
-            reverse=True,
-        )
-
-        for table in tables_to_join:
-            if df is None:
-                df = intermediates[table]
-                if df is not None:
-                    for col in df.columns:
-                        df = df.rename(columns={col: col.split(".")[-1]})
-                    # if there are duplicate columns, drop them
-                    df = df.loc[:, ~df.columns.duplicated()]
-                continue
-
-            # search join_conds for the join conditions corresponding to table
-            for cond in join_conds:
-                df = self.universal_merge(cond, df, intermediates, join_type, table)
-
-            if df is not None:
-                for col in df.columns:
-                    df = df.rename(columns={col: col.split(".")[-1]})
-                # if there are duplicate columns, drop them
-                df = df.loc[:, ~df.columns.duplicated()]
-
-        
-        return df
-
-    # Merges tables based on join conditions regardless of whether the join condition is on the left or right table
-    # or whether the join condition is qualified or not. 'universal' here indicates its versatility.
-    def universal_merge(self, cond, df, intermediates, join_type, table):
-        # search join_conds for the join condition between table1 and table2
-        if cond[0] in df.columns and cond[1] in intermediates[table].columns:
-            # join the two tables
-            df = df.merge(
-                intermediates[table],
-                how=join_type.lower(),
-                left_on=cond[0],
-                right_on=cond[1],
-                suffixes=("", "_drop"),
-            ).filter(regex="^(?!.*_drop)")
-        elif cond[1] in df.columns and cond[0] in intermediates[table].columns:
-            # join the two tables
-            df = df.merge(
-                intermediates[table],
-                how=join_type.lower(),
-                left_on=cond[1],
-                right_on=cond[0],
-                suffixes=("", "_drop"),
-            ).filter(regex="^(?!.*_drop)")
-        elif (
-            cond[0].split(".")[-1] in df.columns
-            and cond[1].split(".")[-1] in intermediates[table].columns
-        ):
-            # join the two tables
-            df = df.merge(
-                intermediates[table],
-                how=join_type.lower(),
-                left_on=cond[0].split(".")[-1],
-                right_on=cond[1].split(".")[-1],
-                suffixes=("", "_drop"),
-            ).filter(regex="^(?!.*_drop)")
-        elif (
-            cond[1].split(".")[-1] in df.columns
-            and cond[0].split(".")[-1] in intermediates[table].columns
-        ):
-            # join the two tables
-            df = df.merge(
-                intermediates[table],
-                how=join_type.lower(),
-                left_on=cond[1].split(".")[-1],
-                right_on=cond[0].split(".")[-1],
-                suffixes=("", "_drop"),
-            ).filter(regex="^(?!.*_drop)")
-        # check if one join condition is qualified and the other is not
-
-        elif (
-            cond[0].split(".")[-1] in df.columns
-            and cond[1] in intermediates[table].columns
-        ):
-            # join the two tables
-            df = df.merge(
-                intermediates[table],
-                how=join_type.lower(),
-                left_on=cond[0].split(".")[-1],
-                right_on=cond[1],
-                suffixes=("", "_drop"),
-            ).filter(regex="^(?!.*_drop)")
-        elif (
-            cond[1].split(".")[-1] in df.columns
-            and cond[0] in intermediates[table].columns
-        ):
-            df = df.merge(
-                intermediates[table],
-                how=join_type.lower(),
-                left_on=cond[1].split(".")[-1],
-                right_on=cond[0],
-                suffixes=("", "_drop"),
-            ).filter(regex="^(?!.*_drop)")
-        elif (
-            cond[0] in df.columns
-            and cond[1].split(".")[-1] in intermediates[table].columns
-        ):
-            # join the two tables
-            df = df.merge(
-                intermediates[table],
-                how=join_type.lower(),
-                left_on=cond[0],
-                right_on=cond[1].split(".")[-1],
-                suffixes=("", "_drop"),
-            ).filter(regex="^(?!.*_drop)")
-        elif (
-            cond[1] in df.columns
-            and cond[0].split(".")[-1] in intermediates[table].columns
-        ):
-            # join the two tables
-            df = df.merge(
-                intermediates[table],
-                how=join_type.lower(),
-                left_on=cond[1],
-                right_on=cond[0].split(".")[-1],
-                suffixes=("", "_drop"),
-            ).filter(regex="^(?!.*_drop)")
-        if df is not None:
-            for col in df.columns:
-                df = df.rename(columns={col: col.split(".")[-1]})
-            # if there are duplicate columns, drop them
-            df = df.loc[:, ~df.columns.duplicated()]
+    @staticmethod
+    def unqualify_df(df):
+        for col in df.columns:
+            df = df.rename(columns={col: col.split(".")[-1]})
         return df
 
     def convert_predicates(self, select_conds):
