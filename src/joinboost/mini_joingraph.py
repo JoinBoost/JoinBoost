@@ -24,6 +24,17 @@ class MiniJoinGraph:
 
         visited_nodes = list()
         visited_edges = list()
+        
+        # Find a leaf node
+        start_node = None
+        for node in self.nodes:
+            if len(self.edges[node]) == 1:
+                start_node = node
+                break
+
+        visited_nodes = list()
+        visited_edges = list()
+        dfs(None, start_node, visited_nodes, visited_edges)
         for node in self.nodes:
             if node not in visited_nodes:
                 dfs(None, node, visited_nodes, visited_edges)

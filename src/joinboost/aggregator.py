@@ -43,10 +43,17 @@ class AggExpression:
     def __str__(self):
         return self.agg.name + "(" + str(self.para) + ")"
 
+    
+SELECTION = Enum(
+    'NULL', 'NULL NOT_NULL NOT_GREATER GREATER DISTINCT NOT_DISTINCT IN NOT_IN EQUAL NOT_EQUAL SEMI_JOIN')
+
 class SelectionExpression:
     def __init__(self, selection, para):
         self.selection = selection
         self.para = para
+        
+    def __str__(self):
+        return self.selection.name + "(" + str(self.para) + ")"
 
 
 Aggregator = Enum(
@@ -165,9 +172,6 @@ def is_agg(agg):
     return False
 
 
-SELECTION = Enum(
-    'NULL', 'NULL NOT_NULL NOT_GREATER GREATER DISTINCT NOT_DISTINCT IN NOT_IN EQUAL NOT_EQUAL SEMI_JOIN')
-
 
 Message = Enum('Message', 'IDENTITY SELECTION FULL UNDECIDED')
 
@@ -242,6 +246,30 @@ def selection_to_sql(sel, qualified=True):
     else:
         raise Exception("Unsupported Selection Expression")
 
+# selection used by dataframe query
+# has some difference. E.g., it doesn't use "=" but "==" instead
+def selection_to_df_sql(sel, qualified=True):
+    if sel.selection == SELECTION.EQUAL:
+        attr1, attr2 = sel.para[0], sel.para[1]
+        return value_to_sql(attr1, qualified) + " == " + value_to_sql(attr2, qualified)
+
+    elif sel.selection == SELECTION.NOT_EQUAL:
+        attr1, attr2 = sel.para[0], sel.para[1]
+        return value_to_sql(attr1, qualified) + " != " + value_to_sql(attr2, qualified)
+
+    elif sel.selection == SELECTION.NOT_GREATER:
+        attr1, attr2 = sel.para[0], sel.para[1]
+        return value_to_sql(attr1, qualified) + " <= " + value_to_sql(attr2, qualified)
+
+    elif sel.selection == SELECTION.GREATER:
+        attr1, attr2 = sel.para[0], sel.para[1]
+        return value_to_sql(attr1, qualified) + " > " + value_to_sql(attr2, qualified)
+    else:
+        raise Exception("Unsupported Selection Expression")
+
 
 def selections_to_sql(selectionExpressions, qualified=True):
     return [selection_to_sql(sel, qualified) for sel in selectionExpressions]
+
+def selections_to_df_sql(selectionExpressions, qualified=True):
+    return [selection_to_df_sql(sel, qualified) for sel in selectionExpressions]

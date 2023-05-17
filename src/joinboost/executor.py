@@ -666,34 +666,21 @@ class PandasExecutor(DuckdbExecutor):
     def execute_spja_query(
         self, spja_data: SPJAData, mode: ExecuteMode = ExecuteMode.WRITE_TO_TABLE
     ):
-        # TODO: may need to execute_spja_query, if the from_tables in spja_table is also a spja_table
-        from_dfs = {}
 
-        for table in spja_data.from_tables:
-            from_dfs[table] = self.table_registry[table]
-
-        agg_conditions = self.convert_agg_conditions(spja_data.aggregate_expressions)
-
-        sqls = selections_to_sql(spja_data.select_conds + spja_data.join_conds)
-
-        select_conds = self.convert_predicates(sqls)
-
-        # join_conds are of the form "table1.col1 IS NOT DISTINCT FROM table2.col2".
-        # extract the table1.col1 and table2.col2
-        join_conds = [re.findall(r"(\w+\.\w+)", cond) for cond in selections_to_sql(spja_data.join_conds)]
-
-        df = list(from_dfs.values())[0]
-
-        if len(join_conds) > 0:
-            df = self.execute_join(
-                from_dfs,
-                spja_data.join_conds
-            )
+        
+        if len(spja_data.from_tables) > 1:
+            df = self.execute_join(spja_data)
+        elif len(spja_data.from_tables) == 0:
+            raise ExecutorException("No from table for SPJA query!")
+        else:
+            df = self.table_registry[spja_data.from_tables[0]]
 
         # filter by select_conds
-        if len(select_conds) > 0:
-            converted_select_conds = " and ".join(select_conds)
-            df = df.query(converted_select_conds)
+        # TODO: push down the selection before join
+        if len(spja_data.select_conds) > 0:
+            query = " and ".join(selections_to_df_sql(spja_data.select_conds, qualified=False))
+#             converted_select_conds = " and ".join(select_conds)
+            df = df.query(query)
         
         # removal of all qualification of columns
         if df is not None:
@@ -704,6 +691,8 @@ class PandasExecutor(DuckdbExecutor):
 
 
         # group by and aggregate
+        agg_conditions = self.convert_agg_conditions(spja_data.aggregate_expressions)
+        
         df = self.apply_group_by_and_agg(
             agg_conditions, df, spja_data.group_by, spja_data.window_by
         )
@@ -840,15 +829,18 @@ class PandasExecutor(DuckdbExecutor):
 
         return df
 
-    def execute_join(self, df_to_join, join_conds):
+    def execute_join(self, spja_data):
         # Step 1: Extract all join keys for each pair of dataframes
         join_conditions = {}
-        for sel in join_conds:
+        for sel in spja_data.join_conds:
+            # Currently, assume equality-based join
+            # TODO: relax the assumption
             left_attr, right_attr = sel.para[0], sel.para[1]
             left_table, right_table = left_attr.table(), right_attr.table()
             left_attribute_name, right_attribute_name = value_to_sql(left_attr, False), value_to_sql(right_attr, False)
-
+            # keep a fixed order between tables as the key
             key = tuple(sorted((left_table, right_table)))
+            
             if key not in join_conditions:
                 join_conditions[key] = {'left_table': left_table, 'right_table': right_table, 'left_keys': [], 'right_keys': []}
 
@@ -858,7 +850,8 @@ class PandasExecutor(DuckdbExecutor):
             else:
                 join_conditions[key]['left_keys'].append(right_attribute_name)
                 join_conditions[key]['right_keys'].append(left_attribute_name)
-
+                
+        
         # Step 1.5: Construct Join graph using join tables as nodes and join conditions as edges without using networkx
         join_graph = MiniJoinGraph()
         for key in join_conditions:
@@ -866,32 +859,34 @@ class PandasExecutor(DuckdbExecutor):
             join_graph.add_node(join_conditions[key]['right_table'])
             join_graph.add_edge(join_conditions[key]['left_table'], join_conditions[key]['right_table'])
 
-        dfs_order, dfs_join_order = join_graph.get_dfs_order()
-
+        _, dfs_join_order = join_graph.get_dfs_order()
 
         # Step 2: Implement a simple query optimizer to decide the join order
-        # def simple_query_optimizer(join_conditions):
-        #     # This is a simple example; you can implement more advanced optimization techniques if needed.
-        #     return sorted(join_conditions.values(), key=lambda x: (x['left_table'], x['right_table']))
-        #
-        # optimized_join_order = simple_query_optimizer(join_conditions)
 
         # Step 3: Join all dataframes together using Pandas merge function
         result = None
         for left_table_name, right_table_name in dfs_join_order:
-            left_table = df_to_join[left_table_name]
-            right_table = df_to_join[right_table_name]
-            join_cond = join_conditions[tuple(sorted((left_table_name, right_table_name)))]
+            
+            left_table = self.table_registry[left_table_name]
+            right_table = self.table_registry[right_table_name]
+            key = tuple(sorted((left_table_name, right_table_name)))
+            join_cond = join_conditions[key]
 
-            # Rename duplicate columns in the right table to match the left table
+            # Rename join columns in the right table to match the left table
+            # This is to avoid unexpected column duplication after join 
             for left_key, right_key in zip(join_cond['left_keys'], join_cond['right_keys']):
                 if left_key != right_key:
                     right_table = right_table.rename(columns={right_key: left_key})
-
+                    
+            # for the first step
             if result is None:
                 result = pd.merge(left_table, right_table, on=join_cond['left_keys'])
+            # join with previous intermediate
             else:
                 result = pd.merge(result, right_table, on=join_cond['left_keys'])
+            
+            # TODO: early projection
+            # filter out useless column for efficiency
 
         return result
 
