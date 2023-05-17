@@ -1,8 +1,5 @@
 import unittest
-import pandas as pd
-from joinboost.joingraph import JoinGraph, JoinGraphException
-import test_utils
-from src.joinboost.mini_joingraph import MiniJoinGraph
+from joinboost.mini_joingraph import MiniJoinGraph
 
 
 class TestMiniJoingraph(unittest.TestCase):
