@@ -127,7 +127,7 @@ class CJT(JoinGraph):
             from_tables=[m["message"] for m in incoming_messages] + [table],
             join_conds=join_conds,
             select_conds=self.get_annotations(table),
-            group_by=[table + "." + attr for attr in group_by],
+            group_by=[QualifiedAttribute(table, attr) for attr in group_by],
         )
 
         return self.exe.execute_spja_query(spja_data, mode=mode)
@@ -159,20 +159,21 @@ class CJT(JoinGraph):
             l_join_keys, r_join_keys = self.get_join_keys(
                 neighbour_table, table)
             incoming_messages.append(incoming_message)
+            
 
             if condition == 1:
                 join_conds += [
                     SelectionExpression(SELECTION.NOT_DISTINCT,
-                                        (QualifiedAttribute(incoming_message["message"], l_join_keys[i]),
-                                         QualifiedAttribute(table, r_join_keys[i])))
+                                        (l_join_keys[i].new_table(incoming_message["message"]),
+                                         r_join_keys[i].new_table(table)))
                     for i in range(len(l_join_keys))
                 ]
 
             if condition == 2:
                 join_conds += [
                     SelectionExpression(SELECTION.SEMI_JOIN,
-                                        ([QualifiedAttribute(table, key) for key in r_join_keys],
-                                         [QualifiedAttribute(incoming_message["message"], key) for key in l_join_keys]))
+                                        ([key.new_table(table) for key in r_join_keys],
+                                         [key.new_table(incoming_message["message"]) for key in l_join_keys]))
                 ]
         return incoming_messages, join_conds
 
@@ -211,7 +212,7 @@ class CJT(JoinGraph):
         aggregation = self.semi_ring.col_sum(
             cols) if m_type == Message.FULL else {}
         for attr in l_join_keys:
-            aggregation[attr] = AggExpression(Aggregator.IDENTITY, from_table + "." + attr)
+            aggregation[attr] = AggExpression(Aggregator.IDENTITY, attr)
 
         spja_data = SPJAData(
             aggregate_expressions=aggregation,
@@ -219,7 +220,7 @@ class CJT(JoinGraph):
                          for m in incoming_messages] + [from_table],
             join_conds=join_conds,
             select_conds=self.get_annotations(from_table),
-            group_by=[from_table + "." + attr for attr in l_join_keys],
+            group_by=l_join_keys,
         )
         message_name = self.exe.execute_spja_query(
             spja_data, mode=ExecuteMode.WRITE_TO_TABLE
@@ -234,10 +235,6 @@ class CJT(JoinGraph):
         if var is None:
             var = self.target_var
         lift_exp = self.semi_ring.lift_exp(var)
-        
-        # TODO: remove hack
-        if isinstance(self.exe, PandasExecutor):
-            lift_exp["s"] = AggExpression(Aggregator.IDENTITY_LAMBDA, var)
 
         # copy the rest attributes
         for attr in self.get_useful_attributes(self.target_relation):
