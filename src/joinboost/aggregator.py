@@ -59,7 +59,7 @@ class AggExpression:
 
     
 SELECTION = Enum(
-    'NULL', 'NULL NOT_NULL NOT_GREATER GREATER DISTINCT NOT_DISTINCT IN NOT_IN EQUAL NOT_EQUAL SEMI_JOIN')
+    'NULL', 'NULL NOT_NULL NOT_GREATER LESSER GREATER DISTINCT NOT_DISTINCT IN NOT_IN EQUAL NOT_EQUAL SEMI_JOIN')
 
 class SelectionExpression:
     def __init__(self, selection, para):
@@ -92,15 +92,15 @@ def agg_to_np(agg_expr, df, qualified=False):
     para = agg_expr.para
 
     if agg.value == Aggregator.IDENTITY.value or agg.value == Aggregator.IDENTITY_LAMBDA.value:
-        return df.eval(value_to_sql(para, False)) 
+        return df.eval(f"res = {value_to_sql(para, False)}")["res"] 
     elif agg.value == Aggregator.DISTINCT_IDENTITY.value:
-        return np.unique(df.eval(value_to_sql(para, False)))
+        return np.unique(df.eval(f"res = {value_to_sql(para, False)}")["res"])
     elif agg.value == Aggregator.COUNT.value:
         return np.array([len(df)])
     elif agg.value == Aggregator.MAX.value:
-        return np.array([df[agg_to_sql(para, qualified)].max()])
+        return np.array([df.eval(f"res = {value_to_sql(para, False)}")["res"].max()])
     elif agg.value == Aggregator.SUM.value:
-        return np.array([df[agg_to_sql(para, qualified)].sum()])
+        return np.array([df.eval(f"res = {value_to_sql(para, False)}")["res"].sum()])
     elif agg.value == Aggregator.CASE.value:
         from functools import reduce
         # the para is a list of (value, condition) pairs
@@ -165,6 +165,11 @@ def selection_to_df(sel, df, qualified=True):
     elif sel.selection == SELECTION.GREATER:
         attr1, attr2 = sel.para[0], sel.para[1]
         return df[value_to_sql(attr1, qualified)] > float(attr2)
+    
+    elif sel.selection == SELECTION.LESSER:
+        attr1, attr2 = sel.para[0], sel.para[1]
+        return df[value_to_sql(attr1, qualified)] < float(attr2)
+    
     else:
         raise Exception("Unsupported Selection Expression")
 
@@ -335,6 +340,10 @@ def selection_to_sql(sel, qualified=True):
     elif sel.selection == SELECTION.NOT_GREATER:
         attr1, attr2 = sel.para[0], sel.para[1]
         return value_to_sql(attr1, qualified) + " <= " + value_to_sql(attr2, qualified)
+    
+    elif sel.selection == SELECTION.LESSER:
+        attr1, attr2 = sel.para[0], sel.para[1]
+        return value_to_sql(attr1, qualified) + " < " + value_to_sql(attr2, qualified) 
 
     elif sel.selection == SELECTION.GREATER:
         attr1, attr2 = sel.para[0], sel.para[1]

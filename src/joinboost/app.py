@@ -397,7 +397,9 @@ class DecisionTree(DummyModel):
                 if attr_type == "NUM":
                     agg_exp = cur_semi_ring.col_sum((g_col, h_col))
                     agg_exp[attr] = AggExpression(Aggregator.IDENTITY, attr)
-                    spja_data = SPJAData(aggregate_expressions=agg_exp, from_tables=[absoprtion_view], window_by=[attr])
+                    spja_data = SPJAData(aggregate_expressions=agg_exp, 
+                                         from_tables=[absoprtion_view], 
+                                         window_by=[QualifiedAttribute(r_name, attr)])
                     view_to_max = self.cjt.exe.execute_spja_query(spja_data, mode=ExecuteMode.NESTED_QUERY)
 
                 elif attr_type == "LCAT":
@@ -433,15 +435,13 @@ class DecisionTree(DummyModel):
 
                 elif attr_type == "CAT":
                     view_to_max = absoprtion_view
-
-                # check if executor is of type PandasExecutor or DuckdbExecutor
                 
                 l2_agg_exp = {
                         attr: AggExpression(Aggregator.IDENTITY, attr),
                         # the case expression is for window functions
                         "criteria": AggExpression(Aggregator.CASE,
                                                   [(f"({g_col}/{h_col})*{g_col} + ({g}-{g_col})/({h}-{h_col})*({g}-{g_col})",
-                                                    [SelectionExpression(SELECTION.GREATER, (str(h), str(h_col)))])]),
+                                                    [SelectionExpression(SELECTION.LESSER, (str(h_col),str(h)))])]),
                         g_col: AggExpression(Aggregator.IDENTITY, g_col),
                         h_col: AggExpression(Aggregator.IDENTITY, h_col),
                     }

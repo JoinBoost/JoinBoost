@@ -7,7 +7,7 @@ from .aggregator import *
 
 class CJT(JoinGraph):
     def __init__(
-        self, semi_ring: SemiRing, join_graph: JoinGraph, annotations: dict = {}
+        self, semi_ring: SemiRing, join_graph: JoinGraph, annotations: dict = {}, debug=False
     ):
         self.message_id = 0
         self.semi_ring = semi_ring
@@ -20,6 +20,7 @@ class CJT(JoinGraph):
         )
         # CJT get the join structure from this
         self.annotations = annotations
+        self.debug=debug
 
     def get_message(self, from_table: str, to_table: str):
         return self.joins[from_table][to_table]["message"]
@@ -59,7 +60,7 @@ class CJT(JoinGraph):
     def copy_cjt(self, semi_ring: SemiRing):
         annotations = copy.deepcopy(self.annotations)
         return CJT(semi_ring=semi_ring, join_graph=self,
-                    annotations=annotations)
+                    annotations=annotations, debug=self.debug)
 
     def calibration(self, root_relation: str = None):
         if not root_relation:
@@ -181,7 +182,8 @@ class CJT(JoinGraph):
     def _send_message(
         self, from_table: str, to_table: str, m_type: Message = Message.UNDECIDED
     ):
-        # print('--Sending Message from', from_table, 'to', to_table, 'm_type is', m_type)
+        if self.debug:
+            print('--Sending Message from', from_table, 'to', to_table, 'm_type is', m_type)
         # identity message optimization
         if m_type == Message.IDENTITY:
             self.joins[from_table][to_table].update({"message_type": m_type,})
@@ -232,6 +234,8 @@ class CJT(JoinGraph):
 
     # by default, lift the target variable
     def lift(self, var=None):
+        if self.debug:
+            print('-- CJT lifting')
         if var is None:
             var = self.target_var
         lift_exp = self.semi_ring.lift_exp(var)
