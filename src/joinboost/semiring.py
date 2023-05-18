@@ -80,7 +80,7 @@ class varSemiRing(GradientHessianSemiRing):
     def col_sum(self, pair=("s", "c")):
         g, h = pair
         g_after, h_after = self.gradient_column_name, self.hessian_column_name
-        return {g_after: AggExpression(Aggregator.SUM, g), h_after: AggExpression(Aggregator.COUNT, h)}
+        return {g_after: AggExpression(Aggregator.SUM, g), h_after: AggExpression(Aggregator.SUM, h)}
 
     def get_value(self):
         return self.pair

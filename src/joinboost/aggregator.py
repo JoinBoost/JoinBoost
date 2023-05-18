@@ -123,7 +123,7 @@ def agg_to_np(agg_expr, df, qualified=False):
     else:
         raise Exception("Unsupported Semiring Expression")
         
-# this is supposed to be used with group-by
+# this is supposed to be used in df.groupby.agg(...)
 def agg_to_df_exp(agg_expr, qualified=False):
     
     # if it is a qualified attribute, return the attribute name

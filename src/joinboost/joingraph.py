@@ -438,7 +438,8 @@ class JoinGraph:
 
         sql = []
         seen = set()
-
+        
+        # TODO: rewrite this as SPJA
         def dfs(rel1, parent=None):
             seen.add(rel1)
             for rel2 in self.joins[rel1]:
@@ -466,7 +467,7 @@ class JoinGraph:
     # e.g. rel1: A, rel2: B, keys1: [a1, a2], keys2: [b1, b2]
     # return: A.a1=B.b1 AND A.a2=B.b2
     def _format_join_sql(self, rel1, rel2, keys1, keys2):
-        return " AND ".join(f"{rel1}.{key1}={rel2}.{key2}" for key1, key2 in zip(keys1, keys2))
+        return " AND ".join(f"{value_to_sql(key1)}={value_to_sql(key2)}" for key1, key2 in zip(keys1, keys2))
 
     def _preprocess(self):
         self.check_graph_validity()
