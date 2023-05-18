@@ -48,6 +48,8 @@ reg.fit(dataset)
 
 [Demo on Spark](https://colab.research.google.com/github/zachary62/JoinBoost/blob/main/demo/JoinBoostSparkDemo.ipynb)
 
+[TODO: Demo for CUDF](https://colab.research.google.com/github/zachary62/JoinBoost/blob/main/demo/rapids_cudf.ipynb)
+
 [Gitpod for code development]( https://gitpod.io/new#https://github.com/zachary62/JoinBoost)
 
 ## Docs
