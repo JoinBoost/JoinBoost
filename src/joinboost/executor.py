@@ -670,8 +670,6 @@ class PandasExecutor(DuckdbExecutor):
     def execute_spja_query(
         self, spja_data: SPJAData, mode: ExecuteMode = ExecuteMode.WRITE_TO_TABLE
     ):
-        
-        
         if len(spja_data.from_tables) > 1:
             df = self.execute_join(spja_data)
         elif len(spja_data.from_tables) == 0:
@@ -695,10 +693,6 @@ class PandasExecutor(DuckdbExecutor):
         if spja_data.limit is not None:
             df = df.head(spja_data.limit)
 
-
-        print(spja_data)
-        print(df)
-
         # TODO: clean up mode implementation
         if mode in (
             ExecuteMode.WRITE_TO_TABLE,
@@ -706,11 +700,7 @@ class PandasExecutor(DuckdbExecutor):
             ExecuteMode.CREATE_VIEW,
         ):
             name_ = self.get_next_name()
-            # always qualify intermediate tables as future aggregations for these tables will come qualified
-            # for col in df.columns:
-                # if col not in ["s", "c"]:
-                #     # strip any table name from the column name
-                #     df = df.rename(columns={col: name_ + "." + col.split(".")[-1]})
+            
             if self.debug:
                 print("creating table " + name_)
                 print(df.head())
@@ -722,11 +712,9 @@ class PandasExecutor(DuckdbExecutor):
                 print("returning result")
                 print(df.head())
         
-        
         return df.values.tolist()
 
     def apply_group_by_and_agg(self, df, spja_data):
-        print(spja_data)
         result_df = pd.DataFrame()
         if len(spja_data.group_by) > 0 or len(spja_data.window_by) > 0:
         
@@ -777,7 +765,7 @@ class PandasExecutor(DuckdbExecutor):
                 result_df[target] = agg_to_np(agg_expr, df)
                 
             result_df[spja_data.target_schema()]
-        print("result_df", result_df)
+            
         # only keep the attributes needed
         return result_df[spja_data.target_schema()]
     
