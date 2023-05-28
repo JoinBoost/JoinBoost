@@ -77,7 +77,7 @@ class TestExecutor(unittest.TestCase):
             "cluster",
             "f4",
             "family",
-            "class",
+#             "class",
             "perishable",
             "f1",
         ]
@@ -108,7 +108,9 @@ class TestExecutor(unittest.TestCase):
         )
         dataset.add_relation(
             "items",
-            ["family", "class", "perishable", "f1"],
+            # TODO: python reserved word can't be used as features
+            # ["family", "class", "perishable", "f1"],
+            ["family", "perishable", "f1"],
             relation_address="../data/favorita/items.csv",
         )
         dataset.add_join("sales", "items", ["item_nbr"], ["item_nbr"])

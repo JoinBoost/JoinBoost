@@ -391,13 +391,15 @@ class DecisionTree(DummyModel):
 
         for r_name in cjt.relations:
             for attr in cjt.get_relation_features(r_name):
-                attr_type, group_by = self.cjt.get_feature_type(r_name, attr), [attr]
+                attr_type, group_by = cjt.get_feature_type(r_name, attr), [attr]
                 absoprtion_view = cjt.absorption(r_name, group_by)
 
                 if attr_type == "NUM":
                     agg_exp = cur_semi_ring.col_sum((g_col, h_col))
                     agg_exp[attr] = AggExpression(Aggregator.IDENTITY, attr)
-                    spja_data = SPJAData(aggregate_expressions=agg_exp, from_tables=[absoprtion_view], window_by=[attr])
+                    spja_data = SPJAData(aggregate_expressions=agg_exp, 
+                                         from_tables=[absoprtion_view], 
+                                         window_by=[QualifiedAttribute(r_name, attr)])
                     view_to_max = self.cjt.exe.execute_spja_query(spja_data, mode=ExecuteMode.NESTED_QUERY)
 
                 elif attr_type == "LCAT":
@@ -434,27 +436,12 @@ class DecisionTree(DummyModel):
                 elif attr_type == "CAT":
                     view_to_max = absoprtion_view
 
-                # check if executor is of type PandasExecutor or DuckdbExecutor
-                if isinstance(self.cjt.exe, PandasExecutor):
-                    cond = f"{h} > df.{h_col}"
-                    true_eval_expr = f"((df.{g_col}/df.{h_col})*df.{g_col} + ({g}-df.{g_col})/({h}-df.{h_col})*({g}-df.{g_col}))"
-                    false_eval_expr = f"0"
-                    func = {'cond': cond, 'true': true_eval_expr, 'false': false_eval_expr}
-
-                    l2_agg_exp = {
-                        attr: AggExpression(Aggregator.IDENTITY, attr),
-                        "criteria": AggExpression(Aggregator.IDENTITY_LAMBDA, func),
-                        g_col: AggExpression(Aggregator.IDENTITY, g_col),
-                        h_col: AggExpression(Aggregator.IDENTITY, h_col),
-                    }
-                else:
-
-                    l2_agg_exp = {
+                l2_agg_exp = {
                         attr: AggExpression(Aggregator.IDENTITY, attr),
                         # the case expression is for window functions
                         "criteria": AggExpression(Aggregator.CASE,
                                                   [(f"({g_col}/{h_col})*{g_col} + ({g}-{g_col})/({h}-{h_col})*({g}-{g_col})",
-                                                    [SelectionExpression(SELECTION.GREATER, (str(h), str(h_col)))])]),
+                                                    [SelectionExpression(SELECTION.LESSER, (str(h_col),str(h)))])]),
                         g_col: AggExpression(Aggregator.IDENTITY, g_col),
                         h_col: AggExpression(Aggregator.IDENTITY, h_col),
                     }
@@ -542,6 +529,43 @@ class DecisionTree(DummyModel):
             # add annotations according to split conditions
             l_cjt.add_annotation(r_name, l_annotations)
             r_cjt.add_annotation(r_name, r_annotations)
+            #
+            # op = l_annotations.selection
+            # dim_relation_name = l_annotations.para[0].table_name
+            #
+            # # Apply predicate on dim
+            # spja_data = SPJAData(
+            #     from_tables=[dim_relation_name],
+            #     select_conds=[l_annotations],
+            # )
+            # filtered_dim = self.cjt.exe.execute_spja_query(spja_data, mode=ExecuteMode.NESTED_QUERY)
+            #
+            # # merge the dim table with the fact table leftsemi
+            #
+            # self.cjt.get_join_keys()
+            #
+            # spja_data = SPJAData(
+            #     from_tables=[self.cjt.target_relation, filtered_dim],
+            #     join_conds = [SelectionExpression(SELECTION.SEMI_JOIN,
+            #                         ([QualifiedAttribute(self.cjt.target_relation, attr) for attr in self.cjt.joins[self.cjt.target_relation][dim_relation_name].keys[0]],
+            #                          [QualifiedAttribute(dim_relation_name, attr) for attr in self.cjt.joins[dim_relation_name][self.cjt.target_relation].keys[0]]))]
+            # )
+            #
+            # l_target_relation = self.cjt.exe.execute_spja_query(spja_data, mode=ExecuteMode.WRITE_TO_TABLE)
+            #
+            # l_cjt.replace(l_cjt.target_relation, l_target_relation)
+            # l_cjt.target_relation = l_target_relation
+            #
+            # spja_data = SPJAData(
+            #     from_tables=[self.cjt.target_relation],
+            #     select_conds=[r_annotations],
+            # )
+            # r_target_relation = self.cjt.exe.execute_spja_query(spja_data, mode=ExecuteMode.WRITE_TO_TABLE)
+            # # replace_table_name(r_cjt, r_cjt.target_relation, r_target_relation)
+            # r_cjt.replace(r_cjt.target_relation, r_target_relation)
+            # r_cjt.target_relation  = r_target_relation
+            # self.nodes[l_id] = l_cjt
+            # self.nodes[r_id] = r_cjt
 
             # for the leaf split_candidates that can't be splitted (e.g. meet max depth)
             # we still need message passing to fact table for semi-join selection

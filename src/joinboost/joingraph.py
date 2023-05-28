@@ -152,10 +152,19 @@ class JoinGraph:
                 f" Attribute does not exist in table {relation} with schema {attributes}"
             )
         return attributes
-
+    
+    # return a set of Qualified attribute
+    def get_join_keys(self, f_table: str, t_table: str = None):
+        keys = self._get_join_keys(f_table, t_table)
+        if t_table:
+            return ([QualifiedAttribute(f_table, key) for key in keys[0]], 
+                    [QualifiedAttribute(t_table, key) for key in keys[1]])
+        else:
+            return [QualifiedAttribute(f_table, key) for key in keys]
+    
     # if t_table is not None, get the join keys between f_table and t_table
     # if t_table is None, all get all the join keys of f_table
-    def get_join_keys(self, f_table: str, t_table: str = None):
+    def _get_join_keys(self, f_table: str, t_table: str = None):
         if f_table not in self.joins:
             return []
         if t_table:
@@ -171,7 +180,12 @@ class JoinGraph:
     
     # useful attributes are features + join keys
     def get_useful_attributes(self, table):
-        useful_attributes = self.get_relation_features(table) + self.get_join_keys(table)
+        attrs = self._get_useful_attributes(table) 
+        return [QualifiedAttribute(table, attr) for attr in attrs]
+    
+    # useful attributes are features + join keys
+    def _get_useful_attributes(self, table):
+        useful_attributes = self.get_relation_features(table) + self._get_join_keys(table)
         return list(set(useful_attributes))
     
     def check_graph_validity(self):
@@ -325,11 +339,10 @@ class JoinGraph:
         if table_name_right not in self.relations:
             raise JoinGraphException(table_name_right + " doesn't exit!")
 
-        left_keys = [attr for attr in left_keys]
-        right_keys = [attr for attr in right_keys]
-
         self.joins[table_name_left][table_name_right] = {"keys": (left_keys, right_keys)}
         self.joins[table_name_right][table_name_left] = {"keys": (right_keys, left_keys)}
+        
+        left_keys, right_keys = self.get_join_keys(table_name_left, table_name_right)
         
         self.determine_multiplicity_and_missing(table_name_left, left_keys, table_name_right, right_keys)
     
@@ -376,9 +389,8 @@ class JoinGraph:
     def get_join_key_set(self, relation: str, keys: list):
         """Get the set of join keys for a relation."""
         spja_data = SPJAData(
-            aggregate_expressions={f"key_{i}": AggExpression(Aggregator.IDENTITY, key) for i, key in enumerate(keys)},
+            aggregate_expressions={f"key_{i}": AggExpression(Aggregator.DISTINCT_IDENTITY, key) for i, key in enumerate(keys)},
             from_tables=[relation],
-            group_by=[",".join(keys)]
         )
         return self.exe.execute_spja_query(spja_data, mode=ExecuteMode.NESTED_QUERY)
 
@@ -398,7 +410,7 @@ class JoinGraph:
     def get_max_multiplicity(self, table, keys):
         spja_data = SPJAData(
             # TODO： why the second argument can't be '*'? COUNT don't really care about the argument
-            aggregate_expressions={'count': AggExpression(Aggregator.COUNT, ','.join(keys))},
+            aggregate_expressions={'count': AggExpression(Aggregator.COUNT, ','.join([key.to_str(qualified=False) for key in keys]))},
             from_tables=[table],
             group_by=keys
         )
@@ -426,7 +438,8 @@ class JoinGraph:
 
         sql = []
         seen = set()
-
+        
+        # TODO: rewrite this as SPJA
         def dfs(rel1, parent=None):
             seen.add(rel1)
             for rel2 in self.joins[rel1]:
@@ -454,7 +467,7 @@ class JoinGraph:
     # e.g. rel1: A, rel2: B, keys1: [a1, a2], keys2: [b1, b2]
     # return: A.a1=B.b1 AND A.a2=B.b2
     def _format_join_sql(self, rel1, rel2, keys1, keys2):
-        return " AND ".join(f"{rel1}.{key1}={rel2}.{key2}" for key1, key2 in zip(keys1, keys2))
+        return " AND ".join(f"{value_to_sql(key1)}={value_to_sql(key2)}" for key1, key2 in zip(keys1, keys2))
 
     def _preprocess(self):
         self.check_graph_validity()

@@ -1,8 +1,13 @@
 from enum import Enum
-
+import pandas as pd
+import numpy as np
 
 class QualifiedAttribute:
     def __init__(self, table_name, attribute_name):
+        if not isinstance(table_name, str):
+            raise TypeError("table_name must be a string.")
+        if not isinstance(attribute_name, str):
+            raise TypeError("attribute_name must be a string.")
         self.table_name = table_name
         self.attribute_name = attribute_name
 
@@ -11,6 +16,9 @@ class QualifiedAttribute:
             return self.table_name + "." + self.attribute_name
         else:
             return self.attribute_name
+        
+    def new_table(self, table_name):
+        return QualifiedAttribute(table_name, self.attribute_name)
 
     def table(self):
         return self.table_name
@@ -19,12 +27,15 @@ class QualifiedAttribute:
         return self.attribute_name
 
     def __str__(self):
-        return self.table_name + "." + self.attribute_name
+        return f"Qualified Attribute({self.table_name},{self.attribute_name})"
 
     def __repr__(self):
         return self.__str__()
 
     def __eq__(self, other):
+        # TODO: remove this if
+        if isinstance(other, str):
+            return self.attribute_name == other
         return self.table_name == other.table_name and self.attribute_name == other.attribute_name
 
     def __hash__(self):
@@ -41,23 +52,126 @@ class AggExpression:
         return iter((self.para, self.agg))
     
     def __str__(self):
-        return self.agg.name + "(" + str(self.para) + ")"
+        return f"Aggregation Expression({self.agg.name},{self.para})"
+    
+    def __repr__(self):
+        return self.__str__()
+
+    
+SELECTION = Enum(
+    'NULL', 'NULL NOT_NULL NOT_GREATER LESSER GREATER DISTINCT NOT_DISTINCT IN NOT_IN EQUAL NOT_EQUAL SEMI_JOIN')
 
 class SelectionExpression:
     def __init__(self, selection, para):
         self.selection = selection
         self.para = para
+        
+    def __str__(self):
+        return  f"Aggregation Expression({self.selection.name},{self.para})"
+    
+    def __repr__(self):
+        return self.__str__()
 
-
+# TODO: separate the aggregation (MIN/MAX...) from expression (ADD/SUB...)
 Aggregator = Enum(
     'Aggregator',
     'SUM MAX MIN COUNT DISTINCT_COUNT AVG SUM_PROD DISTRIBUTED_SUM_PROD PROD '
-    'SUB ADD DIV IDENTITY IDENTITY_LAMBDA SQRT POW CAST '
+    'SUB ADD DIV DISTINCT_IDENTITY IDENTITY IDENTITY_LAMBDA SQRT POW CAST '
     'CASE'
 )
 
-# TODO: separate the aggregation (MIN/MAX...) from expression (ADD/SUB...)
+def is_aggregator(agg):
+    desired_aggregators = {Aggregator.SUM.value, Aggregator.MAX.value, Aggregator.MIN.value, Aggregator.COUNT.value, Aggregator.DISTINCT_COUNT, Aggregator.AVG.value}
+    return agg.value in desired_aggregators
 
+
+# return a numpy array that applies it
+# this is supposed to be used without group-by
+def agg_to_np(agg_expr, df, qualified=False):
+    agg = agg_expr.agg
+    para = agg_expr.para
+
+    if agg.value == Aggregator.IDENTITY.value or agg.value == Aggregator.IDENTITY_LAMBDA.value:
+        return df.eval(f"res = {value_to_sql(para, False)}")["res"] 
+    elif agg.value == Aggregator.DISTINCT_IDENTITY.value:
+        return np.unique(df.eval(f"res = {value_to_sql(para, False)}")["res"])
+    elif agg.value == Aggregator.COUNT.value:
+        return np.array([len(df)])
+    elif agg.value == Aggregator.MAX.value:
+        return np.array([df.eval(f"res = {value_to_sql(para, False)}")["res"].max()])
+    elif agg.value == Aggregator.SUM.value:
+        return np.array([df.eval(f"res = {value_to_sql(para, False)}")["res"].sum()])
+    elif agg.value == Aggregator.CASE.value:
+        from functools import reduce
+        # the para is a list of (value, condition) pairs
+        # the condition is a list of SelectionExpression, that are to be ANDed together
+        cases = []
+
+        # if there is no condition, return 0
+        if len(para) == 0:
+            return "0"
+        
+        conditions = []
+        choices = []
+        for i in range(len(para)):
+            val, cond = para[i]
+            conditions.append(reduce(np.intersect1d, [selection_to_df(c, df, qualified) for c in cond]))
+            choices.append(df.eval(value_to_sql(val, False)))
+            
+            
+        return np.select(conditions, choices, default=0)
+    else:
+        raise Exception("Unsupported Semiring Expression")
+        
+# this is supposed to be used in df.groupby.agg(...)
+def agg_to_df_exp(agg_expr, qualified=False):
+    
+    # if it is a qualified attribute, return the attribute name
+    if isinstance(agg_expr, QualifiedAttribute):
+        return agg_expr.to_str(qualified)
+    
+    agg = agg_expr.agg
+    para = agg_expr.para
+
+    if agg.value == Aggregator.SUM.value:
+        return (agg_to_sql(para, qualified), 'sum') 
+
+    elif agg.value == Aggregator.AVG.value:
+        return (agg_to_sql(para, qualified), 'mean') 
+    
+    elif agg.value == Aggregator.COUNT.value:
+        return (agg_to_sql(para, qualified), 'count') 
+    
+    elif agg.value == Aggregator.MAX.value:
+        return (agg_to_sql(para, qualified), 'max') 
+    
+    else:
+        raise Exception("Unsupported Semiring Expression")
+        
+def selection_to_df(sel, df, qualified=True):
+    if sel.selection == SELECTION.EQUAL:
+        attr1, attr2 = sel.para[0], sel.para[1]
+        # assume attr is a number
+        return df[value_to_sql(attr1, qualified)] == float(attr2) 
+
+    elif sel.selection == SELECTION.NOT_EQUAL:
+        attr1, attr2 = sel.para[0], sel.para[1]
+        return df[value_to_sql(attr1, qualified)] != float(attr2)
+
+    elif sel.selection == SELECTION.NOT_GREATER:
+        attr1, attr2 = sel.para[0], sel.para[1]
+        return df[value_to_sql(attr1, qualified)] <= float(attr2)
+
+    elif sel.selection == SELECTION.GREATER:
+        attr1, attr2 = sel.para[0], sel.para[1]
+        return df[value_to_sql(attr1, qualified)] > float(attr2)
+    
+    elif sel.selection == SELECTION.LESSER:
+        attr1, attr2 = sel.para[0], sel.para[1]
+        return df[value_to_sql(attr1, qualified)] < float(attr2)
+    
+    else:
+        raise Exception("Unsupported Selection Expression")
 
 def agg_to_sql(agg_expr, qualified=True):
     # check if agg_expr is a string as the base SQL expression
@@ -86,6 +200,9 @@ def agg_to_sql(agg_expr, qualified=True):
 
     elif agg.value == Aggregator.IDENTITY.value or agg.value == Aggregator.IDENTITY_LAMBDA.value:
         return agg_to_sql(para, qualified) 
+    
+    elif agg.value == Aggregator.DISTINCT_IDENTITY.value:
+        return "DISTINCT(" + agg_to_sql(para, qualified) + ")"
 
     elif agg.value == Aggregator.PROD.value:
         assert isinstance(para, list)
@@ -165,9 +282,6 @@ def is_agg(agg):
     return False
 
 
-SELECTION = Enum(
-    'NULL', 'NULL NOT_NULL NOT_GREATER GREATER DISTINCT NOT_DISTINCT IN NOT_IN EQUAL NOT_EQUAL SEMI_JOIN')
-
 
 Message = Enum('Message', 'IDENTITY SELECTION FULL UNDECIDED')
 
@@ -226,6 +340,10 @@ def selection_to_sql(sel, qualified=True):
     elif sel.selection == SELECTION.NOT_GREATER:
         attr1, attr2 = sel.para[0], sel.para[1]
         return value_to_sql(attr1, qualified) + " <= " + value_to_sql(attr2, qualified)
+    
+    elif sel.selection == SELECTION.LESSER:
+        attr1, attr2 = sel.para[0], sel.para[1]
+        return value_to_sql(attr1, qualified) + " < " + value_to_sql(attr2, qualified) 
 
     elif sel.selection == SELECTION.GREATER:
         attr1, attr2 = sel.para[0], sel.para[1]
@@ -242,6 +360,30 @@ def selection_to_sql(sel, qualified=True):
     else:
         raise Exception("Unsupported Selection Expression")
 
+# selection used by dataframe query
+# has some difference. E.g., it doesn't use "=" but "==" instead
+def selection_to_df_sql(sel, qualified=True):
+    if sel.selection == SELECTION.EQUAL:
+        attr1, attr2 = sel.para[0], sel.para[1]
+        return value_to_sql(attr1, qualified) + " == " + value_to_sql(attr2, qualified)
+
+    elif sel.selection == SELECTION.NOT_EQUAL:
+        attr1, attr2 = sel.para[0], sel.para[1]
+        return value_to_sql(attr1, qualified) + " != " + value_to_sql(attr2, qualified)
+
+    elif sel.selection == SELECTION.NOT_GREATER:
+        attr1, attr2 = sel.para[0], sel.para[1]
+        return value_to_sql(attr1, qualified) + " <= " + value_to_sql(attr2, qualified)
+
+    elif sel.selection == SELECTION.GREATER:
+        attr1, attr2 = sel.para[0], sel.para[1]
+        return value_to_sql(attr1, qualified) + " > " + value_to_sql(attr2, qualified)
+    else:
+        raise Exception("Unsupported Selection Expression")
+
 
 def selections_to_sql(selectionExpressions, qualified=True):
     return [selection_to_sql(sel, qualified) for sel in selectionExpressions]
+
+def selections_to_df_sql(selectionExpressions, qualified=True):
+    return [selection_to_df_sql(sel, qualified) for sel in selectionExpressions]

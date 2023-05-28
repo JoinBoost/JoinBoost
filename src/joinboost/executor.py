@@ -52,6 +52,9 @@ class SPJAData:
     replace: bool = True
     join_type: str = "INNER"
     qualified: bool = True
+        
+    def target_schema(self):
+        return [value_to_sql(key, qualified=False) for key in self.aggregate_expressions.keys()]
 
 
 def ExecutorFactory(con=None):
@@ -415,18 +418,23 @@ class DuckdbExecutor(Executor):
         for target_col, aggExp in spja_data.aggregate_expressions.items():
             # we need window clause if we have a window_by and the aggregate is not a simple aggregation
             window_clause = " OVER joinboost_window " if spja_data.window_by and is_agg(aggExp.agg) else ""
-            rename_expr = (" AS " + target_col) if target_col is not None else ""
+            rename_expr = (" AS " + value_to_sql(target_col,qualified=False)) if target_col is not None else ""
             parsed_aggregate_expressions.append(agg_to_sql(aggExp, qualified=spja_data.qualified) + window_clause + rename_expr)
 
         sql = "SELECT " + ", ".join(parsed_aggregate_expressions) + "\n"
         sql += "FROM " + ",".join(spja_data.from_tables) + "\n"
 
         if len(spja_data.select_conds) > 0 or len(spja_data.join_conds) > 0:
-            sql += "WHERE " + " AND ".join([selection_to_sql(cond) for cond in spja_data.select_conds + spja_data.join_conds]) + "\n"
+            should_qualify = spja_data.qualified
+            if len(spja_data.from_tables) == 1:
+                should_qualify = False
+
+            sql += "WHERE " + " AND ".join([selection_to_sql(cond, qualified=should_qualify) for cond in spja_data.select_conds + spja_data.join_conds]) + "\n"
         if len(spja_data.window_by) > 0:
-            sql += ("WINDOW joinboost_window AS (ORDER BY " + ",".join(spja_data.window_by) + ")\n")
+            # check why value_to_sql(att, qualified=True) is wrong
+            sql += ("WINDOW joinboost_window AS (ORDER BY " + ",".join([value_to_sql(att, qualified=False) for att in spja_data.window_by]) + ")\n")
         if len(spja_data.group_by) > 0:
-            sql += "GROUP BY " + ",".join(spja_data.group_by) + "\n"
+            sql += "GROUP BY " + ",".join([value_to_sql(att) for att in spja_data.group_by]) + "\n"
         if len(spja_data.order_by) > 0:
             sql += ("ORDER BY " + ",".join([f"{col} {order}" for (col, order) in spja_data.order_by])+ "\n")
         if spja_data.limit is not None:
@@ -666,59 +674,19 @@ class PandasExecutor(DuckdbExecutor):
     def execute_spja_query(
         self, spja_data: SPJAData, mode: ExecuteMode = ExecuteMode.WRITE_TO_TABLE
     ):
-        # TODO: may need to execute_spja_query, if the from_tables in spja_table is also a spja_table
-        from_dfs = {}
+        if len(spja_data.from_tables) > 1:
+            df = self.execute_join(spja_data)
+        elif len(spja_data.from_tables) == 0:
+            raise ExecutorException("No from table for SPJA query!")
+        else:
+            df = self.table_registry[spja_data.from_tables[0]]
 
-        for table in spja_data.from_tables:
-            from_dfs[table] = self.table_registry[table]
-
-        agg_conditions = self.convert_agg_conditions(spja_data.aggregate_expressions)
-
-        sqls = selections_to_sql(spja_data.select_conds + spja_data.join_conds)
-
-        # search select_conds for join_conditions that are of the form "table1.col1 IS NOT DISTINCT FROM table2.col2"
-        join_conds = [
-            re.findall(r"(\w+\.\w+ IS NOT DISTINCT FROM \w+\.\w+)", cond)[0]
-            for cond in sqls
-            if "IS NOT DISTINCT FROM" in cond
-        ]
-        select_conds = self.convert_predicates(sqls)
-
-        # join_conds are of the form "table1.col1 IS NOT DISTINCT FROM table2.col2".
-        # extract the table1.col1 and table2.col2
-        join_conds = [re.findall(r"(\w+\.\w+)", cond) for cond in join_conds]
-
-        df = list(from_dfs.values())[0]
-
-        if len(join_conds) > 0:
-            df = self.execute_join(
-                from_dfs,
-                spja_data.join_conds
-            )
-
-        # filter by select_conds
-        if len(select_conds) > 0:
-            converted_select_conds = " and ".join(select_conds)
-            df = df.query(converted_select_conds)
-        
-        # removal of all qualification of columns
-        if df is not None:
-            for col in df.columns:
-                df = df.rename(columns={col: col.split(".")[-1]})
-            # if there are duplicate columns, drop them
-            df = df.loc[:, ~df.columns.duplicated()]
-
-
-        # group by and aggregate
-        df = self.apply_group_by_and_agg(
-            agg_conditions, df, spja_data.group_by, spja_data.window_by
-        )
-
-        # drop columns that don't appear in aggregate_expressions
-        final_cols = [
-            col for col in spja_data.aggregate_expressions.keys() if col is not None
-        ]
-        df = df[final_cols]
+        # TODO: push down the selection before join
+        if len(spja_data.select_conds) > 0:
+            query = " and ".join(selections_to_df_sql(spja_data.select_conds, qualified=False))
+            df = df.query(query)
+            
+        df = self.apply_group_by_and_agg(df, spja_data)
 
         # sort by each column in order_by
         if len(spja_data.order_by) > 0:
@@ -729,8 +697,6 @@ class PandasExecutor(DuckdbExecutor):
         if spja_data.limit is not None:
             df = df.head(spja_data.limit)
 
-        df = self.reorder_columns(spja_data.aggregate_expressions, df)
-
         # TODO: clean up mode implementation
         if mode in (
             ExecuteMode.WRITE_TO_TABLE,
@@ -738,11 +704,7 @@ class PandasExecutor(DuckdbExecutor):
             ExecuteMode.CREATE_VIEW,
         ):
             name_ = self.get_next_name()
-            # always qualify intermediate tables as future aggregations for these tables will come qualified
-            # for col in df.columns:
-                # if col not in ["s", "c"]:
-                #     # strip any table name from the column name
-                #     df = df.rename(columns={col: name_ + "." + col.split(".")[-1]})
+
             if self.debug:
                 print("creating table " + name_)
                 print(df.head())
@@ -753,108 +715,77 @@ class PandasExecutor(DuckdbExecutor):
             if self.debug:
                 print("returning result")
                 print(df.head())
-
+        
         return df.values.tolist()
 
-    def reorder_columns(self, aggregate_expressions, df):
-        # reorder the columns according to the order of aggregate_expressions
-        if len(aggregate_expressions) > 0:
-            # get list of column names from aggregate_expressions that's also in df
-            agg_cols = [
-                col for col in aggregate_expressions.keys() if col in df.columns
-            ]
-            # get list of column names from df
-            df_cols = df.columns
-            # merge the two lists, giving priority to agg_cols and removing duplicates
-            cols = agg_cols + [col for col in df_cols if col not in agg_cols]
-            df = df.reindex(columns=cols)
-        return df
+    def apply_group_by_and_agg(self, df, spja_data):
+        result_df = pd.DataFrame()
+        if len(spja_data.group_by) > 0 or len(spja_data.window_by) > 0:
+        
+            # spja_data.aggregate_expressions is a dictionary
+            # it maps target_col name to agg_expr
+            # agg_expr.agg is the aggregator string 
+            # agg_expr.para is the attribute
 
-    def apply_group_by_and_agg(self, agg_conditions, df, group_by, window_by):
-        # print(agg_conditions)
+            expression = dict()
+            target_mapping = dict()
+            for target, agg_expr in spja_data.aggregate_expressions.items():
+                
+                target = value_to_sql(target,False)
+                if is_aggregator(agg_expr.agg):
+                    if agg_expr.para not in expression:
+                        expression[agg_expr.para] = []
+                    expression[agg_expr.para].append(agg_expr.agg.name.lower())
+                    # Create mapping for renaming later
+                    target_mapping[agg_expr.para + "_" + agg_expr.agg.name.lower()] = target
+            
+            # semi-join message has group-by without expression
+            if len(expression) > 0:
+                # the windowby and groupby may be incorrect for general case
+                result_df = df.groupby([value_to_sql(att, qualified=False) for att in spja_data.group_by]
+                                      + [value_to_sql(att, qualified=False) for att in spja_data.window_by]).agg(expression)
 
-        if len(group_by) > 0:
-            # if group_by element is not of the form joinboost_<digit>.col, then unqualify it
-            for i, col in enumerate(group_by):
-                # check if unqualified column name exists in df.columns
-                if col.split(".")[-1] in df.columns:
-                    group_by[i] = col.split(".")[-1]
-            inter_df = df.groupby(group_by)
-            if len(agg_conditions) > 0:
-                # check if column does not exist and create it before applying agg_conditions
-                for col in agg_conditions.keys():
-                    # generate unqualified names in df.columns
-                    unqualified_cols = [col.split(".")[-1] for col in df.columns]
-                    if col not in df.columns and col not in unqualified_cols:
-                        df[col] = 1
+                # Flatten the multi-level column index
+                result_df.columns = ['_'.join(col).rstrip('_') for col in result_df.columns.values]
 
-                for col in list(agg_conditions.keys()):
-                    if agg_conditions[col].column == "*":
-                        func = agg_conditions[col].aggfunc
-                        df[col] = df.apply(func, axis=1)
-                        del agg_conditions[col]
-                    elif agg_conditions[col].aggfunc == "first" and (
-                        col == agg_conditions[col].column
-                        or col == agg_conditions[col].column.split(".")[-1]
-                    ):
-                        del agg_conditions[col]
+                # Rename columns using the mapping created earlier
+                result_df.rename(columns=target_mapping, inplace=True)
 
-                if len(agg_conditions) > 0:
-                    df = inter_df.agg(**agg_conditions).reset_index()
-                # unqualify all columns in df. This is to avoid nested columns being qualified with the table name
-                for col in df.columns:
-                    df = df.rename(columns={col: col.split(".")[-1]})
+                if len(spja_data.window_by) > 0:
+                    # only works for sum, count, but not max
+                    # assume that window by is the index
+                    result_df = result_df.sort_index()
+
+                    for att in target_mapping.values():
+                        result_df[att] = result_df[att].cumsum()
+
+                result_df.reset_index(inplace=True)
+            else: 
+                result_df = df
+
         else:
-            if len(agg_conditions) > 0:
-                if len(window_by) > 0:
-                    # apply cumulative sum on window_by columns in pandas dataframe
-                    df = df.sort_values(window_by)
-                    # TODO: remove hack, propagate g_col and h_col instead of hardcoding
-                    df["s"] = df["s"].cumsum()
-                    df["c"] = df["c"].cumsum()
-                else:
-                    # check if column does not exist and create it before applying agg_conditions (for s anc c)
-                    for col in agg_conditions.keys():
-                        if col not in df.columns:
-                            df[col] = 1
-
-                    # check if column is * and apply aggfunc to the entire row
-                    for col in list(agg_conditions.keys()):
-                        if agg_conditions[col].column == "*":
-                            func = agg_conditions[col].aggfunc
-                            if isinstance(func, dict):
-                                df[col] = np.where(eval(func['cond']), eval(func['true']), eval(func['false']))
-                            else:
-                                df[col] = df.eval(func)
-                            del agg_conditions[col]
-                        elif (
-                            agg_conditions[col].aggfunc == "first"
-                            and col == agg_conditions[col].column
-                        ):
-                            del agg_conditions[col]
-
-                    if len(agg_conditions) > 0:
-                        df = (
-                            df.assign(temp=0)
-                            .groupby("temp")
-                            .agg(**agg_conditions)
-                            .reset_index()
-                            .drop(columns="temp")
-                        )
-                    for col in df.columns:
-                        df = df.rename(columns={col: col.split(".")[-1]})
-
-        return df
-
-    def execute_join(self, df_to_join, join_conds):
+            for target, agg_expr in spja_data.aggregate_expressions.items():
+                target = value_to_sql(target,False)
+                result_df[target] = agg_to_np(agg_expr, df)
+                
+            result_df[spja_data.target_schema()]
+            
+        # only keep the attributes needed
+        return result_df[spja_data.target_schema()]
+    
+    def execute_join(self, spja_data):
         # Step 1: Extract all join keys for each pair of dataframes
         join_conditions = {}
-        for sel in join_conds:
+        for sel in spja_data.join_conds:
+            # Currently, assume equality-based join
+            # TODO: relax the assumption
             left_attr, right_attr = sel.para[0], sel.para[1]
             left_table, right_table = left_attr.table(), right_attr.table()
-            left_attribute_name, right_attribute_name = value_to_sql(left_attr, False), value_to_sql(right_attr, False)
 
+            left_attribute_name, right_attribute_name = value_to_sql(left_attr, False), value_to_sql(right_attr, False)
+            # keep a fixed order between tables as the key
             key = tuple(sorted((left_table, right_table)))
+            
             if key not in join_conditions:
                 join_conditions[key] = {'left_table': left_table, 'right_table': right_table, 'left_keys': [], 'right_keys': []}
 
@@ -864,7 +795,8 @@ class PandasExecutor(DuckdbExecutor):
             else:
                 join_conditions[key]['left_keys'].append(right_attribute_name)
                 join_conditions[key]['right_keys'].append(left_attribute_name)
-
+                
+        
         # Step 1.5: Construct Join graph using join tables as nodes and join conditions as edges without using networkx
         join_graph = MiniJoinGraph()
         for key in join_conditions:
@@ -872,106 +804,40 @@ class PandasExecutor(DuckdbExecutor):
             join_graph.add_node(join_conditions[key]['right_table'])
             join_graph.add_edge(join_conditions[key]['left_table'], join_conditions[key]['right_table'])
 
-        dfs_order, dfs_join_order = join_graph.get_dfs_order()
-
+        _, dfs_join_order = join_graph.get_dfs_order()
 
         # Step 2: Implement a simple query optimizer to decide the join order
-        # def simple_query_optimizer(join_conditions):
-        #     # This is a simple example; you can implement more advanced optimization techniques if needed.
-        #     return sorted(join_conditions.values(), key=lambda x: (x['left_table'], x['right_table']))
-        #
-        # optimized_join_order = simple_query_optimizer(join_conditions)
 
         # Step 3: Join all dataframes together using Pandas merge function
         result = None
         for left_table_name, right_table_name in dfs_join_order:
-            left_table = df_to_join[left_table_name]
-            right_table = df_to_join[right_table_name]
-            join_cond = join_conditions[tuple(sorted((left_table_name, right_table_name)))]
+            
+            left_table = self.table_registry[left_table_name]
+            right_table = self.table_registry[right_table_name]
+            
+            # temp fix. TODO: remove
+            def remove_duplicate_col(df):
+                return df.loc[:, ~df.columns.duplicated()]
+            left_table, right_table = remove_duplicate_col(left_table), remove_duplicate_col(right_table)
+            
+            key = tuple(sorted((left_table_name, right_table_name)))
+            join_cond = join_conditions[key]
 
-            # Rename duplicate columns in the right table to match the left table
+            # Rename join columns in the right table to match the left table
+            # This is to avoid unexpected column duplication after join 
             for left_key, right_key in zip(join_cond['left_keys'], join_cond['right_keys']):
                 if left_key != right_key:
                     right_table = right_table.rename(columns={right_key: left_key})
-
+                    
+            # for the first step
             if result is None:
+                
                 result = pd.merge(left_table, right_table, on=join_cond['left_keys'])
+            # join with previous intermediate
             else:
                 result = pd.merge(result, right_table, on=join_cond['left_keys'])
+            
+            # TODO: early projection
+            # filter out useless column for efficiency
 
         return result
-
-    @staticmethod
-    def get_unqualified_cols(df):
-        return [col.split(".")[-1] for col in df.columns]
-
-    @staticmethod
-    def unqualify_df(df):
-        for col in df.columns:
-            df = df.rename(columns={col: col.split(".")[-1]})
-        return df
-
-    def convert_predicates(self, select_conds):
-        # TODO: handle in and not in
-        # replace ' = ' with ' == ' but only if = is not part of <> or <= or >=
-        select_conds = [re.sub(r"(?<!<|>)=(?!=)", "==", cond) for cond in select_conds]
-        # ignore predicates of the form 's.a is not distinct from t.b'
-        select_conds = [cond for cond in select_conds if "DISTINCT" not in cond]
-        # check if predicates do not start with joinboost_<number>.col <op> <value> and if so, remove the table name
-        for i, cond in enumerate(select_conds):
-            # split by dot and remove only the first element and return everything else as it is
-            select_conds[i] = ".".join(cond.split(".")[1:])
-
-        # wrap each operand (of the form identifier.identifier or identifier) with backticks, ignore any multi-digit numeric values
-        select_conds = [
-            re.sub(r"\b([a-zA-Z_0-9]+\.[a-zA-Z_]+|[a-zA-Z_]+)\b", r"`\g<1>`", cond)
-            for cond in select_conds
-        ]
-
-        # wrap each select condition with parentheses
-        select_conds = ["(" + cond + ")" for cond in select_conds]
-
-        return select_conds
-
-    def convert_agg_conditions(self, aggregate_expressions):
-        agg_conditions = {}
-        # handle aggregate expressions
-        for target_col, aggregation_spec in aggregate_expressions.items():
-            para, agg = aggregation_spec
-
-            # if para is QualifiedName
-            if isinstance(para, QualifiedAttribute):
-                para = agg_to_sql(para)
-
-            if target_col is None:
-                target_col = para
-
-            # use named aggregation and column renaming with dictionary
-            if agg.value == Aggregator.COUNT.value:
-                agg_conditions[target_col] = pd.NamedAgg(column=para, aggfunc="count")
-            elif agg.value == Aggregator.SUM.value:
-                # check if column is a number in string form, in that case use target_col as the column name
-                if str(para).isnumeric():
-                    para = target_col
-                agg_conditions[target_col] = pd.NamedAgg(column=para, aggfunc="sum")
-            elif agg.value == Aggregator.MAX.value:
-                agg_conditions[target_col] = pd.NamedAgg(column=para, aggfunc="max")
-            elif agg.value == Aggregator.MIN.value:
-                agg_conditions[target_col] = pd.NamedAgg(column=para, aggfunc="min")
-            elif agg.value == Aggregator.IDENTITY.value:
-                if para == "1":
-                    agg_conditions[target_col] = pd.NamedAgg(
-                        column="*", aggfunc="1"
-                    )
-                elif para != "*":
-                    agg_conditions[target_col] = pd.NamedAgg(
-                        column=para, aggfunc="first"
-                    )
-                else:
-                    pass
-            elif agg.value == Aggregator.IDENTITY_LAMBDA.value:
-                agg_conditions[target_col] = pd.NamedAgg(column="*", aggfunc=para)
-
-            else:
-                raise ExecutorException("Unsupported aggregation function!")
-        return agg_conditions

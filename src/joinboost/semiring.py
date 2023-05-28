@@ -5,8 +5,6 @@ from .joingraph import JoinGraph
 
 
 """Handle semi ring in DBMS"""
-
-
 class SemiRing(ABC):
     def __init__(self):
         pass
