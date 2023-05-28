@@ -21,7 +21,7 @@ class ExecutorException(Exception):
     pass
 
 
-@dataclass(frozen=False)
+@dataclass(frozen=True)
 class SPJAData:
     """
     Data structure for SPJA queries. Could be recursive (e.g, from_tables could be a list of SPJAData objects).
