@@ -113,21 +113,29 @@ class CJT(JoinGraph):
                 self._send_message(current_relation, c_neighbor, m_type=m_type)
                 self._pre_dfs(c_neighbor, current_relation, m_type=m_type)
 
-    def partition_target_relation(self, dim_table):
+    # partitions the target relation by using the annotations found.
+    # 1. DFS search from dim table with annotation till target relation
+    # 2. filtered message will be available from neighbour -> target relation edge, thanks to downward message passing
+    # 3. perform leftsemi join on target relation and filtered message
+    def partition_target_relation(self, dim_table, h_col, g_col):
         start_table = dim_table
         end_table = self.target_relation
         neighbour_relation = self._dfs(start_table)
+        # msg is the filtered final dim table
         msg = self.joins[neighbour_relation][end_table]["message"]
 
+        # to perform left semi join all columns from left table must be preset in the result
         aggregate_expressions = {}
         for attr in self.get_useful_attributes(self.target_relation):
             aggregate_expressions[attr] = AggExpression(Aggregator.IDENTITY, attr)
-        aggregate_expressions['s'] = AggExpression(Aggregator.IDENTITY, 's')
-        aggregate_expressions['c'] = AggExpression(Aggregator.IDENTITY, 'c')
+        aggregate_expressions[g_col] = AggExpression(Aggregator.IDENTITY, g_col)
+        aggregate_expressions[h_col] = AggExpression(Aggregator.IDENTITY, h_col)
 
+        # join
         spja_data = SPJAData(
             aggregate_expressions=aggregate_expressions,
             from_tables=[self.target_relation],
+            join_type='leftsemi',
             join_conds=[SelectionExpression(SELECTION.SEMI_JOIN,
                                 ([QualifiedAttribute(self.target_relation, attr) for attr in self.joins[self.target_relation][neighbour_relation]['keys'][0]],
                                  [QualifiedAttribute(msg, attr) for attr in self.joins[neighbour_relation][self.target_relation]['keys'][0]]))]

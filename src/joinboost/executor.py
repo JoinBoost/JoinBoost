@@ -675,10 +675,10 @@ class PandasExecutor(DuckdbExecutor):
         self, spja_data: SPJAData, mode: ExecuteMode = ExecuteMode.WRITE_TO_TABLE
     ):
         # check if SEMI_JOIN is one of the join_conditions
+        # TODO: make SEMI_JOIN type uniform for pandas and duckdb and remove this condition
         for join_cond in spja_data.join_conds:
             if join_cond.selection == SELECTION.SEMI_JOIN:
                 spja_data.from_tables.append(join_cond.para[1][0].table_name)
-                spja_data.join_type = 'leftsemi'
 
         if len(spja_data.from_tables) > 1:
             df = self.execute_join(spja_data)
@@ -844,7 +844,7 @@ class PandasExecutor(DuckdbExecutor):
                 if spja_data.join_type == 'leftsemi' and pd.__name__ == 'cudf':
                     result = pd.merge(left_table, right_table, on=join_cond['left_keys'], how='leftsemi')
                 elif spja_data.join_type == 'leftsemi' and pd.__name__ == 'pandas':
-                    # get only join keys for right table
+                    # get only join keys for right table. this is a slight optimization
                     right_table = right_table[join_cond['right_keys']]
                     result = pd.merge(left_table, right_table, on=join_cond['left_keys'])
                 else:
@@ -854,7 +854,7 @@ class PandasExecutor(DuckdbExecutor):
                 if spja_data.join_type == 'leftsemi' and pd.__name__ == 'cudf':
                     result = pd.merge(result, right_table, on=join_cond['left_keys'], how='leftsemi')
                 elif spja_data.join_type == 'leftsemi' and pd.__name__ == 'pandas':
-                    # get only join keys for right table
+                    # get only join keys for right table. this is a slight optimization
                     right_table = right_table[join_cond['right_keys']]
                     result = pd.merge(result, right_table, on=join_cond['left_keys'])
                 else:

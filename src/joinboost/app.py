@@ -532,12 +532,16 @@ class DecisionTree(DummyModel):
 
             dim_relation_name = l_annotation.para[0].table_name
 
+            g_col, h_col = self.semi_ring.get_columns_name()
+            # partition the target relation for the left subtree
             l_cjt.downward_message_passing(r_name)
-            new_l_target_relation = l_cjt.partition_target_relation(dim_relation_name)
+            new_l_target_relation = l_cjt.partition_target_relation(dim_relation_name, g_col, h_col)
             l_cjt.replace(l_cjt.target_relation, new_l_target_relation)
 
+            # partition the target relation for the right subtree
+            # TODO: maybe this can be derived from left result instead of traversing tree again. Might not be worth it.
             r_cjt.downward_message_passing(r_name)
-            new_r_target_relation = r_cjt.partition_target_relation(dim_relation_name)
+            new_r_target_relation = r_cjt.partition_target_relation(dim_relation_name, g_col, h_col)
             r_cjt.replace(r_cjt.target_relation, new_r_target_relation)
             self.nodes[l_id] = l_cjt
             self.nodes[r_id] = r_cjt
