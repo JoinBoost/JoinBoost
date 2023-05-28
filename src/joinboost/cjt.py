@@ -117,9 +117,11 @@ class CJT(JoinGraph):
     # 1. DFS search from dim table with annotation till target relation
     # 2. filtered message will be available from neighbour -> target relation edge, thanks to downward message passing
     # 3. perform leftsemi join on target relation and filtered message
-    def partition_target_relation(self, dim_table, h_col, g_col):
+    def partition_target_relation(self, dim_table, g_col, h_col):
         start_table = dim_table
         end_table = self.target_relation
+        if start_table == end_table:
+            return None
         neighbour_relation = self._dfs(start_table)
         # msg is the filtered final dim table
         msg = self.joins[neighbour_relation][end_table]["message"]
