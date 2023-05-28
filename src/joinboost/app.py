@@ -517,7 +517,7 @@ class DecisionTree(DummyModel):
             )
 
             # TODO: objective has some rounding problem
-            l_annotations, r_annotations = self._comp_annotations(
+            l_annotation, r_annotation = self._comp_annotations(
                 r_name=r_name,
                 attr=attr,
                 cur_value=cur_value,
@@ -527,52 +527,20 @@ class DecisionTree(DummyModel):
             )
 
             # add annotations according to split conditions
-            l_cjt.add_annotation(r_name, l_annotations)
-            r_cjt.add_annotation(r_name, r_annotations)
-            #
-            # op = l_annotations.selection
-            # dim_relation_name = l_annotations.para[0].table_name
-            #
-            # # Apply predicate on dim
-            # spja_data = SPJAData(
-            #     from_tables=[dim_relation_name],
-            #     select_conds=[l_annotations],
-            # )
-            # filtered_dim = self.cjt.exe.execute_spja_query(spja_data, mode=ExecuteMode.NESTED_QUERY)
-            #
-            # # merge the dim table with the fact table leftsemi
-            #
-            # self.cjt.get_join_keys()
-            #
-            # spja_data = SPJAData(
-            #     from_tables=[self.cjt.target_relation, filtered_dim],
-            #     join_conds = [SelectionExpression(SELECTION.SEMI_JOIN,
-            #                         ([QualifiedAttribute(self.cjt.target_relation, attr) for attr in self.cjt.joins[self.cjt.target_relation][dim_relation_name].keys[0]],
-            #                          [QualifiedAttribute(dim_relation_name, attr) for attr in self.cjt.joins[dim_relation_name][self.cjt.target_relation].keys[0]]))]
-            # )
-            #
-            # l_target_relation = self.cjt.exe.execute_spja_query(spja_data, mode=ExecuteMode.WRITE_TO_TABLE)
-            #
-            # l_cjt.replace(l_cjt.target_relation, l_target_relation)
-            # l_cjt.target_relation = l_target_relation
-            #
-            # spja_data = SPJAData(
-            #     from_tables=[self.cjt.target_relation],
-            #     select_conds=[r_annotations],
-            # )
-            # r_target_relation = self.cjt.exe.execute_spja_query(spja_data, mode=ExecuteMode.WRITE_TO_TABLE)
-            # # replace_table_name(r_cjt, r_cjt.target_relation, r_target_relation)
-            # r_cjt.replace(r_cjt.target_relation, r_target_relation)
-            # r_cjt.target_relation  = r_target_relation
-            # self.nodes[l_id] = l_cjt
-            # self.nodes[r_id] = r_cjt
+            l_cjt.add_annotation(r_name, l_annotation)
+            r_cjt.add_annotation(r_name, r_annotation)
 
-            # for the leaf split_candidates that can't be splitted (e.g. meet max depth)
-            # we still need message passing to fact table for semi-join selection
-            # but not necessarily downward_message_passing.
-            # Can be optimized to upward_message_passing(fact)
+            dim_relation_name = l_annotation.para[0].table_name
+
             l_cjt.downward_message_passing(r_name)
+            new_l_target_relation = l_cjt.partition_target_relation(dim_relation_name)
+            l_cjt.replace(l_cjt.target_relation, new_l_target_relation)
+
             r_cjt.downward_message_passing(r_name)
+            new_r_target_relation = r_cjt.partition_target_relation(dim_relation_name)
+            r_cjt.replace(r_cjt.target_relation, new_r_target_relation)
+            self.nodes[l_id] = l_cjt
+            self.nodes[r_id] = r_cjt
 
             self._get_best_split(l_id, cur_level + 1)
             self._get_best_split(r_id, cur_level + 1)

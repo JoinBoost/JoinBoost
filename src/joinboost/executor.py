@@ -21,7 +21,7 @@ class ExecutorException(Exception):
     pass
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=False)
 class SPJAData:
     """
     Data structure for SPJA queries. Could be recursive (e.g, from_tables could be a list of SPJAData objects).
@@ -674,6 +674,12 @@ class PandasExecutor(DuckdbExecutor):
     def execute_spja_query(
         self, spja_data: SPJAData, mode: ExecuteMode = ExecuteMode.WRITE_TO_TABLE
     ):
+        # check if SEMI_JOIN is one of the join_conditions
+        for join_cond in spja_data.join_conds:
+            if join_cond.selection == SELECTION.SEMI_JOIN:
+                spja_data.from_tables.append(join_cond.para[1][0].table_name)
+                spja_data.join_type = 'leftsemi'
+
         if len(spja_data.from_tables) > 1:
             df = self.execute_join(spja_data)
         elif len(spja_data.from_tables) == 0:
@@ -780,6 +786,9 @@ class PandasExecutor(DuckdbExecutor):
             # Currently, assume equality-based join
             # TODO: relax the assumption
             left_attr, right_attr = sel.para[0], sel.para[1]
+            # Hack because semi join right now will only one key, TODO: Why are we assuming only single attribute join keys?
+            if sel.selection == SELECTION.SEMI_JOIN:
+                left_attr, right_attr = left_attr[0], right_attr[0]
             left_table, right_table = left_attr.table(), right_attr.table()
 
             left_attribute_name, right_attribute_name = value_to_sql(left_attr, False), value_to_sql(right_attr, False)
@@ -831,13 +840,28 @@ class PandasExecutor(DuckdbExecutor):
                     
             # for the first step
             if result is None:
-                
-                result = pd.merge(left_table, right_table, on=join_cond['left_keys'])
+
+                if spja_data.join_type == 'leftsemi' and pd.__name__ == 'cudf':
+                    result = pd.merge(left_table, right_table, on=join_cond['left_keys'], how='leftsemi')
+                elif spja_data.join_type == 'leftsemi' and pd.__name__ == 'pandas':
+                    # get only join keys for right table
+                    right_table = right_table[join_cond['right_keys']]
+                    result = pd.merge(left_table, right_table, on=join_cond['left_keys'])
+                else:
+                    result = pd.merge(left_table, right_table, on=join_cond['left_keys'])
             # join with previous intermediate
             else:
-                result = pd.merge(result, right_table, on=join_cond['left_keys'])
+                if spja_data.join_type == 'leftsemi' and pd.__name__ == 'cudf':
+                    result = pd.merge(result, right_table, on=join_cond['left_keys'], how='leftsemi')
+                elif spja_data.join_type == 'leftsemi' and pd.__name__ == 'pandas':
+                    # get only join keys for right table
+                    right_table = right_table[join_cond['right_keys']]
+                    result = pd.merge(result, right_table, on=join_cond['left_keys'])
+                else:
+                    result = pd.merge(result, right_table, on=join_cond['left_keys'])
             
             # TODO: early projection
             # filter out useless column for efficiency
+
 
         return result

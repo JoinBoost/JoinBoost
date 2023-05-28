@@ -113,6 +113,42 @@ class CJT(JoinGraph):
                 self._send_message(current_relation, c_neighbor, m_type=m_type)
                 self._pre_dfs(c_neighbor, current_relation, m_type=m_type)
 
+    def partition_target_relation(self, dim_table):
+        start_table = dim_table
+        end_table = self.target_relation
+        neighbour_relation = self._dfs(start_table)
+        msg = self.joins[neighbour_relation][end_table]["message"]
+
+        aggregate_expressions = {}
+        for attr in self.get_useful_attributes(self.target_relation):
+            aggregate_expressions[attr] = AggExpression(Aggregator.IDENTITY, attr)
+        aggregate_expressions['s'] = AggExpression(Aggregator.IDENTITY, 's')
+        aggregate_expressions['c'] = AggExpression(Aggregator.IDENTITY, 'c')
+
+        spja_data = SPJAData(
+            aggregate_expressions=aggregate_expressions,
+            from_tables=[self.target_relation],
+            join_conds=[SelectionExpression(SELECTION.SEMI_JOIN,
+                                ([QualifiedAttribute(self.target_relation, attr) for attr in self.joins[self.target_relation][neighbour_relation]['keys'][0]],
+                                 [QualifiedAttribute(msg, attr) for attr in self.joins[neighbour_relation][self.target_relation]['keys'][0]]))]
+        )
+        return self.exe.execute_spja_query(spja_data, ExecuteMode.WRITE_TO_TABLE)
+
+    def _dfs(
+            self, current_relation: str, parent_table: str = None
+    ):
+        if not self.has_relation(current_relation):
+            return None
+
+        for c_neighbor in self.joins[current_relation]:
+            if c_neighbor == self.target_relation:
+                # return self.joins[current_relation][self.target_relation]["message"]
+                return current_relation
+            if c_neighbor != parent_table:
+                msg = self._dfs(c_neighbor, current_relation)
+                if msg is not None:
+                    return msg
+
     def absorption(self, table: str, group_by: list, mode=ExecuteMode.NESTED_QUERY):
         incoming_messages, join_conds = self._get_income_messages(table)
 
