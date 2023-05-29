@@ -24,7 +24,7 @@ class MiniJoinGraph:
 
         visited_nodes = list()
         visited_edges = list()
-        
+
         # Find a leaf node
         start_node = None
         for node in self.nodes:

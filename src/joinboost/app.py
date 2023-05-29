@@ -58,6 +58,7 @@ class DecisionTree(DummyModel):
         max_depth: int = 6,
         subsample: float = 1,
         debug: bool = False,
+        partition_early: bool = True,
     ):
         assert max_leaves > 0, "max_leaves should be positive"
         assert max_depth > 0, "max_depth should be positive"
@@ -67,6 +68,7 @@ class DecisionTree(DummyModel):
         assert 0 < learning_rate <= 1, "learning_rate should be in (0, 1]"
 
         super().__init__()
+        self.partition_early = partition_early
         self.max_leaves = max_leaves
         self.learning_rate = learning_rate
         self.max_depth = max_depth
@@ -391,7 +393,7 @@ class DecisionTree(DummyModel):
 
         for r_name in cjt.relations:
             for attr in cjt.get_relation_features(r_name):
-                attr_type, group_by = self.cjt.get_feature_type(r_name, attr), [attr]
+                attr_type, group_by = cjt.get_feature_type(r_name, attr), [attr]
                 absoprtion_view = cjt.absorption(r_name, group_by)
 
                 if attr_type == "NUM":
@@ -435,7 +437,7 @@ class DecisionTree(DummyModel):
 
                 elif attr_type == "CAT":
                     view_to_max = absoprtion_view
-                
+
                 l2_agg_exp = {
                         attr: AggExpression(Aggregator.IDENTITY, attr),
                         # the case expression is for window functions
@@ -517,7 +519,7 @@ class DecisionTree(DummyModel):
             )
 
             # TODO: objective has some rounding problem
-            l_annotations, r_annotations = self._comp_annotations(
+            l_annotation, r_annotation = self._comp_annotations(
                 r_name=r_name,
                 attr=attr,
                 cur_value=cur_value,
@@ -527,15 +529,27 @@ class DecisionTree(DummyModel):
             )
 
             # add annotations according to split conditions
-            l_cjt.add_annotation(r_name, l_annotations)
-            r_cjt.add_annotation(r_name, r_annotations)
+            l_cjt.add_annotation(r_name, l_annotation)
+            r_cjt.add_annotation(r_name, r_annotation)
 
-            # for the leaf split_candidates that can't be splitted (e.g. meet max depth)
-            # we still need message passing to fact table for semi-join selection
-            # but not necessarily downward_message_passing.
-            # Can be optimized to upward_message_passing(fact)
+            dim_relation_name = l_annotation.para[0].table_name
+
             l_cjt.downward_message_passing(r_name)
             r_cjt.downward_message_passing(r_name)
+            # partition the target relation for the left subtree
+            if self.partition_early:
+                g_col, h_col = self.semi_ring.get_columns_name()
+                new_l_target_relation = l_cjt.partition_target_relation(dim_relation_name, g_col, h_col)
+                if new_l_target_relation is not None:
+                    l_cjt.replace(l_cjt.target_relation, new_l_target_relation)
+                    self.nodes[l_id] = l_cjt
+
+                # partition the target relation for the right subtree
+                # TODO: maybe this can be derived from left result instead of traversing tree again. Might not be worth it.
+                new_r_target_relation = r_cjt.partition_target_relation(dim_relation_name, g_col, h_col)
+                if new_r_target_relation is not None:
+                    r_cjt.replace(r_cjt.target_relation, new_r_target_relation)
+                    self.nodes[r_id] = r_cjt
 
             self._get_best_split(l_id, cur_level + 1)
             self._get_best_split(r_id, cur_level + 1)
@@ -551,10 +565,11 @@ class GradientBoosting(DecisionTree):
         max_depth: int = 6,
         iteration: int = 1,
         debug: bool = False,
+        partition_early: bool = False,
     ):
         assert iteration > 0, "iteration should be positive"
         
-        super().__init__(max_leaves, learning_rate, max_depth, debug=debug)
+        super().__init__(max_leaves, learning_rate, max_depth, debug=debug, partition_early=partition_early)
         self.iteration = iteration
 
     def _fit(self, jg: JoinGraph):
@@ -592,7 +607,7 @@ class RandomForest(DecisionTree):
     ):
         assert iteration > 0, "iteration should be positive"
 
-        super().__init__(max_leaves, learning_rate, max_depth, subsample, debug=debug)
+        super().__init__(max_leaves, learning_rate, max_depth, subsample, debug=debug, partition_early=True)
         self.iteration = iteration
         self.learning_rate = 1 / iteration
 

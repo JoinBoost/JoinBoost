@@ -16,7 +16,7 @@ class TestMiniJoingraph(unittest.TestCase):
         actual_nodes, actual_edges = join_graph.get_dfs_order()
         self.assertEqual(actual_nodes, ["R", "S", "T"])
         self.assertEqual(actual_edges, [("R", "S"), ("S", "T")])
-    
+
     #     A
     #    / \
     #   B   C
