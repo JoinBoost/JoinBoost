@@ -68,6 +68,7 @@ class DecisionTree(DummyModel):
         assert 0 < learning_rate <= 1, "learning_rate should be in (0, 1]"
 
         super().__init__()
+        # whether the fact table is partitioned early
         self.partition_early = partition_early
         self.max_leaves = max_leaves
         self.learning_rate = learning_rate
@@ -290,7 +291,7 @@ class DecisionTree(DummyModel):
     def _comp_annotations(
         self, r_name: str, attr: str, cur_value: str, obj: float, expanding_cjt: CJT
     ):
-        attr_type = expanding_cjt.relations[r_name][attr]
+        attr_type = expanding_cjt.get_feature_type(r_name, attr)
         g_col, h_col = self.semi_ring.get_columns_name()
 
         # Following https://lightgbm.readthedocs.io/en/latest/Advanced-Topics.html#categorical-feature-support
@@ -301,7 +302,8 @@ class DecisionTree(DummyModel):
 
             # sort the absorption view by g_col/h_col according to the paper
             agg_exp = {
-                attr: AggExpression(Aggregator.IDENTITY, attr),
+                attr: AggExpression(Aggregator.IDENTITY, 
+                                    value_to_sql(attr,qualified=False)),
                 "object": AggExpression(Aggregator.DIV, (g_col, h_col)),
                 g_col: AggExpression(Aggregator.IDENTITY, g_col),
                 h_col: AggExpression(Aggregator.IDENTITY, h_col),
@@ -315,7 +317,8 @@ class DecisionTree(DummyModel):
 
             # use the prefix sum to get the cumulative gradient and hessian, just like for numerical features
             agg_exp = {
-                attr: AggExpression(Aggregator.IDENTITY, attr),
+                attr: AggExpression(Aggregator.IDENTITY, 
+                                    value_to_sql(attr,qualified=False)),
                 g_col: AggExpression(Aggregator.SUM, g_col),
                 h_col: AggExpression(Aggregator.SUM, h_col),
             }
@@ -332,7 +335,8 @@ class DecisionTree(DummyModel):
             # currently, the set is stored in the model definition
             # maybe a better way is to store it in the database
             attr_spja_data = SPJAData(
-                aggregate_expressions={attr: AggExpression(Aggregator.IDENTITY, attr)},
+                aggregate_expressions={attr: AggExpression(Aggregator.IDENTITY, 
+                                                           value_to_sql(attr,qualified=False))},
                 from_tables=[view_ord_by_obj],
                 select_conds=[SelectionExpression(
                     SELECTION.NOT_GREATER, (f"{g_col}/{h_col}", str(obj)))]
@@ -350,25 +354,25 @@ class DecisionTree(DummyModel):
             ]
 
             l_annotation = SelectionExpression(
-                SELECTION.IN, (QualifiedAttribute(r_name, attr), attrs))
+                SELECTION.IN, (attr, attrs))
             r_annotation = SelectionExpression(
-                SELECTION.NOT_IN, (QualifiedAttribute(r_name, attr), attrs))
+                SELECTION.NOT_IN, (attr, attrs))
             
         elif cur_value == "NULL":
             l_annotation = SelectionExpression(
-                SELECTION.NULL, QualifiedAttribute(r_name, attr))
+                SELECTION.NULL, attr)
             r_annotation = SelectionExpression(
-                SELECTION.NOT_NULL, QualifiedAttribute(r_name, attr))
+                SELECTION.NOT_NULL, attr)
         elif attr_type == "NUM":
             l_annotation = SelectionExpression(
-                SELECTION.NOT_GREATER, (QualifiedAttribute(r_name, attr), cur_value))
+                SELECTION.NOT_GREATER, (attr, cur_value))
             r_annotation = SelectionExpression(
-                SELECTION.GREATER, (QualifiedAttribute(r_name, attr), cur_value))
+                SELECTION.GREATER, (attr, cur_value))
         elif attr_type == "CAT":
             l_annotation = SelectionExpression(
-                SELECTION.NOT_DISTINCT, (QualifiedAttribute(r_name, attr), cur_value))
+                SELECTION.NOT_DISTINCT, (attr, cur_value))
             r_annotation = SelectionExpression(
-                SELECTION.DISTINCT, (QualifiedAttribute(r_name, attr), cur_value))
+                SELECTION.DISTINCT, (attr, cur_value))
         else:
             raise Exception("Unsupported Split")
         return l_annotation, r_annotation
@@ -377,7 +381,6 @@ class DecisionTree(DummyModel):
     def _get_best_split(self, cjt_id: int, cjt_depth: int):
         cjt = self.nodes[cjt_id]
         cur_semi_ring = cjt.get_semi_ring()
-        attr_meta = self.cjt.relations
         g_col, h_col = self.semi_ring.get_columns_name()
 
         # criteria, (relation name, split attribute, split value, new s, new c)
@@ -398,17 +401,20 @@ class DecisionTree(DummyModel):
 
                 if attr_type == "NUM":
                     agg_exp = cur_semi_ring.col_sum((g_col, h_col))
-                    agg_exp[attr] = AggExpression(Aggregator.IDENTITY, attr)
+                    # the query is over the absorption view, so attr is not qualified
+                    agg_exp[attr] = AggExpression(Aggregator.IDENTITY, 
+                                                  value_to_sql(attr,qualified=False))
                     spja_data = SPJAData(aggregate_expressions=agg_exp, 
                                          from_tables=[absoprtion_view], 
-                                         window_by=[QualifiedAttribute(r_name, attr)])
+                                         window_by=[attr])
                     view_to_max = self.cjt.exe.execute_spja_query(spja_data, mode=ExecuteMode.NESTED_QUERY)
 
                 elif attr_type == "LCAT":
                     # TODO: further optimization. We don't need to keep the attr.
                     # The only thing we care for splitting is the sum_s/sum_c
                     agg_exp = {
-                        attr: AggExpression(Aggregator.IDENTITY, attr),
+                        attr: AggExpression(Aggregator.IDENTITY, 
+                                            value_to_sql(attr,qualified=False)),
                         "object": AggExpression(Aggregator.DIV, (g_col, h_col)),
                         g_col: AggExpression(Aggregator.IDENTITY, g_col),
                         h_col: AggExpression(Aggregator.IDENTITY, h_col),
@@ -421,7 +427,8 @@ class DecisionTree(DummyModel):
                         spja_data, mode=ExecuteMode.NESTED_QUERY
                     )
                     agg_exp = cur_semi_ring.col_sum((g_col, h_col))
-                    agg_exp[attr] = AggExpression(Aggregator.IDENTITY, attr)
+                    agg_exp[attr] = AggExpression(Aggregator.IDENTITY, 
+                                                  value_to_sql(attr,qualified=False))
                     agg_exp["object"] = AggExpression(
                         Aggregator.IDENTITY, "object")
 
@@ -439,7 +446,7 @@ class DecisionTree(DummyModel):
                     view_to_max = absoprtion_view
 
                 l2_agg_exp = {
-                        attr: AggExpression(Aggregator.IDENTITY, attr),
+                        attr: AggExpression(Aggregator.IDENTITY, value_to_sql(attr,qualified=False)),
                         # the case expression is for window functions
                         "criteria": AggExpression(Aggregator.CASE,
                                                   [(f"({g_col}/{h_col})*{g_col} + ({g}-{g_col})/({h}-{h_col})*({g}-{g_col})",
@@ -532,24 +539,31 @@ class DecisionTree(DummyModel):
             l_cjt.add_annotation(r_name, l_annotation)
             r_cjt.add_annotation(r_name, r_annotation)
 
-            dim_relation_name = l_annotation.para[0].table_name
+            # dim_relation_name = l_annotation.para[0].table_name
 
             l_cjt.downward_message_passing(r_name)
             r_cjt.downward_message_passing(r_name)
-            # partition the target relation for the left subtree
-            if self.partition_early:
-                g_col, h_col = self.semi_ring.get_columns_name()
-                new_l_target_relation = l_cjt.partition_target_relation(dim_relation_name, g_col, h_col)
-                if new_l_target_relation is not None:
-                    l_cjt.replace(l_cjt.target_relation, new_l_target_relation)
-                    self.nodes[l_id] = l_cjt
 
-                # partition the target relation for the right subtree
-                # TODO: maybe this can be derived from left result instead of traversing tree again. Might not be worth it.
-                new_r_target_relation = r_cjt.partition_target_relation(dim_relation_name, g_col, h_col)
-                if new_r_target_relation is not None:
-                    r_cjt.replace(r_cjt.target_relation, new_r_target_relation)
-                    self.nodes[r_id] = r_cjt
+            # partition the target relation for the left subtree
+            # if self.partition_early:
+            #     new_l_target_relation = l_cjt.absorption(l_cjt.target_relation, [l_cjt.get_useful_attributes(l_cjt.target_relation)], ExecuteMode.WRITE_TO_TABLE)
+            #     l_cjt.replace(l_cjt.target_relation, new_l_target_relation)
+
+            #     new_r_target_relation = r_cjt.absorption(r_cjt.target_relation, [r_cjt.get_useful_attributes(r_cjt.target_relation)], ExecuteMode.WRITE_TO_TABLE)
+            #     r_cjt.replace(r_cjt.target_relation, new_r_target_relation)
+
+            #     # g_col, h_col = self.semi_ring.get_columns_name()
+            #     # new_l_target_relation = l_cjt.partition_target_relation(r_name, g_col, h_col)
+            #     # if new_l_target_relation is not None:
+            #     #     l_cjt.replace(l_cjt.target_relation, new_l_target_relation)
+            #     #     self.nodes[l_id] = l_cjt
+
+            #     # # partition the target relation for the right subtree
+            #     # # TODO: maybe this can be derived from left result instead of traversing tree again. Might not be worth it.
+            #     # new_r_target_relation = r_cjt.partition_target_relation(r_name, g_col, h_col)
+            #     # if new_r_target_relation is not None:
+            #     #     r_cjt.replace(r_cjt.target_relation, new_r_target_relation)
+            #     #     self.nodes[r_id] = r_cjt
 
             self._get_best_split(l_id, cur_level + 1)
             self._get_best_split(r_id, cur_level + 1)
@@ -604,10 +618,11 @@ class RandomForest(DecisionTree):
         subsample: float = 1,
         iteration: int = 1,
         debug: bool = False,
+        partition_early: bool = False,
     ):
         assert iteration > 0, "iteration should be positive"
 
-        super().__init__(max_leaves, learning_rate, max_depth, subsample, debug=debug, partition_early=True)
+        super().__init__(max_leaves, learning_rate, max_depth, subsample, debug=debug, partition_early=partition_early)
         self.iteration = iteration
         self.learning_rate = 1 / iteration
 

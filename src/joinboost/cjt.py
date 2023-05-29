@@ -120,9 +120,26 @@ class CJT(JoinGraph):
     def partition_target_relation(self, dim_table, g_col, h_col):
         start_table = dim_table
         end_table = self.target_relation
+
         if start_table == end_table:
             return None
-        neighbour_relation = self._dfs(start_table)
+        
+        def dfs_neighbor(
+            current_relation: str, parent_table: str = None
+        ):
+            if not self.has_relation(current_relation):
+                return None
+
+            for c_neighbor in self.joins[current_relation]:
+                if c_neighbor == self.target_relation:
+                    # return self.joins[current_relation][self.target_relation]["message"]
+                    return current_relation
+                if c_neighbor != parent_table:
+                    msg = dfs_neighbor(c_neighbor, current_relation)
+                    if msg is not None:
+                        return msg
+
+        neighbour_relation = dfs_neighbor(start_table)
         # msg is the filtered final dim table
         msg = self.joins[neighbour_relation][end_table]["message"]
 
@@ -144,20 +161,7 @@ class CJT(JoinGraph):
         )
         return self.exe.execute_spja_query(spja_data, ExecuteMode.WRITE_TO_TABLE)
 
-    def _dfs(
-            self, current_relation: str, parent_table: str = None
-    ):
-        if not self.has_relation(current_relation):
-            return None
 
-        for c_neighbor in self.joins[current_relation]:
-            if c_neighbor == self.target_relation:
-                # return self.joins[current_relation][self.target_relation]["message"]
-                return current_relation
-            if c_neighbor != parent_table:
-                msg = self._dfs(c_neighbor, current_relation)
-                if msg is not None:
-                    return msg
 
     def absorption(self, table: str, group_by: list, mode=ExecuteMode.NESTED_QUERY):
         incoming_messages, join_conds = self._get_income_messages(table)
@@ -167,14 +171,14 @@ class CJT(JoinGraph):
 
         for attr in group_by:
             # TODO: use qualified attribute
-            aggregate_expressions[attr] = AggExpression(Aggregator.IDENTITY, QualifiedAttribute(table, attr))
+            aggregate_expressions[value_to_sql(attr, qualified=False)] = AggExpression(Aggregator.IDENTITY, attr)
 
         spja_data = SPJAData(
             aggregate_expressions=aggregate_expressions,
             from_tables=[m["message"] for m in incoming_messages] + [table],
             join_conds=join_conds,
             select_conds=self.get_annotations(table),
-            group_by=[QualifiedAttribute(table, attr) for attr in group_by],
+            group_by=group_by,
         )
 
         return self.exe.execute_spja_query(spja_data, mode=mode)
@@ -287,7 +291,7 @@ class CJT(JoinGraph):
 
         # copy the rest attributes
         for attr in self.get_useful_attributes(self.target_relation):
-            lift_exp[attr] = AggExpression(Aggregator.IDENTITY, attr)
+            lift_exp[value_to_sql(attr, qualified=False)] = AggExpression(Aggregator.IDENTITY, attr)
 
         spja_data = SPJAData(
             aggregate_expressions=lift_exp, from_tables=[self.target_relation]

@@ -121,14 +121,18 @@ class JoinGraph:
         return relation in self.relations
     
     def get_feature_type(self, relation, feature):
-        return self.relations[relation][feature]
+        return self.relations[relation][value_to_sql(feature, qualified=False)]
     
     # get features for each table
-    def get_relation_features(self, relation):
+    def _get_relation_features(self, relation):
         if relation not in self.relations:
             raise JoinGraphException(relation, " doesn't exist!")
         return list(self.relations[relation].keys())
     
+    def get_relation_features(self, relation):
+        attrs = self._get_relation_features(relation) 
+        return [QualifiedAttribute(relation, attr) for attr in attrs]
+
     # Below maybe move to preprocess
     def check_target_exist(self):
         if self.target_var is None:
@@ -185,7 +189,7 @@ class JoinGraph:
     
     # useful attributes are features + join keys
     def _get_useful_attributes(self, table):
-        useful_attributes = self.get_relation_features(table) + self._get_join_keys(table)
+        useful_attributes = self._get_relation_features(table) + self._get_join_keys(table)
         return list(set(useful_attributes))
     
     def check_graph_validity(self):

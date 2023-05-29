@@ -177,7 +177,7 @@ class TestModel(unittest.TestCase):
         dataset.add_join("holidays", "oil", ["date"], ["date"])
 
         reg = GradientBoosting(
-            learning_rate=1, max_leaves=2**depth, max_depth=depth, iteration=iteration, partition_early = False
+            learning_rate=1, max_leaves=2**depth, max_depth=depth, iteration=iteration, partition_early = True
         )
 
         reg.fit(dataset)
