@@ -545,25 +545,27 @@ class DecisionTree(DummyModel):
             r_cjt.downward_message_passing(r_name)
 
             # partition the target relation for the left subtree
-            # if self.partition_early:
-            #     new_l_target_relation = l_cjt.absorption(l_cjt.target_relation, [l_cjt.get_useful_attributes(l_cjt.target_relation)], ExecuteMode.WRITE_TO_TABLE)
-            #     l_cjt.replace(l_cjt.target_relation, new_l_target_relation)
+            if self.partition_early:
+                # naively, just get absorption
+                # new_l_target_relation = l_cjt.absorption(l_cjt.target_relation, l_cjt.get_useful_attributes(l_cjt.target_relation), ExecuteMode.WRITE_TO_TABLE)
+                # l_cjt.replace(l_cjt.target_relation, new_l_target_relation)
 
-            #     new_r_target_relation = r_cjt.absorption(r_cjt.target_relation, [r_cjt.get_useful_attributes(r_cjt.target_relation)], ExecuteMode.WRITE_TO_TABLE)
-            #     r_cjt.replace(r_cjt.target_relation, new_r_target_relation)
+                # new_r_target_relation = r_cjt.absorption(r_cjt.target_relation, r_cjt.get_useful_attributes(r_cjt.target_relation), ExecuteMode.WRITE_TO_TABLE)
+                # r_cjt.replace(r_cjt.target_relation, new_r_target_relation)
 
-            #     # g_col, h_col = self.semi_ring.get_columns_name()
-            #     # new_l_target_relation = l_cjt.partition_target_relation(r_name, g_col, h_col)
-            #     # if new_l_target_relation is not None:
-            #     #     l_cjt.replace(l_cjt.target_relation, new_l_target_relation)
-            #     #     self.nodes[l_id] = l_cjt
+                # better, find which dimension attribute is used for split
+                # then only perform semi-join with relation on that attribute
+                new_l_target_relation = l_cjt.partition_target_relation(r_name)
+                if new_l_target_relation is not None:
+                    l_cjt.replace(l_cjt.target_relation, new_l_target_relation)
+                    self.nodes[l_id] = l_cjt
 
-            #     # # partition the target relation for the right subtree
-            #     # # TODO: maybe this can be derived from left result instead of traversing tree again. Might not be worth it.
-            #     # new_r_target_relation = r_cjt.partition_target_relation(r_name, g_col, h_col)
-            #     # if new_r_target_relation is not None:
-            #     #     r_cjt.replace(r_cjt.target_relation, new_r_target_relation)
-            #     #     self.nodes[r_id] = r_cjt
+                # partition the target relation for the right subtree
+                # TODO: maybe this can be derived from left result instead of traversing tree again. Might not be worth it.
+                new_r_target_relation = r_cjt.partition_target_relation(r_name)
+                if new_r_target_relation is not None:
+                    r_cjt.replace(r_cjt.target_relation, new_r_target_relation)
+                    self.nodes[r_id] = r_cjt
 
             self._get_best_split(l_id, cur_level + 1)
             self._get_best_split(r_id, cur_level + 1)
@@ -593,9 +595,11 @@ class GradientBoosting(DecisionTree):
             self.train_one()
 
     def _update_error(self):
+
+        # use the target_relation of the root node, because leaf nodes can be over partitioned
+        target_relation = self.cjt.target_relation
+
         for cur_cjt in self.leaf_nodes:
-            cur_cond = []
-            target_relation = cur_cjt.target_relation
             g, h = cur_cjt.get_semi_ring().get_value()
             pred = g / h * self.learning_rate
             _, join_conds = cur_cjt._get_income_messages(
@@ -604,8 +608,10 @@ class GradientBoosting(DecisionTree):
 
             g_col, _ = self.semi_ring.get_columns_name()
             self.cjt.exe.update_query(
-                f"{g_col}={g_col}-({pred})", target_relation, join_conds +
-                cur_cjt.get_annotations(target_relation)
+                f"{g_col}={g_col}-({pred})", 
+                target_relation, 
+                join_conds + cur_cjt.get_annotations(target_relation),
+                qualified=False,
             )
 
 

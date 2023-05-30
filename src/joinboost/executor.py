@@ -288,7 +288,7 @@ class DuckdbExecutor(Executor):
         if not table.startswith(self.prefix):
             raise Exception("Don't modify user tables!")
 
-    def update_query(self, update_expression, table, select_conds: list = []):
+    def update_query(self, update_expression, table, select_conds: list = [], qualified=True):
         """
         Executes an SQL UPDATE statement on a specified table with the provided update_expression.
 
@@ -314,7 +314,7 @@ class DuckdbExecutor(Executor):
         sql = "UPDATE " + table + " SET " + update_expression + " \n"
 
         if len(select_conds) > 0:
-            sql += "WHERE " + " AND ".join([selection_to_sql(cond) for cond in select_conds]) + "\n"
+            sql += "WHERE " + " AND ".join([selection_to_sql(cond, qualified) for cond in select_conds]) + "\n"
         self._execute_query(sql)
 
     def execute_spja_query(
