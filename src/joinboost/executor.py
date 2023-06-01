@@ -21,7 +21,7 @@ class ExecutorException(Exception):
     pass
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=False)
 class SPJAData:
     """
     Data structure for SPJA queries. Could be recursive (e.g, from_tables could be a list of SPJAData objects).
@@ -645,26 +645,30 @@ class PandasExecutor(DuckdbExecutor):
             merged = merged[merged.key == merged.key_]
             return merged[list(df1.columns[:-1])]
 
+        result = None
+        name = None
         if operation == "UNION":
-            df1 = pd.concat([df1, df2], ignore_index=True)
+            result = pd.concat([df1, df2], ignore_index=True)
         elif operation == "UNION ALL":
-            df1 = pd.concat([df1, df2])
+            result = pd.concat([df1, df2])
         elif operation == "INTERSECT":
-            df1 = pd.merge(df1, df2)
+            result = pd.merge(df1, df2)
         elif operation == "INTERSECT ALL":
-            df1 = intersect_all(df1, df2)
+            result = intersect_all(df1, df2)
         elif operation == "EXCEPT":
-            df1 = df1.merge(df2, how='outer', indicator=True).query('_merge=="left_only"').drop('_merge', axis=1)
+            result = df1.merge(df2, how='outer', indicator=True).query('_merge=="left_only"').drop('_merge', axis=1)
         elif operation == "EXCEPT ALL":
+            name = self.get_next_name()
             df1['_key'] = df1.groupby(list(df1.columns)).cumcount()
             df2['_key'] = df2.groupby(list(df2.columns)).cumcount()
-            df1 = pd.merge(df1, df2, how='outer', on=list(df1.columns), indicator=True, suffixes=['', '_y'])
-            df1 = df1.query('_merge=="left_only"').drop(['_merge', '_key'], axis=1)
+            # result = pd.merge(df1, df2, how='left', indicator=True).loc[lambda x: x['_merge'] == 'left_only'].drop(columns='_merge')
+            result = pd.merge(df1, df2, how='outer', on=list(df1.columns), indicator=True, suffixes=['', '_y'])
+            result = result.query('_merge=="left_only"').drop(['_merge', '_key'], axis=1)
         else:
             raise ExecutorException("Unsupported set operation!")
         
-        self.table_registry[df1_name] = df1
-        return df1_name
+        self.table_registry[name] = result
+        return name
 
     def get_schema(self, table):
         # unqualify the column names, this is required as duckdb returns unqualified column names
@@ -726,6 +730,7 @@ class PandasExecutor(DuckdbExecutor):
 
     def apply_group_by_and_agg(self, df, spja_data):
         result_df = pd.DataFrame()
+        direct_renaming_mapping = dict()
         if len(spja_data.group_by) > 0 or len(spja_data.window_by) > 0:
         
             # spja_data.aggregate_expressions is a dictionary
@@ -744,6 +749,13 @@ class PandasExecutor(DuckdbExecutor):
                     expression[agg_expr.para].append(agg_expr.agg.name.lower())
                     # Create mapping for renaming later
                     target_mapping[agg_expr.para + "_" + agg_expr.agg.name.lower()] = target
+                # TODO: related to a join key mismatch
+                # else:
+                #     if isinstance(agg_expr.para, QualifiedAttribute):
+                #         direct_renaming_mapping[agg_expr.para.attribute_name] = target
+                #     else:
+                #         direct_renaming_mapping[agg_expr.para] = target
+
             
             # semi-join message has group-by without expression
             if len(expression) > 0:
@@ -773,8 +785,10 @@ class PandasExecutor(DuckdbExecutor):
             for target, agg_expr in spja_data.aggregate_expressions.items():
                 target = value_to_sql(target,False)
                 result_df[target] = agg_to_np(agg_expr, df)
-                
-            result_df[spja_data.target_schema()]
+
+        # # TODO: related to a fix for join key mismatch
+        # if len(direct_renaming_mapping) > 0:
+        #     result_df.rename(columns=direct_renaming_mapping, inplace=True)
             
         # only keep the attributes needed
         return result_df[spja_data.target_schema()]
@@ -837,7 +851,14 @@ class PandasExecutor(DuckdbExecutor):
             for left_key, right_key in zip(join_cond['left_keys'], join_cond['right_keys']):
                 if left_key != right_key:
                     right_table = right_table.rename(columns={right_key: left_key})
-                    
+                    # TODO: fix related to column name mismatch
+                    # # ALso update the spja_data.aggregate_expressions to use the new column name
+                    # for target, agg_expr in spja_data.aggregate_expressions.copy().items():
+                    #     if value_to_sql(agg_expr.para, False) == right_key:
+                    #         new_target = QualifiedAttribute(left_table_name, left_key)
+                    #         spja_data.aggregate_expressions[target] = AggExpression(agg_expr.agg, new_target)
+                    #         # del spja_data.aggregate_expressionsons[target]
+
             # for the first step
             if result is None:
 

@@ -251,7 +251,7 @@ class CJT(JoinGraph):
                         m_type = Message.FULL
 
         # get the group_by key for this message
-        l_join_keys, _ = self.get_join_keys(from_table, to_table)
+        l_join_keys, r_join_keys = self.get_join_keys(from_table, to_table)
 
         # compute aggregation
         cols = self.semi_ring.get_columns_name()
