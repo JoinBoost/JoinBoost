@@ -677,7 +677,14 @@ class PandasExecutor(DuckdbExecutor):
 
     def melt(self, table, id_vars, value_vars, var_name, value_name):
         df = self.table_registry[table]
-        df = pd.melt(df, id_vars=id_vars, value_vars=value_vars, var_name=var_name, value_name=value_name)
+        unqualified_attrs = []
+        for attr in value_vars:
+            if isinstance(attr, QualifiedAttribute):
+                unqualified_attrs.append(attr.attribute_name)
+            else:
+                unqualified_attrs.append(attr)
+
+        df = pd.melt(df, id_vars=id_vars, value_vars=unqualified_attrs, var_name=var_name, value_name=value_name)
         # name = self.get_next_name()
         # self.table_registry[table] = df
         return df
