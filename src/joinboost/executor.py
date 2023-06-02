@@ -675,6 +675,17 @@ class PandasExecutor(DuckdbExecutor):
         return [col.split(".")[-1] for col in self.table_registry[table].columns]
 
 
+    def melt(self, table, id_vars, value_vars, var_name, value_name):
+        df = self.table_registry[table]
+        df = pd.melt(df, id_vars=id_vars, value_vars=value_vars, var_name=var_name, value_name=value_name)
+        # name = self.get_next_name()
+        # self.table_registry[table] = df
+        return df
+
+    def concat(self, table_list):
+        return pd.concat(table_list)
+
+
     def execute_spja_query(
         self, spja_data: SPJAData, mode: ExecuteMode = ExecuteMode.WRITE_TO_TABLE
     ):

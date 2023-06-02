@@ -3,7 +3,7 @@ from abc import ABC
 
 from .preprocessor import Preprocessor, RenameStep
 from .executor import SPJAData, PandasExecutor, ExecuteMode
-from .joingraph import JoinGraph
+import pandas as pd
 from .semiring import *
 from .aggregator import *
 from .cjt import CJT
@@ -59,6 +59,7 @@ class DecisionTree(DummyModel):
         subsample: float = 1,
         debug: bool = False,
         partition_early: bool = True,
+        enable_batch_optimization: bool = False, # This is only applicable for CUDF right now
     ):
         assert max_leaves > 0, "max_leaves should be positive"
         assert max_depth > 0, "max_depth should be positive"
@@ -66,6 +67,8 @@ class DecisionTree(DummyModel):
         assert 0 < subsample <= 1, "subsample should be in (0, 1]"
         # learning rate should be in (0, 1]
         assert 0 < learning_rate <= 1, "learning_rate should be in (0, 1]"
+        # enable_batch_optimization is only available for CUDF right now
+        assert enable_batch_optimization and pd.__name__ != "cudf", "Batch optimization is only available for CUDF"
 
         super().__init__()
         # whether the fact table is partitioned early
@@ -75,6 +78,7 @@ class DecisionTree(DummyModel):
         self.max_depth = max_depth
         self.subsample = subsample
         self.debug = debug
+        self.enable_batch_optimization = enable_batch_optimization
         self.preprocessor = Preprocessor()
 
     def _fit(self, jg: JoinGraph):
@@ -394,87 +398,129 @@ class DecisionTree(DummyModel):
         g, h = cur_semi_ring.get_value()
         const_ = float((g**2) / h)
 
-        for r_name in cjt.relations:
-            for attr in cjt.get_relation_features(r_name):
-                attr_type, group_by = cjt.get_feature_type(r_name, attr), [attr]
-                absoprtion_view = cjt.absorption(r_name, group_by)
+        if not self.enable_batch_optimization:
+            for r_name in cjt.relations:
+                for attr in cjt.get_relation_features(r_name):
+                    attr_type, group_by = cjt.get_feature_type(r_name, attr), [attr]
+                    absorption_view = cjt.absorption(r_name, group_by)
 
-                if attr_type == "NUM":
-                    agg_exp = cur_semi_ring.col_sum((g_col, h_col))
-                    # the query is over the absorption view, so attr is not qualified
-                    agg_exp[attr] = AggExpression(Aggregator.IDENTITY, 
-                                                  value_to_sql(attr,qualified=False))
-                    spja_data = SPJAData(aggregate_expressions=agg_exp, 
-                                         from_tables=[absoprtion_view], 
-                                         window_by=[attr])
-                    view_to_max = self.cjt.exe.execute_spja_query(spja_data, mode=ExecuteMode.NESTED_QUERY)
+                    if attr_type == "NUM":
+                        agg_exp = cur_semi_ring.col_sum((g_col, h_col))
+                        # the query is over the absorption view, so attr is not qualified
+                        agg_exp[attr] = AggExpression(Aggregator.IDENTITY,
+                                                      value_to_sql(attr,qualified=False))
+                        spja_data = SPJAData(aggregate_expressions=agg_exp,
+                                             from_tables=[absorption_view],
+                                             window_by=[attr])
+                        view_to_max = self.cjt.exe.execute_spja_query(spja_data, mode=ExecuteMode.NESTED_QUERY)
 
-                elif attr_type == "LCAT":
-                    # TODO: further optimization. We don't need to keep the attr.
-                    # The only thing we care for splitting is the sum_s/sum_c
-                    agg_exp = {
-                        attr: AggExpression(Aggregator.IDENTITY, 
-                                            value_to_sql(attr,qualified=False)),
-                        "object": AggExpression(Aggregator.DIV, (g_col, h_col)),
-                        g_col: AggExpression(Aggregator.IDENTITY, g_col),
-                        h_col: AggExpression(Aggregator.IDENTITY, h_col),
-                    }
+                    elif attr_type == "LCAT":
+                        # TODO: further optimization. We don't need to keep the attr.
+                        # The only thing we care for splitting is the sum_s/sum_c
+                        agg_exp = {
+                            attr: AggExpression(Aggregator.IDENTITY,
+                                                value_to_sql(attr,qualified=False)),
+                            "object": AggExpression(Aggregator.DIV, (g_col, h_col)),
+                            g_col: AggExpression(Aggregator.IDENTITY, g_col),
+                            h_col: AggExpression(Aggregator.IDENTITY, h_col),
+                        }
+                        spja_data = SPJAData(
+                            aggregate_expressions=agg_exp, from_tables=[
+                                absorption_view]
+                        )
+                        obj_view = self.cjt.exe.execute_spja_query(
+                            spja_data, mode=ExecuteMode.NESTED_QUERY
+                        )
+                        agg_exp = cur_semi_ring.col_sum((g_col, h_col))
+                        agg_exp[attr] = AggExpression(Aggregator.IDENTITY,
+                                                      value_to_sql(attr,qualified=False))
+                        agg_exp["object"] = AggExpression(
+                            Aggregator.IDENTITY, "object")
+
+                        spja_data = SPJAData(
+                            aggregate_expressions=agg_exp,
+                            from_tables=[obj_view],
+                            window_by=["object"],
+                        )
+
+                        view_to_max = self.cjt.exe.execute_spja_query(
+                            spja_data, mode=ExecuteMode.NESTED_QUERY
+                        )
+
+                    elif attr_type == "CAT":
+                        view_to_max = absorption_view
+
+                    l2_agg_exp = {
+                            attr: AggExpression(Aggregator.IDENTITY, value_to_sql(attr,qualified=False)),
+                            # the case expression is for window functions
+                            "criteria": AggExpression(Aggregator.CASE,
+                                                      [(f"({g_col}/{h_col})*{g_col} + ({g}-{g_col})/({h}-{h_col})*({g}-{g_col})",
+                                                        [SelectionExpression(SELECTION.LESSER, (str(h_col),str(h)))])]),
+                            g_col: AggExpression(Aggregator.IDENTITY, g_col),
+                            h_col: AggExpression(Aggregator.IDENTITY, h_col),
+                        }
+
                     spja_data = SPJAData(
-                        aggregate_expressions=agg_exp, from_tables=[
-                            absoprtion_view]
-                    )
-                    obj_view = self.cjt.exe.execute_spja_query(
-                        spja_data, mode=ExecuteMode.NESTED_QUERY
-                    )
-                    agg_exp = cur_semi_ring.col_sum((g_col, h_col))
-                    agg_exp[attr] = AggExpression(Aggregator.IDENTITY, 
-                                                  value_to_sql(attr,qualified=False))
-                    agg_exp["object"] = AggExpression(
-                        Aggregator.IDENTITY, "object")
+                        aggregate_expressions=l2_agg_exp,
+                        from_tables=[view_to_max],
+                        order_by=[("criteria", "DESC")],
+                        limit=1
+                        )
 
-                    spja_data = SPJAData(
-                        aggregate_expressions=agg_exp,
-                        from_tables=[obj_view],
-                        window_by=["object"],
-                    )
+                    results = self.cjt.exe.execute_spja_query(spja_data, mode=ExecuteMode.EXECUTE)
 
-                    view_to_max = self.cjt.exe.execute_spja_query(
-                        spja_data, mode=ExecuteMode.NESTED_QUERY
-                    )
+                    if not results:
+                        continue
 
-                elif attr_type == "CAT":
-                    view_to_max = absoprtion_view
+                    cur_value, cur_criteria, left_g, left_h = results[0]
 
-                l2_agg_exp = {
-                        attr: AggExpression(Aggregator.IDENTITY, value_to_sql(attr,qualified=False)),
-                        # the case expression is for window functions
-                        "criteria": AggExpression(Aggregator.CASE,
-                                                  [(f"({g_col}/{h_col})*{g_col} + ({g}-{g_col})/({h}-{h_col})*({g}-{g_col})",
-                                                    [SelectionExpression(SELECTION.LESSER, (str(h_col),str(h)))])]),
-                        g_col: AggExpression(Aggregator.IDENTITY, g_col),
-                        h_col: AggExpression(Aggregator.IDENTITY, h_col),
-                    }
+                    if cur_criteria > best_criteria:
+                        best_criteria = cur_criteria
+                        # relation name, split attribute, split value, left gradient, left hessian
+                        best_criteria_ann = (
+                            r_name, attr, str(cur_value), left_g, left_h)
+        else:
+            # The following should only be applicable for Pandas
+            absorptions = []
+            for relation in cjt.relations:
+                attrs = cjt.get_relation_features(relation)
+                l_keys = cjt.get_join_keys(relation, cjt.target_relation)[0]
+                absorption = cjt.absorption(relation, group_by=l_keys)
+                absorption = cjt.exe.melt(absorption, id_vars=[g_col, h_col], value_vars=attrs, var_name='key',
+                                          value_name='value')
+                absorption['relation'] = relation
+                absorptions.append(absorption)
 
-                spja_data = SPJAData(
-                    aggregate_expressions=l2_agg_exp,
-                    from_tables=[view_to_max],
-                    order_by=[("criteria", "DESC")],
-                    limit=1
-                    )
-                
-                results = self.cjt.exe.execute_spja_query(spja_data, mode=ExecuteMode.EXECUTE)
-                
-                if not results:
-                    continue
+            result = cjt.exe.concat(absorptions)
+            result = result.groupby(['relation', 'key', 'value']).sum().reset_index()
+            result = result.sort_values(['relation', 'key', 'value'])
+            result[[g_col, h_col]] = result.groupby(['relation', 'key'])[[g_col, h_col]].cumsum()
+            if result[g_col].dtype != 'float64':
+                result[g_col] = result[g_col].astype('float64')
+            if result[h_col].dtype != 'float64':
+                result[h_col] = result[h_col].astype('float64')
 
-                cur_value, cur_criteria, left_g, left_h = results[0]
+            result = result[result[h_col] < h]
 
-                if cur_criteria > best_criteria:
-                    best_criteria = cur_criteria
-                    # relation name, split attribute, split value, left gradient, left hessian
-                    best_criteria_ann = (
-                        r_name, attr, str(cur_value), left_g, left_h)
-                    
+            result["g"] = float(g)
+            result["h"] = float(h)
+
+            result = result.reset_index().assign(criteria=result.eval('(s*s/c) + ((g-s)* (g - s))/(h-c)'))
+            idx = result.groupby(['relation', 'key'])['criteria'].idxmax()
+            result = result.iloc[idx]
+
+            max_row = result.nlargest(1, 'criteria')
+            max_value = max_row["criteria"].iloc[-1]
+            max_s = max_row[g_col].iloc[-1]
+            max_c = max_row[h_col].iloc[-1]
+            max_index = max_row["value"].iloc[-1]
+            relation = max_row["relation"].iloc[-1]
+            feature = max_row["key"].iloc[-1]
+
+            # relation name, split attribute, split value, left gradient, left hessian
+            best_criteria_ann = (
+                relation, feature, str(max_index), max_s, max_c)
+
         self.split_candidates.put((const_ - float(best_criteria), cjt_depth,) + best_criteria_ann + (cjt_id,))
 
     # split the semi-ring according to current split

@@ -45,7 +45,7 @@ class TestExecutor(unittest.TestCase):
         dataset.add_join("supplier", "lineorder", ["SUPPKEY"], ["SUPPKEY"])
 
         depth = 3
-        gb = DecisionTree(learning_rate=1, max_leaves=2 ** depth, max_depth=depth, partition_early=True)
+        gb = DecisionTree(learning_rate=1, max_leaves=2 ** depth, max_depth=depth, enable_batch_optimization=True)
 
         gb.fit(dataset)
         gb._build_model_legacy()
