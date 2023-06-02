@@ -674,7 +674,6 @@ class PandasExecutor(DuckdbExecutor):
         # unqualify the column names, this is required as duckdb returns unqualified column names
         return [col.split(".")[-1] for col in self.table_registry[table].columns]
 
-
     def melt(self, table, id_vars, value_vars, var_name, value_name):
         df = self.table_registry[table]
         unqualified_attrs = []
