@@ -32,7 +32,7 @@ class JoinGraph:
         # join graph node information
         # relation_schema maps each relation => {feature: feature_type}
         self.relations = copy.deepcopy(relations)
-        
+
         self.target_var = target_var
         self.target_relation = target_relation
 
@@ -54,7 +54,11 @@ class JoinGraph:
             self.target_var,
             self.target_relation,
         )
-    
+
+    def get_base_relations(self):
+        # return the relations that don't have tmp in the name and are not the target relation
+        return [r for r in self.relations if "tmp" not in r and r != self.target_relation]
+
     # the @property decorator is used to define properties,
     # these properties are read-only
     # example usage:

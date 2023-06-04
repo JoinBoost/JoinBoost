@@ -159,6 +159,21 @@ class Executor(ABC):
         """
 
     @abstractmethod
+    def rename_column(self, table, old_name, new_name):
+        """
+        Rename a column in a table.
+
+        Parameters
+        ----------
+        table : str
+            The name of the table.
+        old_name : str
+            The old name of the column.
+        new_name : str
+            The new name of the column.
+        """
+
+    @abstractmethod
     def execute_spja_query(
         self,
         spja_data: SPJAData,
@@ -447,7 +462,7 @@ class DuckdbExecutor(Executor):
 
         return sql
 
-    def rename(self, table, old_name, new_name):
+    def rename_column(self, table, old_name, new_name):
         sql = f"ALTER TABLE {table} RENAME COLUMN {old_name} TO {new_name};"
         self._execute_query(sql)
 
@@ -628,6 +643,11 @@ class PandasExecutor(DuckdbExecutor):
 
         if table in self.table_registry:
             del self.table_registry[table]
+
+    def rename_column(self, table, old_name, new_name):
+        df = self.table_registry[table]
+        df.rename(columns={old_name: new_name}, inplace=True)
+        self.table_registry[table] = df
 
     # set operations in pandas
     def set_query(self, operation, df1_name, df2_name):
@@ -867,7 +887,7 @@ class PandasExecutor(DuckdbExecutor):
             # This is to avoid unexpected column duplication after join 
             for left_key, right_key in zip(join_cond['left_keys'], join_cond['right_keys']):
                 if left_key != right_key:
-                    right_table = right_table.rename(columns={right_key: left_key})
+                    right_table = right_table.rename_column(columns={right_key: left_key})
                     # TODO: fix related to column name mismatch
                     # # ALso update the spja_data.aggregate_expressions to use the new column name
                     # for target, agg_expr in spja_data.aggregate_expressions.copy().items():

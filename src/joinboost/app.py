@@ -1,6 +1,7 @@
 import math
 from abc import ABC
 
+from .joingraph import JoinGraphException
 from .preprocessor import Preprocessor, RenameStep
 from .executor import SPJAData, PandasExecutor, ExecuteMode
 import pandas as pd
@@ -59,7 +60,7 @@ class DecisionTree(DummyModel):
         subsample: float = 1,
         debug: bool = False,
         partition_early: bool = True,
-        enable_batch_optimization: bool = False, # This is only applicable for CUDF right now
+        enable_batch_optimization: bool = False, # This is only applicable for pandas right now
     ):
         assert max_leaves > 0, "max_leaves should be positive"
         assert max_depth > 0, "max_depth should be positive"
@@ -67,8 +68,6 @@ class DecisionTree(DummyModel):
         assert 0 < subsample <= 1, "subsample should be in (0, 1]"
         # learning rate should be in (0, 1]
         assert 0 < learning_rate <= 1, "learning_rate should be in (0, 1]"
-        # enable_batch_optimization is only available for CUDF right now
-        assert enable_batch_optimization and pd.__name__ != "cudf", "Batch optimization is only available for CUDF"
 
         super().__init__()
         # whether the fact table is partitioned early
@@ -482,10 +481,14 @@ class DecisionTree(DummyModel):
         else:
             # The following should only be applicable for Pandas
             absorptions = []
-            for relation in cjt.relations:
+            for relation in cjt.get_base_relations():
                 attrs = cjt.get_relation_features(relation)
-                l_keys = cjt.get_join_keys(relation, cjt.target_relation)[0]
-                absorption = cjt.absorption(relation, group_by=l_keys)
+                # TODO: can optimize to avoid expensive try-catch
+                try:
+                    l_keys = cjt.get_join_keys(relation, cjt.target_relation)[0]
+                except JoinGraphException:
+                    l_keys = []
+                absorption = cjt.absorption(relation, group_by=list(set(attrs + l_keys)))
                 absorption = cjt.exe.melt(absorption, id_vars=[g_col, h_col], value_vars=attrs, var_name='key',
                                           value_name='value')
                 absorption['relation'] = relation
@@ -510,7 +513,7 @@ class DecisionTree(DummyModel):
             result = result.iloc[idx]
 
             max_row = result.nlargest(1, 'criteria')
-            max_value = max_row["criteria"].iloc[-1]
+            # max_value = max_row["criteria"].iloc[-1]
             max_s = max_row[g_col].iloc[-1]
             max_c = max_row[h_col].iloc[-1]
             max_index = max_row["value"].iloc[-1]
