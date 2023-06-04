@@ -1,3 +1,4 @@
+import time
 import unittest
 import math
 import pandas as pd
@@ -42,9 +43,11 @@ class TestModel(unittest.TestCase):
         dataset.add_join("supplier", "lineorder", ["SUPPKEY"], ["SUPPKEY"])
 
         depth = 3
-        gb = DecisionTree(learning_rate=1, max_leaves=2 ** depth, max_depth=depth)
+        gb = DecisionTree(learning_rate=1, max_leaves=2 ** depth, max_depth=depth, partition_early=True)
 
+        start_time = time.time()
         gb.fit(dataset)
+        print("Time taken to fit: ", time.time() - start_time)
         gb._build_model_legacy()
         
         for line in gb.model_def:
@@ -124,9 +127,11 @@ class TestModel(unittest.TestCase):
         dataset.add_join("holidays", "oil", ["date"], ["date"])
 
         depth = 3
-        reg = DecisionTree(learning_rate=1, max_leaves=2**depth, max_depth=depth)
+        reg = DecisionTree(learning_rate=1, max_leaves=2**depth, max_depth=depth, partition_early=False)
 
+        start_time = time.time()
         reg.fit(dataset)
+        print("Time taken to fit: ", time.time() - start_time)
 
         data = pd.read_csv("../data/favorita/train_small.csv")
         clf = DecisionTreeRegressor(max_depth=depth)
