@@ -397,7 +397,11 @@ class DecisionTree(DummyModel):
         g, h = cur_semi_ring.get_value()
         const_ = float((g**2) / h)
 
+        # the next task is to compute the best split split among all the features
+        # naively, we can iterate over all the features and compute the best split
+        # alternatively, we batch the computation of the best split for all the features
         if not self.enable_batch_optimization:
+            # if not batch optimization, we iterate over all the relations and their features
             for r_name in cjt.relations:
                 for attr in cjt.get_relation_features(r_name):
                     attr_type, group_by = cjt.get_feature_type(r_name, attr), [attr]
@@ -478,19 +482,21 @@ class DecisionTree(DummyModel):
                         # relation name, split attribute, split value, left gradient, left hessian
                         best_criteria_ann = (
                             r_name, attr, str(cur_value), left_g, left_h)
+                        
+        # with batch optimization, we compute the best split for all the features              
         else:
-            # The following should only be applicable for Pandas
+            # TODO:  following currenly only work for Pandas, and split by numerical features            
             absorptions = []
+
             for relation in cjt.get_base_relations():
-                attrs = cjt.get_relation_features(relation)
-                # TODO: can optimize to avoid expensive try-catch
-                try:
-                    l_keys = cjt.get_join_keys(relation, cjt.target_relation)[0]
-                except JoinGraphException:
-                    l_keys = []
-                absorption = cjt.absorption(relation, group_by=list(set(attrs + l_keys)))
-                absorption = cjt.exe.melt(absorption, id_vars=[g_col, h_col], value_vars=attrs, var_name='key',
+                features = cjt.get_relation_features(relation)
+                absorption = cjt.absorption(relation, group_by=list(set(features)))
+                absorption = cjt.exe.melt(absorption, 
+                                          id_vars= self.semi_ring.get_columns_name(), 
+                                          value_vars=features, 
+                                          var_name='key',
                                           value_name='value')
+                # set the relation name to dataframe
                 absorption['relation'] = relation
                 absorptions.append(absorption)
 
@@ -498,17 +504,21 @@ class DecisionTree(DummyModel):
             result = result.groupby(['relation', 'key', 'value']).sum().reset_index()
             result = result.sort_values(['relation', 'key', 'value'])
             result[[g_col, h_col]] = result.groupby(['relation', 'key'])[[g_col, h_col]].cumsum()
+
             if result[g_col].dtype != 'float64':
                 result[g_col] = result[g_col].astype('float64')
             if result[h_col].dtype != 'float64':
                 result[h_col] = result[h_col].astype('float64')
 
+            
             result = result[result[h_col] < h]
 
-            result["g"] = float(g)
-            result["h"] = float(h)
+            # these are for the total sum of g and h
+            # this seems wasteful, but necessary for pandas eval
+            result["ts"] = float(g)
+            result["tc"] = float(h)
 
-            result = result.reset_index().assign(criteria=result.eval('(s*s/c) + ((g-s)* (g - s))/(h-c)'))
+            result = result.reset_index().assign(criteria=result.eval('(s*s/c) + ((ts-s)* (ts - s))/(tc-c)'))
             idx = result.groupby(['relation', 'key'])['criteria'].idxmax()
             result = result.iloc[idx]
 
@@ -521,8 +531,7 @@ class DecisionTree(DummyModel):
             feature = max_row["key"].iloc[-1]
 
             # relation name, split attribute, split value, left gradient, left hessian
-            best_criteria_ann = (
-                relation, feature, str(max_index), max_s, max_c)
+            best_criteria_ann = (relation, feature, str(max_index), max_s, max_c)
 
         self.split_candidates.put((const_ - float(best_criteria), cjt_depth,) + best_criteria_ann + (cjt_id,))
 

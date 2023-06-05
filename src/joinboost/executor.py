@@ -696,13 +696,7 @@ class PandasExecutor(DuckdbExecutor):
 
     def melt(self, table, id_vars, value_vars, var_name, value_name):
         df = self.table_registry[table]
-        unqualified_attrs = []
-        for attr in value_vars:
-            if isinstance(attr, QualifiedAttribute):
-                unqualified_attrs.append(attr.attribute_name)
-            else:
-                unqualified_attrs.append(attr)
-
+        unqualified_attrs = [value_to_sql(var, qualified=False) for var in value_vars]
         df = pd.melt(df, id_vars=id_vars, value_vars=unqualified_attrs, var_name=var_name, value_name=value_name)
         # name = self.get_next_name()
         # self.table_registry[table] = df
@@ -710,7 +704,6 @@ class PandasExecutor(DuckdbExecutor):
 
     def concat(self, table_list):
         return pd.concat(table_list)
-
 
     def execute_spja_query(
         self, spja_data: SPJAData, mode: ExecuteMode = ExecuteMode.WRITE_TO_TABLE
