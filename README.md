@@ -43,7 +43,6 @@ reg = DecisionTree(learning_rate=1, max_leaves=8)
 reg.fit(dataset)
 ```
 
-
 [Please Check out this notebook for Demo on DuckDB](https://colab.research.google.com/github/zachary62/JoinBoost/blob/main/demo/JoinBoostDemo.ipynb)
 
 [Demo on Spark](https://colab.research.google.com/github/zachary62/JoinBoost/blob/main/demo/JoinBoostSparkDemo.ipynb)
@@ -51,14 +50,6 @@ reg.fit(dataset)
 [TODO: Demo for CUDF](https://colab.research.google.com/github/zachary62/JoinBoost/blob/main/demo/rapids_cudf.ipynb)
 
 [Gitpod for code development]( https://gitpod.io/new#https://github.com/zachary62/JoinBoost)
-
-## Docs
-
-Documentation is currently under development. To build docs locally, download [Sphinx](https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html) and run
-```bash
-make html
-```
-in the folder `docs`. The docs will be generated in the folder `docs/build/html`.
 
 ## Reproducibility
 
@@ -69,3 +60,4 @@ We note that some optimizations discussed in the paper (e.g., inter-query parall
 The Favorita dataset is too large to store in Github. Please download files from https://www.dropbox.com/sh/ymwn98pvederw6x/AAC-z6R_rKvU40KZDCyitjsda?dl=0 and uncompress the files. 
 
 The modified DuckDB to support column swap is at https://anonymous.4open.science/r/duckdb-D056.
+](https://anonymous.4open.science/r/JoinBoost-FBC4/technical/JoinBoost_tech.pdf)
