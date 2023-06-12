@@ -58,6 +58,7 @@ class TestExecutor(unittest.TestCase):
         # mse = mean_squared_error(join[y], clf.predict(join[x]))
 
         # self.assertTrue(abs(gb.compute_rmse('test')[0] - math.sqrt(mse)) < 1e-3)
+
     def test_demo(self):
         con = duckdb.connect(database=':memory:')
         con.execute("CREATE TABLE customer AS SELECT * FROM '../data/demo/customer.csv'")
@@ -75,6 +76,9 @@ class TestExecutor(unittest.TestCase):
 
         dataset = JoinGraph(exe=exe)
         dataset.add_relation('lineorder', [], y='REVENUE', relation_address='../data/demo/lineorder.csv')
+        # required for cudf
+        dataset.exe.table_registry['lineorder']['REVENUE'] = dataset.exe.table_registry['lineorder']['REVENUE'].astype(
+            float)
         # Hack to make pandas work when join column doesn't match
         exe.rename_column('lineorder', 'ORDERDATE', 'DATEKEY')
         dataset.add_relation('customer', ['NAME', 'ADDRESS', 'CITY'], relation_address='../data/demo/customer.csv')
