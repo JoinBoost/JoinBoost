@@ -488,7 +488,7 @@ class DecisionTree(DummyModel):
             # TODO:  following currenly only work for Pandas, and split by numerical features            
             absorptions = []
 
-            for relation in cjt.get_base_relations():
+            for relation in cjt.relations:
                 features = cjt.get_relation_features(relation)
                 absorption = cjt.absorption(relation, group_by=list(set(features)))
                 absorption = cjt.exe.melt(absorption, 
@@ -523,12 +523,13 @@ class DecisionTree(DummyModel):
             result = result.iloc[idx]
 
             max_row = result.nlargest(1, 'criteria')
-            # max_value = max_row["criteria"].iloc[-1]
+            best_criteria = max_row["criteria"].iloc[-1]
             max_s = max_row[g_col].iloc[-1]
             max_c = max_row[h_col].iloc[-1]
             max_index = max_row["value"].iloc[-1]
             relation = max_row["relation"].iloc[-1]
             feature = max_row["key"].iloc[-1]
+
 
             # relation name, split attribute, split value, left gradient, left hessian
             best_criteria_ann = (relation, feature, str(max_index), max_s, max_c)
