@@ -39,7 +39,7 @@ class TestModel(unittest.TestCase):
         dataset.add_relation('supplier', ['NAME', 'ADDRESS', 'CITY', 'NATION'], relation_address='../data/demo/supplier.csv')
         dataset.add_join("customer", "lineorder", ["CUSTKEY"], ["CUSTKEY"])
         dataset.add_join("part", "lineorder", ["PARTKEY"], ["PARTKEY"])
-        dataset.add_join("date", "lineorder", ["DATEKEY"], ["ORDERDATE"])
+        dataset.add_join("date", "lineorder", ["ORDERDATE"], ["ORDERDATE"])
         dataset.add_join("supplier", "lineorder", ["SUPPKEY"], ["SUPPKEY"])
 
         depth = 3
