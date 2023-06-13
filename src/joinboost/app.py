@@ -720,7 +720,7 @@ class DecisionTree(DummyModel):
             self._get_best_split(l_id, cur_level + 1)
             self._get_best_split(r_id, cur_level + 1)
 
-        print(self.split_candidates.peek())
+
         self.leaf_nodes = [self.nodes[ele[-1]] for ele in self.split_candidates]
 
 

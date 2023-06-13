@@ -875,7 +875,7 @@ class PandasExecutor(DuckdbExecutor):
             # This is to avoid unexpected column duplication after join 
             for left_key, right_key in zip(join_cond['left_keys'], join_cond['right_keys']):
                 if left_key != right_key:
-                    right_table = right_table.rename_column(columns={right_key: left_key})
+                    right_table = right_table.rename(columns={right_key: left_key})
                     # TODO: fix related to column name mismatch
                     # # ALso update the spja_data.aggregate_expressions to use the new column name
                     # for target, agg_expr in spja_data.aggregate_expressions.copy().items():
