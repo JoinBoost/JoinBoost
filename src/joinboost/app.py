@@ -12,6 +12,87 @@ from queue import PriorityQueue
 import numpy as np
 from typing import Union
 
+class PQ:
+    def __init__(self):
+        self._queue = PriorityQueue()
+
+    def put(self, item):
+        self._queue.put(item)
+
+    def pop(self):
+        return self._queue.get()
+
+    def empty(self):
+        return self._queue.empty()
+
+    def size(self):
+        return self._queue.qsize()
+
+    def peek(self):
+        return self._queue.queue[0]
+
+    def __iter__(self):
+        return self._queue.queue.__iter__()
+
+class Queue:
+    def __init__(self):
+        self._queue = []
+
+    def put(self, item):
+        self._queue.append(item)
+
+    def pop(self):
+        if not self.empty():
+            return self._queue.pop(0)
+        else:
+            raise IndexError('pop from empty queue')
+
+    def empty(self):
+        return len(self._queue) == 0
+
+    def size(self):
+        return len(self._queue)
+
+    def peek(self):
+        if not self.empty():
+            return self._queue[0]
+        else:
+            raise IndexError('peek from empty queue')
+
+    def __iter__(self):
+        return iter(self._queue)
+
+class Stack:
+    def __init__(self):
+        self._stack = []
+
+    def put(self, item):
+        self._stack.append(item)
+
+    def pop(self):
+        if not self.empty():
+            return self._stack.pop()
+        else:
+            raise IndexError('pop from empty stack')
+
+    def empty(self):
+        return len(self._stack) == 0
+
+    def size(self):
+        return len(self._stack)
+
+    def peek(self):
+        if not self.empty():
+            return self._stack[-1]
+        else:
+            raise IndexError('peek from empty stack')
+
+    def __iter__(self):
+        return iter(self._stack)
+
+
+
+
 
 class App(ABC):
     def __init__(self):
@@ -58,6 +139,7 @@ class DecisionTree(DummyModel):
         learning_rate: float = 1,
         max_depth: int = 6,
         subsample: float = 1,
+        growth: str = "bestfirst",
         debug: bool = False,
         partition_early: bool = True,
         enable_batch_optimization: bool = False, # This is only applicable for pandas right now
@@ -79,6 +161,9 @@ class DecisionTree(DummyModel):
         self.debug = debug
         self.enable_batch_optimization = enable_batch_optimization
         self.preprocessor = Preprocessor()
+        # check if growth string is in "bestfirst", "depthwise" or "levelwise"
+        assert growth in ["bestfirst", "depthwise", "levelwise"]
+        self.growth = growth
 
     def _fit(self, jg: JoinGraph):
         jg._preprocess()
@@ -129,7 +214,13 @@ class DecisionTree(DummyModel):
 
         # store a pq of split_candidates, sorted on the criteria
         # this one is a bit complex. TODO: simplify or make it a class
-        self.split_candidates = PriorityQueue()
+        if self.growth == "bestfirst":
+            self.split_candidates = PQ()
+        elif self.growth == "depthwise":
+            self.split_candidates = Stack()
+        elif self.growth == "levelwise":
+            self.split_candidates = Queue()
+
 
         # leaf_nodes is used to compute the final models
         self.leaf_nodes = []
@@ -562,12 +653,12 @@ class DecisionTree(DummyModel):
             # while there are still candidates to split
             not self.split_candidates.empty()
             # while the split is beneficial
-            and self.split_candidates.queue[0][0] < 0
+            and self.split_candidates.peek()[0] < 0
             # while the number of leaves is less than the max number of leaves
-            and self.split_candidates.qsize() < self.max_leaves
+            and self.split_candidates.size() < self.max_leaves
         ):
             # get the best split
-            (criteria, cur_level, r_name, attr, cur_value, left_g, left_h, c_id,) = self.split_candidates.get()
+            (criteria, cur_level, r_name, attr, cur_value, left_g, left_h, c_id,) = self.split_candidates.pop()
             # get the cjt of the best split to expand
             expanding_cjt = self.nodes[c_id]
 
@@ -629,7 +720,8 @@ class DecisionTree(DummyModel):
             self._get_best_split(l_id, cur_level + 1)
             self._get_best_split(r_id, cur_level + 1)
 
-        self.leaf_nodes = [self.nodes[ele[-1]] for ele in self.split_candidates.queue]
+        print(self.split_candidates.peek())
+        self.leaf_nodes = [self.nodes[ele[-1]] for ele in self.split_candidates]
 
 
 class GradientBoosting(DecisionTree):
@@ -684,10 +776,20 @@ class RandomForest(DecisionTree):
         iteration: int = 1,
         debug: bool = False,
         partition_early: bool = False,
+        growth: str = "bestfirst",
+        enable_batch_optimization: bool = False, # This is only applicable for pandas right now 
     ):
         assert iteration > 0, "iteration should be positive"
 
-        super().__init__(max_leaves, learning_rate, max_depth, subsample, debug=debug, partition_early=partition_early)
+        super().__init__(max_leaves, 
+                         learning_rate, 
+                         max_depth, 
+                         subsample, 
+                         debug=debug, 
+                         partition_early=partition_early,
+                         growth=growth,
+                         enable_batch_optimization=enable_batch_optimization
+                         )
         self.iteration = iteration
         self.learning_rate = 1 / iteration
 
