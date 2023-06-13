@@ -708,6 +708,9 @@ class PandasExecutor(DuckdbExecutor):
     def execute_spja_query(
         self, spja_data: SPJAData, mode: ExecuteMode = ExecuteMode.WRITE_TO_TABLE
     ):
+        if self.debug:
+            print("Executing SPJA query: ", spja_data, " with mode: ", mode)
+            start = time.time()
         # check if SEMI_JOIN is one of the join_conditions
         # TODO: make SEMI_JOIN type uniform for pandas and duckdb and remove this condition
         for join_cond in spja_data.join_conds:
@@ -755,6 +758,8 @@ class PandasExecutor(DuckdbExecutor):
             if self.debug:
                 print("returning result")
                 print(df.head())
+                end = time.time()
+                print("Execution time: ", end - start)
         
         return df.values.tolist()
 
