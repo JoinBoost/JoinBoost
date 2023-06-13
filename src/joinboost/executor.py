@@ -620,13 +620,16 @@ class SparkExecutor(DuckdbExecutor):
         return view
 
 
-class PandasExecutor(DuckdbExecutor):
+class DataFrameExecutor(DuckdbExecutor):
     # Because Pandas is not a database, we use a dictionary to store table_name -> dataframe
     table_registry = {}
 
-    def __init__(self, conn, debug=False):
+    def __init__(self, conn, debug=False, df_lib=None):
         super().__init__(conn)
         self.debug = debug
+        if df_lib is None:
+            raise ExecutorException("Please pass in the pandas dataframe library!")
+        self.df = df_lib
 
     def add_table(self, table: str, table_address):
         if table_address is None:
@@ -634,7 +637,7 @@ class PandasExecutor(DuckdbExecutor):
 
         # check if the table_address is a string path
         if isinstance(table_address, str):
-            table_address = pd.read_csv(table_address)
+            table_address = self.df.read_csv(table_address)
         self.table_registry[table] = table_address
 
     def delete_table(self, table):
@@ -661,18 +664,18 @@ class PandasExecutor(DuckdbExecutor):
             # This function implements 'INTERSECT ALL' operation.
             df1['key'] = 1
             df2['key'] = 1
-            merged = pd.merge(df1, df2, on=list(df1.columns[:-1]), suffixes=['', '_'])
+            merged = self.df.merge(df1, df2, on=list(df1.columns[:-1]), suffixes=['', '_'])
             merged = merged[merged.key == merged.key_]
             return merged[list(df1.columns[:-1])]
 
         result = None
         name = None
         if operation == "UNION":
-            result = pd.concat([df1, df2], ignore_index=True)
+            result = self.df.concat([df1, df2], ignore_index=True)
         elif operation == "UNION ALL":
-            result = pd.concat([df1, df2])
+            result = self.df.concat([df1, df2])
         elif operation == "INTERSECT":
-            result = pd.merge(df1, df2)
+            result = self.df.merge(df1, df2)
         elif operation == "INTERSECT ALL":
             result = intersect_all(df1, df2)
         elif operation == "EXCEPT":
@@ -681,8 +684,8 @@ class PandasExecutor(DuckdbExecutor):
             name = self.get_next_name()
             df1['_key'] = df1.groupby(list(df1.columns)).cumcount()
             df2['_key'] = df2.groupby(list(df2.columns)).cumcount()
-            # result = pd.merge(df1, df2, how='left', indicator=True).loc[lambda x: x['_merge'] == 'left_only'].drop(columns='_merge')
-            result = pd.merge(df1, df2, how='outer', on=list(df1.columns), indicator=True, suffixes=['', '_y'])
+            # result = self.df.merge(df1, df2, how='left', indicator=True).loc[lambda x: x['_merge'] == 'left_only'].drop(columns='_merge')
+            result = self.df.merge(df1, df2, how='outer', on=list(df1.columns), indicator=True, suffixes=['', '_y'])
             result = result.query('_merge=="left_only"').drop(['_merge', '_key'], axis=1)
         else:
             raise ExecutorException("Unsupported set operation!")
@@ -697,13 +700,13 @@ class PandasExecutor(DuckdbExecutor):
     def melt(self, table, id_vars, value_vars, var_name, value_name):
         df = self.table_registry[table]
         unqualified_attrs = [value_to_sql(var, qualified=False) for var in value_vars]
-        df = pd.melt(df, id_vars=id_vars, value_vars=unqualified_attrs, var_name=var_name, value_name=value_name)
+        df = self.df.melt(df, id_vars=id_vars, value_vars=unqualified_attrs, var_name=var_name, value_name=value_name)
         # name = self.get_next_name()
         # self.table_registry[table] = df
         return df
 
     def concat(self, table_list):
-        return pd.concat(table_list)
+        return self.df.concat(table_list)
 
     def execute_spja_query(
         self, spja_data: SPJAData, mode: ExecuteMode = ExecuteMode.WRITE_TO_TABLE
@@ -764,7 +767,7 @@ class PandasExecutor(DuckdbExecutor):
         return df.values.tolist()
 
     def apply_group_by_and_agg(self, df, spja_data):
-        result_df = pd.DataFrame()
+        result_df = self.df.DataFrame()
         direct_renaming_mapping = dict()
         if len(spja_data.group_by) > 0 or len(spja_data.window_by) > 0:
         
@@ -892,27 +895,39 @@ class PandasExecutor(DuckdbExecutor):
             # for the first step
             if result is None:
 
-                if spja_data.join_type == 'leftsemi' and pd.__name__ == 'cudf':
-                    result = pd.merge(left_table, right_table, on=join_cond['left_keys'], how='leftsemi')
-                elif spja_data.join_type == 'leftsemi' and pd.__name__ == 'pandas':
+                if spja_data.join_type == 'leftsemi' and self.df.__name__ == 'cudf':
+                    result = self.df.merge(left_table, right_table, on=join_cond['left_keys'], how='leftsemi')
+                elif spja_data.join_type == 'leftsemi' and self.df.__name__ == 'pandas':
                     # get only join keys for right table. this is a slight optimization
                     right_table = right_table[join_cond['right_keys']]
-                    result = pd.merge(left_table, right_table, on=join_cond['left_keys'])
+                    result = self.df.merge(left_table, right_table, on=join_cond['left_keys'])
                 else:
-                    result = pd.merge(left_table, right_table, on=join_cond['left_keys'])
+                    result = self.df.merge(left_table, right_table, on=join_cond['left_keys'])
             # join with previous intermediate
             else:
-                if spja_data.join_type == 'leftsemi' and pd.__name__ == 'cudf':
-                    result = pd.merge(result, right_table, on=join_cond['left_keys'], how='leftsemi')
-                elif spja_data.join_type == 'leftsemi' and pd.__name__ == 'pandas':
+                if spja_data.join_type == 'leftsemi' and self.df.__name__ == 'cudf':
+                    result = self.df.merge(result, right_table, on=join_cond['left_keys'], how='leftsemi')
+                elif spja_data.join_type == 'leftsemi' and self.df.__name__ == 'pandas':
                     # get only join keys for right table. this is a slight optimization
                     right_table = right_table[join_cond['right_keys']]
-                    result = pd.merge(result, right_table, on=join_cond['left_keys'])
+                    result = self.df.merge(result, right_table, on=join_cond['left_keys'])
                 else:
-                    result = pd.merge(result, right_table, on=join_cond['left_keys'])
+                    result = self.df.merge(result, right_table, on=join_cond['left_keys'])
             
             # TODO: early projection
             # filter out useless column for efficiency
 
-
         return result
+    
+
+
+class PandasExecutor(DataFrameExecutor):
+    def __init__(self, conn, debug=False):
+        import pandas
+        super().__init__(conn, debug, pandas)
+
+
+class CudfExecutor(DataFrameExecutor):
+    def __init__(self, conn, debug=False):
+        import cudf
+        super().__init__(conn, debug, cudf)
