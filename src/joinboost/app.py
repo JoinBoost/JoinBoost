@@ -109,8 +109,9 @@ class DummyModel(App):
     def fit(self, jg: JoinGraph):
         self._fit(jg)
 
-    def _fit(self, jg: JoinGraph):
-        jg._preprocess()
+    def _fit(self, jg: JoinGraph, skip_preprocess=False):
+        if not skip_preprocess:
+            jg._preprocess()
 
         # get the gradient and hessian
         # for rmse, g is the sum and h is the count
@@ -165,8 +166,9 @@ class DecisionTree(DummyModel):
         assert growth in ["bestfirst", "depthwise", "levelwise"]
         self.growth = growth
 
-    def _fit(self, jg: JoinGraph):
-        jg._preprocess()
+    def _fit(self, jg: JoinGraph, skip_preprocess=False):
+        if not skip_preprocess:
+            jg._preprocess()
 
         # First, we run preprocess to rename reserved column name
         # Create views for tables having conflicting column names with reserved words.
