@@ -339,6 +339,7 @@ class JoinGraph:
         table_name_right: str,
         left_keys: list,
         right_keys: list,
+        skip_check=False,
     ):
         if len(left_keys) != len(right_keys):
             raise JoinGraphException("Join keys have different lengths!")
@@ -352,7 +353,8 @@ class JoinGraph:
         
         left_keys, right_keys = self.get_join_keys(table_name_left, table_name_right)
         
-        self.determine_multiplicity_and_missing(table_name_left, left_keys, table_name_right, right_keys)
+        if not skip_check:
+            self.determine_multiplicity_and_missing(table_name_left, left_keys, table_name_right, right_keys)
     
     # this function is used to determine the multiplicity and missing keys of a join
     # for example relation with join key B
