@@ -483,9 +483,8 @@ class DecisionTree(DummyModel):
         best_criteria, best_criteria_ann = 0, ("", "", 0, 0, 0)
 
         if cjt_depth == self.max_depth:
-            self.split_candidates.put(
-                (-best_criteria,cjt_depth,) + best_criteria_ann+ (cjt_id,))
-            return
+            return (-best_criteria,cjt_depth,) + best_criteria_ann+ (cjt_id,)
+             
 
         g, h = cur_semi_ring.get_value()
         const_ = float((g**2) / h)
@@ -626,8 +625,8 @@ class DecisionTree(DummyModel):
 
             # relation name, split attribute, split value, left gradient, left hessian
             best_criteria_ann = (relation, feature, str(max_index), max_s, max_c)
-
-        self.split_candidates.put((const_ - float(best_criteria), cjt_depth,) + best_criteria_ann + (cjt_id,))
+        return (const_ - float(best_criteria), cjt_depth,) + best_criteria_ann + (cjt_id,)
+        
 
     # split the semi-ring according to current split
     def split_semi_ring(self, total_semi_ring: varSemiRing, left_semi_ring: varSemiRing):
@@ -649,7 +648,12 @@ class DecisionTree(DummyModel):
     def _build_tree(self):
 
         self.cjt.calibration()
-        self._get_best_split(0, 0)
+        
+        if self.growth == "bestfirst":
+            best_split = self._get_best_split(0, 0)
+            self.split_candidates.put(best_split)
+        else:
+            self.split_candidates.put((0,0))
 
         while (
             # while there are still candidates to split
@@ -660,7 +664,12 @@ class DecisionTree(DummyModel):
             and self.split_candidates.size() < self.max_leaves
         ):
             # get the best split
-            (criteria, cur_level, r_name, attr, cur_value, left_g, left_h, c_id,) = self.split_candidates.pop()
+            if self.growth == "bestfirst":
+                (criteria, cur_level, r_name, attr, cur_value, left_g, left_h, c_id,) = self.split_candidates.pop()
+            else:
+                cjt_id, cjt_depth = self.split_candidates.pop()
+                (criteria, cur_level, r_name, attr, cur_value, left_g, left_h, c_id,) = self._get_best_split(cjt_id, cjt_depth)
+
             # get the cjt of the best split to expand
             expanding_cjt = self.nodes[c_id]
 
@@ -719,9 +728,15 @@ class DecisionTree(DummyModel):
                     r_cjt.replace(r_cjt.target_relation, new_r_target_relation)
                     self.nodes[r_id] = r_cjt
 
-            self._get_best_split(l_id, cur_level + 1)
-            self._get_best_split(r_id, cur_level + 1)
-
+            # get the best split
+            if self.growth == "bestfirst":
+                best_split = self._get_best_split(l_id, cur_level + 1)
+                self.split_candidates.put(best_split)
+                best_split = self._get_best_split(r_id, cur_level + 1)
+                self.split_candidates.put(best_split)
+            else:
+                self.split_candidates.put((l_id, cur_level + 1))
+                self.split_candidates.put((r_id, cur_level + 1))
 
         self.leaf_nodes = [self.nodes[ele[-1]] for ele in self.split_candidates]
 
@@ -741,8 +756,8 @@ class GradientBoosting(DecisionTree):
         super().__init__(max_leaves, learning_rate, max_depth, debug=debug, partition_early=partition_early)
         self.iteration = iteration
 
-    def _fit(self, jg: JoinGraph):
-        super()._fit(jg)
+    def _fit(self, jg: JoinGraph, skip_preprocess=False):
+        super()._fit(jg, skip_preprocess=skip_preprocess)
 
         for _ in range(self.iteration - 1):
             self.train_one()
@@ -795,7 +810,7 @@ class RandomForest(DecisionTree):
         self.iteration = iteration
         self.learning_rate = 1 / iteration
 
-    def _fit(self, jg: JoinGraph):
+    def _fit(self, jg: JoinGraph, skip_preprocess=False):
 
         for _ in range(self.iteration):
-            super()._fit(jg)
+            super()._fit(jg, skip_preprocess=skip_preprocess)
