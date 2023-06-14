@@ -106,8 +106,8 @@ class DummyModel(App):
         self.prefix = "joinboost_tmp_"
         self.model_def = []
 
-    def fit(self, jg: JoinGraph):
-        self._fit(jg)
+    def fit(self, jg: JoinGraph, skip_preprocess=False):
+        self._fit(jg, skip_preprocess=skip_preprocess)
 
     def _fit(self, jg: JoinGraph, skip_preprocess=False):
         if not skip_preprocess:
@@ -183,7 +183,7 @@ class DecisionTree(DummyModel):
         self.cjt = CJT(semi_ring=self.semi_ring, join_graph=jg)
         self.create_sample()
 
-        super()._fit(jg)
+        super()._fit(jg, skip_preprocess=skip_preprocess)
 
         # substracting the target variable by means
         exp = agg_to_sql(AggExpression(
