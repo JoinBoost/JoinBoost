@@ -1,4 +1,4 @@
-# JoinBoost: Grow Trees Over Normalized Data Using Only SQL
+# JoinBoost: Grow Trees in Databases Using Only SQL
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
