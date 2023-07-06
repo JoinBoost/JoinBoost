@@ -14,7 +14,7 @@ JoinBoost algorithms follow LightGBM. However, JoinBoost trains models
     - **Safety**: There is no data movement.
     - **Transformation**: You can directly do OLAP and data transformation in SQL.
     - **Scalability**: In-DB ML is natively out-of-core, and JoinBoost could be connected to distributed databases. 
-2. **Many tables**: JoinBoost applies **Factorized Learning** with optimized algorithms. Therefore, JoinBoost trains a model over the join result of many tables but without materializing the join. This provides large performance improvement and is super convenient. 
+2. **Optimized for normalized tables**: JoinBoost applies **Factorized Learning** as query rewriting. Therefore, JoinBoost trains a model over the join result of many tables but without materializing the join. This provides large performance improvement and is super convenient. 
 
 ## Start JoinBoost
 
