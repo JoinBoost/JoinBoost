@@ -45,7 +45,7 @@ class TestExecutor(unittest.TestCase):
         dataset.add_join("supplier", "lineorder", ["SUPPKEY"], ["SUPPKEY"])
 
         depth = 3
-        gb = DecisionTree(learning_rate=1, max_leaves=2 ** depth, max_depth=depth, enable_batch_optimization=True)
+        gb = DecisionTree(learning_rate=1, num_leaves=2 ** depth, max_depth=depth, enable_batch_optimization=True)
 
         gb.fit(dataset)
         gb._build_model_legacy()
@@ -94,7 +94,7 @@ class TestExecutor(unittest.TestCase):
         dataset.add_join("supplier", "lineorder", ["SUPPKEY"], ["SUPPKEY"])
 
         depth = 3
-        gb = DecisionTree(learning_rate=1, max_leaves=2 ** depth, max_depth=depth, enable_batch_optimization=True)
+        gb = DecisionTree(learning_rate=1, num_leaves=2 ** depth, max_depth=depth, enable_batch_optimization=True)
 
         gb.fit(dataset)
         gb._build_model_legacy()
@@ -126,7 +126,7 @@ class TestExecutor(unittest.TestCase):
         dataset.add_join("R", "T", ["B"], ["B"])
 
         depth = 3
-        gb = DecisionTree(learning_rate=1, max_leaves=2**depth, max_depth=depth, partition_early=True,
+        gb = DecisionTree(learning_rate=1, num_leaves=2**depth, max_depth=depth, partition_early=True,
                           enable_batch_optimization=False)
 
         start_time = time.time()
@@ -173,7 +173,7 @@ class TestExecutor(unittest.TestCase):
         dataset.add_join("R", "T", ["B"], ["B"])
 
         depth = 3
-        gb = DecisionTree(learning_rate=1, max_leaves=2 ** depth, max_depth=depth, partition_early=True,
+        gb = DecisionTree(learning_rate=1, num_leaves=2 ** depth, max_depth=depth, partition_early=True,
                           enable_batch_optimization=True)
 
         start_time = time.time()
@@ -264,7 +264,7 @@ class TestExecutor(unittest.TestCase):
         dataset.add_join("holidays", "oil", ["date"], ["date"])
 
         depth = 3
-        reg = DecisionTree(learning_rate=1, max_leaves=2**depth, max_depth=depth, partition_early=True,
+        reg = DecisionTree(learning_rate=1, num_leaves=2**depth, max_depth=depth, partition_early=True,
                            enable_batch_optimization=False)
 
         start_time = time.time()

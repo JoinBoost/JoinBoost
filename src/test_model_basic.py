@@ -43,7 +43,7 @@ class TestModel(unittest.TestCase):
         dataset.add_join("supplier", "lineorder", ["SUPPKEY"], ["SUPPKEY"])
 
         depth = 3
-        gb = DecisionTree(learning_rate=1, max_leaves=2 ** depth, max_depth=depth, partition_early=True)
+        gb = DecisionTree(learning_rate=1, num_leaves=2 ** depth, max_depth=depth, partition_early=True)
 
         start_time = time.time()
         gb.fit(dataset)
@@ -76,7 +76,7 @@ class TestModel(unittest.TestCase):
         dataset.add_join("R", "T", ["B"], ["B"])
 
         depth = 3
-        gb = DecisionTree(learning_rate=1, max_leaves=2**depth, max_depth=depth)
+        gb = DecisionTree(learning_rate=1, num_leaves=2**depth, max_depth=depth)
 
         gb.fit(dataset)
 
@@ -127,7 +127,7 @@ class TestModel(unittest.TestCase):
         dataset.add_join("holidays", "oil", ["date"], ["date"])
 
         depth = 3
-        reg = DecisionTree(learning_rate=1, max_leaves=2**depth, max_depth=depth, partition_early=False)
+        reg = DecisionTree(learning_rate=1, num_leaves=2**depth, max_depth=depth, partition_early=False)
 
         start_time = time.time()
         reg.fit(dataset)

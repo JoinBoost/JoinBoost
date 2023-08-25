@@ -84,9 +84,9 @@ class TestApp(unittest.TestCase):
         dataset2.add_join("holidays_renamed_sc_cols", "oil", ["date"], ["date"])
 
         depth = 3
-        reg1 = DecisionTree(learning_rate=1, max_leaves=2**depth, max_depth=depth)
+        reg1 = DecisionTree(learning_rate=1, num_leaves=2**depth, max_depth=depth)
         reg1.fit(dataset1)
-        reg2 = DecisionTree(learning_rate=1, max_leaves=2**depth, max_depth=depth)
+        reg2 = DecisionTree(learning_rate=1, num_leaves=2**depth, max_depth=depth)
         reg2.fit(dataset2)
 
         rmse1 = reg1.compute_rmse("train")[0]
@@ -170,9 +170,9 @@ class TestApp(unittest.TestCase):
         dataset2.add_join("holidays_renamed_sc_cols", "oil", ["date"], ["date"])
 
         depth = 3
-        reg1 = DecisionTree(learning_rate=1, max_leaves=2**depth, max_depth=depth)
+        reg1 = DecisionTree(learning_rate=1, num_leaves=2**depth, max_depth=depth)
         reg1.fit(dataset1)
-        reg2 = DecisionTree(learning_rate=1, max_leaves=2**depth, max_depth=depth)
+        reg2 = DecisionTree(learning_rate=1, num_leaves=2**depth, max_depth=depth)
         reg2.fit(dataset2)
 
         rmse1 = reg1.compute_rmse("train")[0]

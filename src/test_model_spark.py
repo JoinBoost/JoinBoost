@@ -29,7 +29,7 @@ class TestModel(unittest.TestCase):
         dataset.add_join("R", "T", ["B"], ["B"])
 
         depth = 2
-        gb = DecisionTree(learning_rate=1, max_leaves=2**depth, max_depth=depth, debug=True)
+        gb = DecisionTree(learning_rate=1, num_leaves=2**depth, max_depth=depth, debug=True)
 
         gb.fit(dataset)
         

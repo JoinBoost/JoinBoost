@@ -144,7 +144,7 @@ class DecisionTree(DummyModel):
 
     Parameters
     ----------
-    max_leaves : int, optional
+    num_leaves : int, optional
         Maximum number of leaves the tree can have. Defaults to 31.
     learning_rate : float, optional
         Rate at which the model adjusts based on errors. Defaults to 1.
@@ -163,7 +163,7 @@ class DecisionTree(DummyModel):
     """
     def __init__(
         self,
-        max_leaves: int = 31,
+        num_leaves: int = 31,
         learning_rate: float = 1,
         max_depth: int = 6,
         subsample: float = 1,
@@ -173,7 +173,7 @@ class DecisionTree(DummyModel):
         enable_batch_optimization: bool = False, # This is only applicable for pandas right now
     ):
 
-        assert max_leaves > 0, "max_leaves should be positive"
+        assert num_leaves > 0, "num_leaves should be positive"
         assert max_depth > 0, "max_depth should be positive"
         # sample ratio should be in (0, 1]
         assert 0 < subsample <= 1, "subsample should be in (0, 1]"
@@ -183,7 +183,7 @@ class DecisionTree(DummyModel):
         super().__init__()
         # whether the fact table is partitioned early
         self.partition_early = partition_early
-        self.max_leaves = max_leaves
+        self.num_leaves = num_leaves
         self.learning_rate = learning_rate
         self.max_depth = max_depth
         self.subsample = subsample
@@ -689,7 +689,7 @@ class DecisionTree(DummyModel):
             # while the split is beneficial
             and self.split_candidates.peek()[0] < 0
             # while the number of leaves is less than the max number of leaves
-            and self.split_candidates.size() < self.max_leaves
+            and self.split_candidates.size() < self.num_leaves
         ):
             # get the best split
             if self.growth == "bestfirst":
@@ -778,7 +778,7 @@ class GradientBoosting(DecisionTree):
 
     Parameters
     ----------
-    max_leaves : int, optional
+    num_leaves : int, optional
         Maximum number of leaves each decision tree can have. Defaults to 31.
     learning_rate : float, optional
         Rate at which the model adjusts based on errors. This influences the contribution of each tree to the final prediction. Defaults to 1.
@@ -795,7 +795,7 @@ class GradientBoosting(DecisionTree):
     """
     def __init__(
         self,
-        max_leaves: int = 31,
+        num_leaves: int = 31,
         learning_rate: float = 1,
         max_depth: int = 6,
         iteration: int = 1,
@@ -805,7 +805,7 @@ class GradientBoosting(DecisionTree):
     ):
         assert iteration > 0, "iteration should be positive"
         
-        super().__init__(max_leaves, 
+        super().__init__(num_leaves, 
                          learning_rate, 
                          max_depth, 
                          debug=debug, 
@@ -849,7 +849,7 @@ class RandomForest(DecisionTree):
 
     Parameters
     ----------
-    max_leaves : int, optional
+    num_leaves : int, optional
         Maximum number of leaves each tree can have. Defaults to 31.
     learning_rate : float, optional
         Rate at which the model adjusts based on errors. Defaults to 1.
@@ -870,7 +870,7 @@ class RandomForest(DecisionTree):
     """
     def __init__(
         self,
-        max_leaves: int = 31,
+        num_leaves: int = 31,
         learning_rate: float = 1,
         max_depth: int = 6,
         subsample: float = 1,
@@ -883,7 +883,7 @@ class RandomForest(DecisionTree):
 
         assert iteration > 0, "iteration should be positive"
 
-        super().__init__(max_leaves, 
+        super().__init__(num_leaves, 
                          learning_rate, 
                          max_depth, 
                          subsample, 

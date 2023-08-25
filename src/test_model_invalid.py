@@ -59,7 +59,7 @@ class TestModel(unittest.TestCase):
         dataset.add_join('S', 'T', ['F'], ['F'])
 
         depth = 2
-        reg = DecisionTree(learning_rate=1, max_leaves=2**depth, max_depth=depth)
+        reg = DecisionTree(learning_rate=1, num_leaves=2**depth, max_depth=depth)
         reg.fit(dataset)
         reg.compute_rmse("R")[0]
 
@@ -73,7 +73,7 @@ class TestModel(unittest.TestCase):
         dataset.add_join('R', 'S', ['B'], ['B'])
 
         depth = 2
-        reg = DecisionTree(learning_rate=1, max_leaves=2**depth, max_depth=depth)
+        reg = DecisionTree(learning_rate=1, num_leaves=2**depth, max_depth=depth)
         reg.fit(dataset)
         
     def test_missing_join2(self):
@@ -86,7 +86,7 @@ class TestModel(unittest.TestCase):
         dataset.add_join('R', 'S', ['B'], ['B'])
 
         depth = 2
-        reg = DecisionTree(learning_rate=1, max_leaves=2**depth, max_depth=depth)
+        reg = DecisionTree(learning_rate=1, num_leaves=2**depth, max_depth=depth)
         
         try:
             reg.fit(dataset)
@@ -107,7 +107,7 @@ class TestModel(unittest.TestCase):
                      relation_address='../data/synthetic-many-to-many/T.csv')
 
         depth = 2
-        reg = DecisionTree(learning_rate=1, max_leaves=2**depth, max_depth=depth)
+        reg = DecisionTree(learning_rate=1, num_leaves=2**depth, max_depth=depth)
         
         try:
             reg.fit(dataset)
