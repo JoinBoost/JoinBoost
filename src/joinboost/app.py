@@ -784,7 +784,7 @@ class GradientBoosting(DecisionTree):
         Rate at which the model adjusts based on errors. This influences the contribution of each tree to the final prediction. Defaults to 1.
     max_depth : int, optional
         Maximum depth of each decision tree. Defaults to 6.
-    iteration : int, optional
+    n_estimators : int, optional
         Number of boosting stages or decision trees to be run. Essentially, how many times the boosting procedure should be executed. Defaults to 1.
     debug : bool, optional
         If set to True, enables debugging mode. Defaults to False.
@@ -798,12 +798,12 @@ class GradientBoosting(DecisionTree):
         num_leaves: int = 31,
         learning_rate: float = 1,
         max_depth: int = 6,
-        iteration: int = 1,
+        n_estimators: int = 1,
         debug: bool = False,
         partition_early: bool = False,
         enable_batch_optimization: bool = False, # This is only applicable for pandas right now
     ):
-        assert iteration > 0, "iteration should be positive"
+        assert n_estimators > 0, "n_estimators should be positive"
         
         super().__init__(num_leaves, 
                          learning_rate, 
@@ -812,12 +812,12 @@ class GradientBoosting(DecisionTree):
                          partition_early=partition_early,
                          enable_batch_optimization=enable_batch_optimization
                          )
-        self.iteration = iteration
+        self.n_estimators = n_estimators
 
     def _fit(self, jg: JoinGraph, skip_preprocess=False):
         super()._fit(jg, skip_preprocess=skip_preprocess)
 
-        for _ in range(self.iteration - 1):
+        for _ in range(self.n_estimators - 1):
             self.train_one()
 
     def _update_error(self):
@@ -857,7 +857,7 @@ class RandomForest(DecisionTree):
         Maximum depth of each tree. Defaults to 6.
     subsample : float, optional
         Fraction of training data to be used for learning by each tree. Defaults to 1.
-    iteration : int, optional
+    n_estimators : int, optional
         Number of trees in the random forest. Defaults to 1.
     debug : bool, optional
         If set to True, enables debugging mode. Defaults to False.
@@ -874,14 +874,14 @@ class RandomForest(DecisionTree):
         learning_rate: float = 1,
         max_depth: int = 6,
         subsample: float = 1,
-        iteration: int = 1,
+        n_estimators: int = 1,
         debug: bool = False,
         partition_early: bool = False,
         growth: str = "bestfirst",
         enable_batch_optimization: bool = False, # This is only applicable for pandas right now 
     ):
 
-        assert iteration > 0, "iteration should be positive"
+        assert n_estimators > 0, "n_estimators should be positive"
 
         super().__init__(num_leaves, 
                          learning_rate, 
@@ -892,10 +892,10 @@ class RandomForest(DecisionTree):
                          growth=growth,
                          enable_batch_optimization=enable_batch_optimization
                          )
-        self.iteration = iteration
-        self.learning_rate = 1 / iteration
+        self.n_estimators = n_estimators
+        self.learning_rate = 1 / n_estimators
 
     def _fit(self, jg: JoinGraph, skip_preprocess=False):
 
-        for _ in range(self.iteration):
+        for _ in range(self.n_estimators):
             super()._fit(jg, skip_preprocess=skip_preprocess)
