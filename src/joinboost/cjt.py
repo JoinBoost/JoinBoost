@@ -12,6 +12,15 @@ class CJT(JoinGraph):
     def __init__(
         self, semi_ring: SemiRing, join_graph: JoinGraph, annotations: dict = {}, debug=False
     ):
+        """
+        Initializes the CJT class.
+
+        Args:
+            semi_ring (SemiRing): SemiRing to be used for aggregation.
+            join_graph (JoinGraph): The join graph to be queried.
+            annotations (dict, optional): Annotations to specify selection and group by. Defaults to {}.
+            debug (bool, optional): Enable or disable debug mode. Defaults to False.
+        """
         self.message_id = 0
         self.semi_ring = semi_ring
         super().__init__(
