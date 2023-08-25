@@ -95,6 +95,9 @@ class Stack:
 
 
 class App(ABC):
+    """
+    An abstract base class for applications
+    """
     def __init__(self):
         pass
 
