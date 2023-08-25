@@ -1,5 +1,5 @@
 
-App module
+Models
 ----------------------------
 
 .. automodule:: joinboost.app
