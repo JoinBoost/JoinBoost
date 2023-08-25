@@ -156,15 +156,24 @@ class DecisionTree(DummyModel):
         """
         Initializes a DecisionTree instance with specified parameters.
 
-        Args:
-            max_leaves (int, optional): Maximum number of leaves the tree can have. Defaults to 31.
-            learning_rate (float, optional): Rate at which the model adjusts based on errors. Defaults to 1.
-            max_depth (int, optional): Maximum depth of the tree. Defaults to 6.
-            subsample (float, optional): Fraction of training data to be used for learning. Defaults to 1.
-            growth (str, optional): Strategy for growing the tree. Defaults to "bestfirst".
-            debug (bool, optional): If set to True, enables debugging mode. Defaults to False.
-            partition_early (bool, optional): If set to True, each tree split will materialize the partitioned fact table (as opposed to only creating a view). Defaults to True.
-            enable_batch_optimization (bool, optional): If set to True, for each tree nodes, the set of queries that find the best splits for all featues will be batched together and executed in one query. This is only applicable for pandas right now. Defaults to False.
+        Parameters
+        ----------
+        max_leaves : int, optional
+            Maximum number of leaves the tree can have. Defaults to 31.
+        learning_rate : float, optional
+            Rate at which the model adjusts based on errors. Defaults to 1.
+        max_depth : int, optional
+            Maximum depth of the tree. Defaults to 6.
+        subsample : float, optional
+            Fraction of training data to be used for learning. Defaults to 1.
+        growth : str, optional
+            Strategy for growing the tree. Defaults to "bestfirst".
+        debug : bool, optional
+            If set to True, enables debugging mode. Defaults to False.
+        partition_early : bool, optional
+            If set to True, each tree split will materialize the partitioned fact table (as opposed to only creating a view). Defaults to True.
+        enable_batch_optimization : bool, optional
+            If set to True, for each tree nodes, the set of queries that find the best splits for all featues will be batched together and executed in one query. This is only applicable for pandas right now. Defaults to False.
         """
 
         assert max_leaves > 0, "max_leaves should be positive"
@@ -784,15 +793,24 @@ class GradientBoosting(DecisionTree):
         """
         Initializes a GradientBoosting instance with specified parameters.
 
-        Args:
-            max_leaves (int, optional): Maximum number of leaves each decision tree can have. Defaults to 31.
-            learning_rate (float, optional): Rate at which the model adjusts based on errors. This influences the contribution of each tree to the final prediction. Defaults to 1.
-            max_depth (int, optional): Maximum depth of each decision tree. Defaults to 6.
-            iteration (int, optional): Number of boosting stages or decision trees to be run. Essentially, how many times the boosting procedure should be executed. Defaults to 1.
-            debug (bool, optional): If set to True, enables debugging mode. Defaults to False.
-            partition_early (bool, optional): If set to True, each decision tree split will materialize the partitioned fact table (as opposed to only creating a view). Defaults to False.
-            enable_batch_optimization (bool, optional): If set to True, for each tree node, the set of queries that find the best splits for all features will be batched together and executed in one query. This is only applicable for pandas currently. Defaults to False.
+        Parameters
+        ----------
+        max_leaves : int, optional
+            Maximum number of leaves each decision tree can have. Defaults to 31.
+        learning_rate : float, optional
+            Rate at which the model adjusts based on errors. This influences the contribution of each tree to the final prediction. Defaults to 1.
+        max_depth : int, optional
+            Maximum depth of each decision tree. Defaults to 6.
+        iteration : int, optional
+            Number of boosting stages or decision trees to be run. Essentially, how many times the boosting procedure should be executed. Defaults to 1.
+        debug : bool, optional
+            If set to True, enables debugging mode. Defaults to False.
+        partition_early : bool, optional
+            If set to True, each decision tree split will materialize the partitioned fact table (as opposed to only creating a view). Defaults to False.
+        enable_batch_optimization : bool, optional
+            If set to True, for each tree node, the set of queries that find the best splits for all features will be batched together and executed in one query. This is only applicable for pandas currently. Defaults to False.
         """
+
         assert iteration > 0, "iteration should be positive"
         
         super().__init__(max_leaves, 
@@ -852,18 +870,28 @@ class RandomForest(DecisionTree):
         """
         Initializes a RandomForest instance with specified parameters.
 
-        Args:
-            max_leaves (int, optional): Maximum number of leaves each tree can have. Defaults to 31.
-            learning_rate (float, optional): Rate at which the model adjusts based on errors. Defaults to 1.
-            max_depth (int, optional): Maximum depth of each tree. Defaults to 6.
-            subsample (float, optional): Fraction of training data to be used for learning by each tree. Defaults to 1.
-            iteration (int, optional): Number of trees in the random forest. Defaults to 1.
-            debug (bool, optional): If set to True, enables debugging mode. Defaults to False.
-            partition_early (bool, optional): If set to True, each tree split will materialize the partitioned fact table (as opposed to only creating a view). Defaults to False.
-            growth (str, optional): Strategy for growing each tree in the forest. Defaults to "bestfirst".
-            enable_batch_optimization (bool, optional): If set to True, for each node in the trees, the set of queries that find the best splits for all features will be batched together and executed in one query. This is only applicable for pandas right now. Defaults to False.
+        Parameters
+        ----------
+        max_leaves : int, optional
+            Maximum number of leaves each tree can have. Defaults to 31.
+        learning_rate : float, optional
+            Rate at which the model adjusts based on errors. Defaults to 1.
+        max_depth : int, optional
+            Maximum depth of each tree. Defaults to 6.
+        subsample : float, optional
+            Fraction of training data to be used for learning by each tree. Defaults to 1.
+        iteration : int, optional
+            Number of trees in the random forest. Defaults to 1.
+        debug : bool, optional
+            If set to True, enables debugging mode. Defaults to False.
+        partition_early : bool, optional
+            If set to True, each tree split will materialize the partitioned fact table (as opposed to only creating a view). Defaults to False.
+        growth : str, optional
+            Strategy for growing each tree in the forest. Defaults to "bestfirst".
+        enable_batch_optimization : bool, optional
+            If set to True, for each node in the trees, the set of queries that find the best splits for all features will be batched together and executed in one query. This is only applicable for pandas currently. Defaults to False.
         """
-        
+
         assert iteration > 0, "iteration should be positive"
 
         super().__init__(max_leaves, 
