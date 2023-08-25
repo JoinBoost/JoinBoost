@@ -6,6 +6,9 @@ from .aggregator import *
 
 
 class CJT(JoinGraph):
+    """
+    A data structure to execute interactive SPJA queries efficiently.
+    """
     def __init__(
         self, semi_ring: SemiRing, join_graph: JoinGraph, annotations: dict = {}, debug=False
     ):

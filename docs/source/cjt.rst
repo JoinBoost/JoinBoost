@@ -1,5 +1,5 @@
 
-CJT module
+Calibrated Junction Hypertree (CJT)
 ----------------------------
 
 .. automodule:: joinboost.cjt
