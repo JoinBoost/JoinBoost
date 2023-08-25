@@ -76,7 +76,7 @@ class TestApp(unittest.TestCase):
         dataset.add_join("holidays", "oil", ["date"], ["date"])
 
         reg = GradientBoosting(
-            learning_rate=1, max_leaves=2**depth, max_depth=depth, iteration=iteration
+            learning_rate=1, num_leaves=2**depth, max_depth=depth, iteration=iteration
         )
 
         reg.fit(dataset)
@@ -139,7 +139,7 @@ class TestApp(unittest.TestCase):
         dataset2.add_join("transactions", "holidays", ["date"], ["date"])
         dataset2.add_join("holidays", "oil", ["date"], ["date"])
 
-        reg = GradientBoosting(learning_rate=1, max_leaves=2 ** depth, max_depth=depth, iteration=iteration)
+        reg = GradientBoosting(learning_rate=1, num_leaves=2 ** depth, max_depth=depth, iteration=iteration)
 
         reg.fit(dataset)
         reg_prediction = reg.predict(joingraph=dataset2, input_mode="JOIN_GRAPH")
@@ -198,7 +198,7 @@ class TestApp(unittest.TestCase):
         dataset2.add_join("transactions", "holidays", ["date"], ["date"])
         dataset2.add_join("holidays", "oil", ["date"], ["date"])
 
-        reg = GradientBoosting(learning_rate=1, max_leaves=2 ** depth, max_depth=depth, iteration=iteration)
+        reg = GradientBoosting(learning_rate=1, num_leaves=2 ** depth, max_depth=depth, iteration=iteration)
 
         reg.fit(dataset)
         reg_prediction = reg.predict(dataset2, input_mode="JOIN_GRAPH")

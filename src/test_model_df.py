@@ -371,7 +371,7 @@ class TestExecutor(unittest.TestCase):
 
         depth = 2
         reg = RandomForest(
-            max_leaves=2**depth, max_depth=depth, subsample=0.5, iteration=2
+            num_leaves=2**depth, max_depth=depth, subsample=0.5, iteration=2
         )
 
         reg.fit(dataset)

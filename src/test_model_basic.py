@@ -182,7 +182,7 @@ class TestModel(unittest.TestCase):
         dataset.add_join("holidays", "oil", ["date"], ["date"])
 
         reg = GradientBoosting(
-            learning_rate=1, max_leaves=2**depth, max_depth=depth, iteration=iteration, partition_early = True
+            learning_rate=1, num_leaves=2**depth, max_depth=depth, iteration=iteration, partition_early = True
         )
 
         reg.fit(dataset)
@@ -220,7 +220,7 @@ class TestModel(unittest.TestCase):
 
         depth = 2
         reg = RandomForest(
-            max_leaves=2**depth, max_depth=depth, subsample=0.5, iteration=2
+            num_leaves=2**depth, max_depth=depth, subsample=0.5, iteration=2
         )
 
         reg.fit(dataset)
