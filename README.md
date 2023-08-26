@@ -49,3 +49,9 @@ reg.fit(dataset)
 [Demo on CUDF](https://www.kaggle.com/zacharyhuang/joinboost-gpu-demo)
 
 [Gitpod for code development]( https://gitpod.io/new#https://github.com/zachary62/JoinBoost)
+
+## Paper and contribution
+
+JoinBoost research paper has been accepted at [VLDB 2023](https://www.vldb.org/pvldb/vol16/p3071-huang.pdf)
+
+Upon the completion of the JoinBoost research project, we have made the code open source. We're deeply appreciative of the contributions to the open source project by Pavan Kalyan Damalapati (for improving the join graph's reliability and its extension to pandas), Weisheng Wang (for enhancing the prediction function's capabilities), and Matthew Schoenbauer (for documentation).
