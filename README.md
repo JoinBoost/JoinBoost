@@ -54,4 +54,22 @@ reg.fit(dataset)
 
 JoinBoost research paper has been accepted at [VLDB 2023](https://www.vldb.org/pvldb/vol16/p3071-huang.pdf)
 
+```
+@article{10.14778/3611479.3611509,
+  author = {Huang, Zezhou and Sen, Rathijit and Liu, Jiaxiang and Wu, Eugene},
+  title = {JoinBoost: Grow Trees over Normalized Data Using Only SQL},
+  year = {2023},
+  issue_date = {July 2023},
+  publisher = {VLDB Endowment},
+  volume = {16},
+  number = {11},
+  issn = {2150-8097},
+  url = {https://doi.org/10.14778/3611479.3611509},
+  doi = {10.14778/3611479.3611509},
+  month = {aug},
+  pages = {3071–3084},
+  numpages = {14}
+}
+```
+
 Upon the completion of the JoinBoost research project, we have made the code open source. We're deeply appreciative of the contributions to the open source project by Pavan Kalyan Damalapati (for improving the join graph's reliability and its extension to pandas), Weisheng Wang (for enhancing the prediction function's capabilities), and Matthew Schoenbauer (for documentation).
