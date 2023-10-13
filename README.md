@@ -52,7 +52,7 @@ reg.fit(dataset)
 
 ## Paper and contribution
 
-JoinBoost research paper has been accepted at [VLDB 2023](https://www.vldb.org/pvldb/vol16/p3071-huang.pdf)
+JoinBoost research paper has been accepted at [VLDB 2023](https://dl.acm.org/doi/10.14778/3611479.3611509)
 
 ```
 @article{10.14778/3611479.3611509,
